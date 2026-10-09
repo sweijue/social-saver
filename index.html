@@ -255,6 +255,14 @@ input[type=checkbox]{accent-color:var(--ui-active)}
 .storageFoot{font-size:11px;color:#777;line-height:1.5;margin:8px 0}
 .searchCompact input{ime-mode:auto}
 @media(max-width:390px){.shopBottomLine{gap:5px}.shopControls{gap:7px}.shopNoteBtn.uiBtn{padding:4px 6px!important;font-size:10px!important}}
+
+.filterDisclosure{border:1px solid var(--line);border-radius:12px;background:#fff;margin:6px 0;overflow:hidden}
+.filterDisclosure summary{cursor:pointer;list-style:none;padding:11px 13px;font-weight:850;font-size:14px;display:flex;align-items:center;justify-content:space-between}
+.filterDisclosure summary::-webkit-details-marker{display:none}
+.filterDisclosure summary::after{content:'▾';font-size:12px;color:#777;transition:transform .15s}
+.filterDisclosure[open] summary::after{transform:rotate(180deg)}
+.filterDisclosure .chips{padding:0 11px 12px}
+.filterDisclosure .filterArrow{display:none}
 </style>
 </head>
 <body>
@@ -275,7 +283,7 @@ input[type=checkbox]{accent-color:var(--ui-active)}
 
 <script>
 
-const VERSION="1.6.0", STORE="socialSaver_data";
+const VERSION="1.6.1", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -526,7 +534,7 @@ function renderShoppingLists(){
 function renderTravelPlans(){if(!data.travelPlans.length)return'<div class="empty">尚未建立旅遊行程。<br>回收藏庫勾選卡片後，選「建立旅遊行程」。</div>';return`<div class="listGrid">${data.travelPlans.map(p=>`<section class="listCard"><div class="listHead"><div><div class="listName">${esc(p.name)}</div><div class="listMeta">${new Date(p.createdAt).toLocaleDateString('zh-TW')} · ${p.items.length} 個收藏</div></div><button class="iconBtn uiBtn" data-delete-trip="${p.id}" aria-label="刪除行程">${icon('trash')}</button></div>${p.items.map(id=>{const i=data.items.find(x=>x.id===id);if(!i)return'';return`<button class="miniCard tripItem" data-open="${i.id}" style="width:100%">${i.images?.[0]?`<img class="tripThumb" src="${esc(i.images[0])}" alt="">`:'<span class="tripThumb"></span>'}<span><div class="tripTitle">${esc(i.title)}</div><div class="tripMeta">${esc(i.country)}${i.city?` · ${esc(i.city)}`:''}</div></span></button>`}).join('')}</section>`).join('')}</div>`}
 function renderSearch(){
  const q=window.searchQuery||'',results=q?filteredItems(q):filteredItems(''),countries=uniq(data.items.map(i=>i.country)).length,clusters=similarClusters().length;
- const cats=['全部',...uniq(data.items.map(i=>i.category))];
+ const cats=['全部',...uniq([...data.items.map(i=>i.category),...(data.customCategories||[])])];
  const tagPool=(categoryFilter==='全部'?data.items:data.items.filter(i=>i.category===categoryFilter));
  const tags=['全部',...uniq(tagPool.flatMap(i=>i.tags||[])).slice(0,24)];
  const countryPool=(categoryFilter==='全部'?data.items:data.items.filter(i=>i.category===categoryFilter));
@@ -534,9 +542,9 @@ function renderSearch(){
  return`<div class="searchCompact"><span class="searchIcon">${icon('search',18)}</span><input id="searchInput" value="${esc(q)}" placeholder="搜尋文章、商品、地點…"></div>
  <div class="statsStrip"><span><b>${data.items.length}</b> 收藏</span><span><b>${data.items.filter(i=>i.category==='購物').length}</b> 購物</span><span><b>${countries}</b> 國家</span><span><b>${clusters}</b> 彙整</span></div>
  <div class="searchFilters">
-   <div class="searchFilterRow"><span>分類</span><div class="chips">${cats.map(c=>`<button class="chip ${categoryFilter===c?'active':''}" data-search-cat="${esc(c)}">${esc(c)}</button>`).join('')}</div></div>
-   <div class="searchFilterRow"><span>國家</span><div class="chips">${countryOpts.map(c=>`<button class="chip ${countryFilter===c?'active':''}" data-search-country="${esc(c)}">${esc(c)}</button>`).join('')}</div></div>
-   <div class="searchFilterRow"><span>標籤</span><div class="chips">${tags.map(t=>`<button class="chip ${tagFilter===t?'active':''}" data-search-tag="${esc(t)}">${t==='全部'?'全部':'#'+esc(t)}</button>`).join('')}</div></div>
+   <details class="filterDisclosure" open><summary>分類 <span class="filterArrow">▾</span></summary><div class="chips">${cats.map(c=>`<button class="chip ${categoryFilter===c?'active':''}" data-search-cat="${esc(c)}">${esc(c)}</button>`).join('')}</div></details>
+   <details class="filterDisclosure"><summary>國家 <span class="filterArrow">▾</span></summary><div class="chips">${countryOpts.map(c=>`<button class="chip ${countryFilter===c?'active':''}" data-search-country="${esc(c)}">${esc(c)}</button>`).join('')}</div></details>
+   <details class="filterDisclosure"><summary>標籤 <span class="filterArrow">▾</span></summary><div class="chips">${tags.map(t=>`<button class="chip ${tagFilter===t?'active':''}" data-search-tag="${esc(t)}">${t==='全部'?'全部':'#'+esc(t)}</button>`).join('')}</div></details>
  </div>
  <div class="searchResultsHead"><div class="searchResultsTitle" id="searchResultsTitle">${q?`搜尋結果 · ${results.length}`:`全部收藏 · ${results.length}`}</div>${sortControl()}</div>
  <div id="searchResults">${results.length?`<div class="grid">${results.map(cardHTML).join('')}</div>`:'<div class="empty">找不到符合的收藏。</div>'}</div>`}
@@ -581,8 +589,27 @@ function renderBatch(){
  $('#batchCancel').onclick=()=>{selected.clear();render()}
 }
 function deleteOne(id){if(confirm('確定刪除這篇收藏？')){data.items=data.items.filter(x=>x.id!==id);selected.delete(id);save();render()}}
-function drawerHTML(){const cats=['全部',...uniq(data.items.map(i=>i.category))],countries=categoryFilter==='全部'?[]:['全部',...uniq(data.items.filter(i=>i.category===categoryFilter).map(i=>i.country))],tags=countryFilter==='全部'?[]:['全部',...uniq(data.items.filter(i=>(categoryFilter==='全部'||i.category===categoryFilter)&&(countryFilter==='全部'||i.country===countryFilter)).flatMap(i=>i.tags||[]))];return`<div class="drawerBackdrop" id="drawerBackdrop"></div><aside class="drawer"><div class="drawerHead"><strong>選單</strong><button class="xBtn" id="closeDrawer" aria-label="關閉選單">${icon('close')}</button></div><div class="drawerTitle">篩選收藏</div><div class="filterLevel"><div class="filterLabel">1. 分類</div><div class="chips">${cats.map(x=>`<button class="chip ${categoryFilter===x?'active':''}" data-cat="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>${categoryFilter!=='全部'?`<div class="filterLevel"><div class="filterLabel">2. 國家</div><div class="chips">${countries.map(x=>`<button class="chip ${countryFilter===x?'active':''}" data-country="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>`:''}${categoryFilter!=='全部'&&countryFilter!=='全部'?`<div class="filterLevel"><div class="filterLabel">3. 標籤</div><div class="chips">${tags.map(x=>`<button class="chip ${tagFilter===x?'active':''}" data-tag="${esc(x)}">${x==='全部'?'全部':'# '+esc(x)}</button>`).join('')}</div></div>`:''}<div class="drawerSection"><div class="drawerTitle">資料工具</div><div class="toolRow"><button class="smallBtn" id="exportBtn">匯出備份</button><button class="smallBtn" id="importBtn">匯入備份</button><button class="smallBtn" id="resetFilter">清除篩選</button></div></div><div class="drawerSection"><div id="storageWarning" class="storageWarning ${storageError?'':'hidden'}">${esc(storageError||'')}</div><div class="storageFoot">資料保存在此裝置瀏覽器，尚未雲端同步；請定期匯出備份。</div><div class="filterLabel">目前版本</div><strong>v${VERSION}</strong></div></aside>`}
-function openDrawer(){$('#drawerHost').innerHTML=drawerHTML();$('#closeDrawer').onclick=$('#drawerBackdrop').onclick=closeDrawer;$$('[data-cat]').forEach(b=>b.onclick=()=>{categoryFilter=b.dataset.cat;countryFilter='全部';tagFilter='全部';openDrawer();render()});$$('[data-country]').forEach(b=>b.onclick=()=>{countryFilter=b.dataset.country;tagFilter='全部';openDrawer();render()});$$('[data-tag]').forEach(b=>b.onclick=()=>{tagFilter=b.dataset.tag;openDrawer();render()});$('#exportBtn').onclick=exportData;$('#importBtn').onclick=()=>$('#importFile').click();$('#resetFilter').onclick=()=>{categoryFilter=countryFilter=tagFilter='全部';openDrawer();render()}}
+function openTaxonomyManager(){
+ closeDrawer();
+ const categories=uniq([...data.items.map(i=>i.category),...(data.customCategories||[])]);
+ const tags=uniq([...data.items.flatMap(i=>i.tags||[]),...(data.customTags||[])]);
+ const option=(a)=>a.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');
+ openModal(`<div class="sheetHead"><strong>分類與標籤管理</strong><button class="iconBtn uiBtn" id="closeModal">${icon('close')}</button></div>
+ <div class="form"><label>管理類型<select id="taxKind"><option value="category">分類</option><option value="tag">標籤</option></select></label>
+ <label>已建立的項目<select id="taxExisting">${option(categories)}</select></label>
+ <label>名稱<input id="taxName" placeholder="輸入要新增或修改的名稱"></label>
+ <div class="formActions"><button class="ghost uiBtn" id="taxAdd">＋ 新增</button><button class="ghost uiBtn" id="taxRename">重新命名</button><button class="ghost uiBtn" id="taxDelete">刪除</button></div><p class="storageFoot">重新命名將同步修改現有文章。刪除分類後，該分類文章會歸入「其他」。</p></div>`);
+ const kind=$('#taxKind'),select=$('#taxExisting'),name=$('#taxName');
+ const values=()=>kind.value==='category'?uniq([...data.items.map(i=>i.category),...(data.customCategories||[])]):uniq([...data.items.flatMap(i=>i.tags||[]),...(data.customTags||[])]);
+ const refresh=()=>{select.innerHTML=option(values());name.value=''};
+ kind.onchange=refresh;
+ $('#closeModal').onclick=closeModal;
+ $('#taxAdd').onclick=()=>{const v=name.value.trim();if(!v)return;const key=kind.value==='category'?'customCategories':'customTags';data[key]=uniq([...(data[key]||[]),v]);save();refresh();render()};
+ $('#taxRename').onclick=()=>{const old=select.value,v=name.value.trim();if(!old||!v||old===v)return;const key=kind.value==='category'?'customCategories':'customTags';data[key]=uniq((data[key]||[]).map(x=>x===old?v:x));data.items.forEach(i=>{if(kind.value==='category'){if(i.category===old)i.category=v}else{i.tags=(i.tags||[]).map(t=>t===old?v:t)}});if(kind.value==='category'&&categoryFilter===old)categoryFilter=v;if(kind.value==='tag'&&tagFilter===old)tagFilter=v;save();refresh();render()};
+ $('#taxDelete').onclick=()=>{const old=select.value;if(!old||!confirm('刪除「'+old+'」？'))return;const key=kind.value==='category'?'customCategories':'customTags';data[key]=(data[key]||[]).filter(x=>x!==old);data.items.forEach(i=>{if(kind.value==='category'){if(i.category===old)i.category='其他'}else{i.tags=(i.tags||[]).filter(t=>t!==old)}});if(categoryFilter===old)categoryFilter='全部';if(tagFilter===old)tagFilter='全部';save();refresh();render()};
+}
+function drawerHTML(){const cats=['全部',...uniq([...data.items.map(i=>i.category),...(data.customCategories||[])])],countries=categoryFilter==='全部'?[]:['全部',...uniq(data.items.filter(i=>i.category===categoryFilter).map(i=>i.country))],tags=countryFilter==='全部'?[]:['全部',...uniq(data.items.filter(i=>(categoryFilter==='全部'||i.category===categoryFilter)&&(countryFilter==='全部'||i.country===countryFilter)).flatMap(i=>i.tags||[]))];return`<div class="drawerBackdrop" id="drawerBackdrop"></div><aside class="drawer"><div class="drawerHead"><strong>選單</strong><button class="xBtn" id="closeDrawer" aria-label="關閉選單">${icon('close')}</button></div><div class="drawerTitle">篩選收藏</div><details class="filterDisclosure" open><summary>分類 ▾</summary><div class="chips">${cats.map(x=>`<button class="chip ${categoryFilter===x?'active':''}" data-cat="${esc(x)}">${esc(x)}</button>`).join('')}</div></details>${categoryFilter!=='全部'?`<details class="filterDisclosure"><summary>國家 ▾</summary><div class="chips">${countries.map(x=>`<button class="chip ${countryFilter===x?'active':''}" data-country="${esc(x)}">${esc(x)}</button>`).join('')}</div></details>`:''}${categoryFilter!=='全部'&&countryFilter!=='全部'?`<details class="filterDisclosure"><summary>標籤 ▾</summary><div class="chips">${tags.map(x=>`<button class="chip ${tagFilter===x?'active':''}" data-tag="${esc(x)}">${x==='全部'?'全部':'# '+esc(x)}</button>`).join('')}</div></details>`:''}<div class="drawerSection"><div class="drawerTitle">分類與標籤管理</div><button class="smallBtn" id="manageTaxonomy">新增／重新命名／刪除</button></div><div class="drawerSection"><div class="drawerTitle">資料工具</div><div class="toolRow"><button class="smallBtn" id="exportBtn">匯出備份</button><button class="smallBtn" id="importBtn">匯入備份</button><button class="smallBtn" id="resetFilter">清除篩選</button></div></div><div class="drawerSection"><div id="storageWarning" class="storageWarning ${storageError?'':'hidden'}">${esc(storageError||'')}</div><div class="storageFoot">資料保存在此裝置瀏覽器，尚未雲端同步；請定期匯出備份。</div><div class="filterLabel">目前版本</div><strong>v${VERSION}</strong></div></aside>`}
+function openDrawer(){$('#drawerHost').innerHTML=drawerHTML();$('#closeDrawer').onclick=$('#drawerBackdrop').onclick=closeDrawer;$$('[data-cat]').forEach(b=>b.onclick=()=>{categoryFilter=b.dataset.cat;countryFilter='全部';tagFilter='全部';openDrawer();render()});$$('[data-country]').forEach(b=>b.onclick=()=>{countryFilter=b.dataset.country;tagFilter='全部';openDrawer();render()});$$('[data-tag]').forEach(b=>b.onclick=()=>{tagFilter=b.dataset.tag;openDrawer();render()});$('#manageTaxonomy').onclick=openTaxonomyManager;$('#exportBtn').onclick=exportData;$('#importBtn').onclick=()=>$('#importFile').click();$('#resetFilter').onclick=()=>{categoryFilter=countryFilter=tagFilter='全部';openDrawer();render()}}
 function closeDrawer(){$('#drawerHost').innerHTML=''}
 function openModal(html){
  $('#modalHost').innerHTML=`<div class="modalBackdrop" id="modalBackdrop"><section class="sheet" id="sheet">${html}</section></div>`;
@@ -635,9 +662,20 @@ $('#prevDetail').onclick=()=>{detailIndex=(detailIndex-1+detailIds.length)%detai
    openShoppingListModal([i.id],chosen)
  };
  $$('[data-copy]').forEach(b=>b.onclick=async()=>{try{await navigator.clipboard.writeText(b.dataset.copy);b.textContent='已複製 ✓'}catch{prompt('複製這段文字',b.dataset.copy)}});
- let sx=null;
- $('#sheet').ontouchstart=e=>{sx=e.touches?.[0]?.clientX??null};
- $('#sheet').ontouchend=e=>{if(sx==null)return;const dx=(e.changedTouches?.[0]?.clientX??sx)-sx;if(Math.abs(dx)>80){detailIndex=(detailIndex+(dx<0?1:-1)+detailIds.length)%detailIds.length;renderDetail()}sx=null}
+ let swipeStart=null;
+ const sheet=$('#sheet');
+ sheet.ontouchstart=e=>{const t=e.touches?.[0];swipeStart=t?{x:t.clientX,y:t.clientY,time:Date.now()}:null};
+ sheet.ontouchcancel=()=>{swipeStart=null};
+ sheet.ontouchend=e=>{
+   if(!swipeStart)return;
+   const target=e.target;
+   const t=e.changedTouches?.[0],start=swipeStart;swipeStart=null;
+   if(!t||target?.closest?.('button,input,textarea,select,a,label,.productRow,.detailSection'))return;
+   const dx=t.clientX-start.x,dy=t.clientY-start.y;
+   // Must be decisively horizontal; vertical scrolling should never change cards.
+   if(Math.abs(dx)<105||Math.abs(dx)<Math.abs(dy)*2.4||Date.now()-start.time>950)return;
+   detailIndex=(detailIndex+(dx<0?1:-1)+detailIds.length)%detailIds.length;renderDetail();
+ }
 }
 let imageViewerKeyHandler=null;
 function closeImageViewer(){const host=$('#lightboxHost');if(host)host.innerHTML='';if(imageViewerKeyHandler){document.removeEventListener('keydown',imageViewerKeyHandler);imageViewerKeyHandler=null}}
@@ -789,7 +827,7 @@ function openQuickAdd(prefill=''){
 function editorHTML(item){
  const platforms=['Instagram','Threads','Facebook','小紅書','YouTube','TikTok','X','網頁','其他'];
  const countries=['韓國','日本','台灣','泰國','越南','其他'];
- const categories=['購物','美食','旅遊','設計','產品','娛樂','其他'];
+ const categories=uniq(['購物','美食','旅遊','設計','產品','娛樂','其他',...data.items.map(i=>i.category),...(data.customCategories||[])]);
  const opts=(arr,value,auto)=>`${auto?`<option value="">${auto}</option>`:''}${arr.map(x=>`<option value="${esc(x)}" ${x===value?'selected':''}>${esc(x)}</option>`).join('')}`;
  return `<div class="sheetHead"><strong>${item?'編輯收藏':'收藏新文章'}</strong><button class="iconBtn uiBtn" id="closeModal" aria-label="關閉">${icon('close')}</button></div>
   <form id="editorForm" class="form">
