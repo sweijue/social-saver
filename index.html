@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="收藏庫">
-<title>收藏庫 Social Saver v1.4.1</title>
+<title>收藏庫 Social Saver v1.5.0</title>
 <style>
 :root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#6e6e68;--line:#e4e4de;--soft:#efefe9;--shadow:0 10px 28px rgba(0,0,0,.07);--r:20px;--navh:74px}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif;font-size:17px}body{min-height:100vh;padding-bottom:calc(var(--navh) + env(safe-area-inset-bottom) + 18px)}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
@@ -25,7 +25,7 @@ main{max-width:1080px;margin:auto;padding:14px 12px 30px}.pageHead{display:flex;
 @media(min-width:760px){main{padding-left:20px;padding-right:20px}.grid{grid-template-columns:repeat(3,minmax(0,1fr))}.miniCards{grid-template-columns:repeat(3,1fr)}.statsGrid{grid-template-columns:repeat(4,1fr)}}
 @media(max-width:390px){html,body{font-size:16px}.title{font-size:17px}.summary{font-size:13px}.bottomBtn{font-size:11px}.bottomBtn .ico{font-size:20px}.addMain{width:55px;height:55px}.detailSideNav{top:70vh}}
 
-/* v1.4.1 interface refinements */
+/* v1.5.0 interface refinements */
 html,body{font-size:15px}
 main{padding-top:10px}
 .floatingMenu{position:fixed;z-index:60;right:12px;top:calc(10px + env(safe-area-inset-top));width:38px;height:38px;font-size:19px;box-shadow:0 5px 18px rgba(0,0,0,.10)}
@@ -47,6 +47,51 @@ main{padding-top:10px}
 .searchFilters{display:grid;gap:7px;margin-bottom:12px}.searchFilterRow{display:grid;grid-template-columns:34px 1fr;gap:6px;align-items:start}.searchFilterRow>span{font-size:10px;font-weight:900;color:var(--muted);padding-top:7px}.searchFilterRow .chips{gap:5px}.searchFilterRow .chip{font-size:10px;padding:5px 7px}
 .listChoice{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:12px}.choiceBtn{border:1px solid var(--line);background:#fff;border-radius:11px;padding:9px 10px;font-size:12px;font-weight:900}.choiceBtn.active{background:#111;color:#fff;border-color:#111}.choiceBtn:disabled{opacity:.4}
 
+
+/* v1.5.0 refinements */
+.originalSnippet{margin-top:8px;font-size:12px;line-height:1.5;color:#555;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.originalSnippet>span{font-size:10px;font-weight:900;color:#888;margin-right:5px}
+.uiBtn,.primary,.ghost,.batchBtn,.choiceBtn,.listTab,.iconBtn,.cardIcon,.linkPill,.termBtn,.qty button{
+ border:1px solid var(--line)!important;background:#fff!important;color:#111!important;border-radius:10px!important;font-weight:850!important;box-shadow:none!important
+}
+.primary,.choiceBtn.active,.listTab.active{background:#111!important;color:#fff!important;border-color:#111!important}
+.uiBtn:disabled,.choiceBtn:disabled{opacity:.38}
+.batchBar{background:#fff;color:#111;border:1px solid var(--line);padding:8px;border-radius:14px}
+.batchBtn{padding:7px 9px;white-space:nowrap}.batchCount{color:#555}
+.modalBackdrop{place-items:center;padding:14px}
+.sheet{width:min(720px,calc(100vw - 28px));max-height:calc(100vh - 36px);border-radius:22px;overflow:auto;padding-bottom:0}
+.sheetHead{border-radius:22px 22px 0 0}
+.detailGallery{margin:10px 12px 0;border-radius:14px;overflow:auto}
+.detailGallery img{aspect-ratio:1.6/1}
+.detailBody{padding:15px 18px 34px}
+.detailSideNav{top:68vh;width:40px;height:40px}
+.detailSideNav.left{left:max(18px,calc(50% - 380px))}.detailSideNav.right{right:max(18px,calc(50% - 380px))}
+.originalBody{background:#f7f7f4;border:1px solid var(--line);border-radius:12px;padding:11px}
+.productSectionHead{display:flex;justify-content:space-between;align-items:end;gap:10px;margin-bottom:8px}
+.productSectionHead h4{margin:0}.productSectionHead span{font-size:11px;color:var(--muted)}
+.selectableProduct{cursor:pointer}.productCardText{display:grid;grid-template-columns:18px 1fr;gap:7px;align-items:start;padding:8px}
+.productCardText input{width:16px;height:16px;margin-top:1px}.productCardText .productName{padding:0}
+.productAddBtn{margin-top:10px;width:100%;padding:10px}
+.commonProductGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px}
+.commonProductCard{display:grid;grid-template-columns:66px 1fr;gap:8px;align-items:center;border:1px solid var(--line);background:#fafaf8;border-radius:12px;padding:6px}
+.commonProductCard img,.commonProductPh{width:66px;height:66px;object-fit:cover;border-radius:9px;background:#e9e9e4;display:grid;place-items:center;font-size:11px;color:#777}
+.commonProductCard strong{display:block;font-size:12px;line-height:1.35}.commonProductCard span{display:block;font-size:10px;color:var(--muted);margin-top:3px}
+.sourceLinks{margin-top:10px;padding-top:9px;border-top:1px solid var(--line);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.sourceLabel{font-size:11px;font-weight:900;color:#777}.sourceArticle{font-size:11px;padding:6px 8px;text-align:left}
+.shopSelectItems{display:grid;gap:6px}.shopSelectItem{display:grid;grid-template-columns:46px 18px 1fr;gap:7px;align-items:center;border:1px solid var(--line);border-radius:11px;padding:6px;background:#fafaf8}
+.shopSelectItem img,.shopSelectPh{width:46px;height:46px;object-fit:cover;border-radius:8px;background:#e8e8e3;display:grid;place-items:center;font-size:10px;color:#777}
+.shopSelectItem input{width:16px;height:16px}.shopSelectItem strong{display:block;font-size:12px;line-height:1.3}.shopSelectItem small{display:block;font-size:10px;color:var(--muted);margin-top:2px}
+.listGrid{gap:8px}.listCard{padding:10px;border-radius:15px}.listHead{align-items:center}.listName{font-size:15px}.listMeta{font-size:10px}
+.shopItems{gap:5px;margin-top:7px}.shopItem{padding:6px;border-radius:10px;grid-template-columns:44px minmax(0,1fr) auto;gap:7px}.shopThumb,.thumbAdd{width:44px;height:44px;border-radius:8px}.shopThumb img{width:100%;height:100%;object-fit:cover;border-radius:8px}
+.shopItemName{font-size:12px;line-height:1.25}.shopItemSub{font-size:10px}.shopControls{display:flex;align-items:center;gap:6px}.doneMini{display:flex;grid-auto-flow:column;align-items:center;gap:3px;font-size:10px!important}.doneMini input{width:14px;height:14px}.qty{gap:2px}.qty button{width:23px;height:23px;padding:0}.qty span{font-size:11px;min-width:14px}
+.searchFilters .chip{font-size:15px!important;padding:7px 10px!important}.searchFilterRow>span{font-size:14px!important;min-width:38px!important}.statsStrip span{font-size:14px!important;padding:7px 9px!important}.statsStrip b{font-size:16px!important}
+@media(max-width:480px){
+ .modalBackdrop{padding:10px}.sheet{width:calc(100vw - 20px);max-height:calc(100vh - 24px);border-radius:18px}
+ .sheetHead{border-radius:18px 18px 0 0}.detailBody{padding-left:14px;padding-right:14px}
+ .detailSideNav.left{left:14px}.detailSideNav.right{right:14px}
+ .commonProductGrid{grid-template-columns:1fr}
+}
+
 </style>
 </head>
 <body>
@@ -66,7 +111,7 @@ main{padding-top:10px}
 <input id="importFile" type="file" accept="application/json" class="hidden">
 
 <script>
-const VERSION="1.4.1", STORE="socialSaver_data";
+const VERSION="1.5.0", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -91,13 +136,49 @@ let view='library', listMode='shopping', categoryFilter='全部', countryFilter=
 function allSorted(){return [...data.items].sort((a,b)=>b.createdAt-a.createdAt)}
 function filteredItems(q=''){return allSorted().filter(i=>{if(categoryFilter!=='全部'&&i.category!==categoryFilter)return false;if(countryFilter!=='全部'&&i.country!==countryFilter)return false;if(tagFilter!=='全部'&&!(i.tags||[]).includes(tagFilter))return false;if(!q)return true;const h=norm([i.title,i.body,i.category,i.country,i.city,i.shoppingType,i.address,...i.tags,...i.terms,...i.products].join(' '));return h.includes(norm(q))})}
 function productImage(item,p,idx){return item.productImages?.[p]||item.images?.[idx]||item.images?.[0]||''}
-function cardHTML(i){const img=i.images?.[0]||'';return`<article class="card" data-id="${i.id}"><button class="cardTap" data-open="${i.id}"><div class="cardImg">${img?`<img src="${esc(img)}" alt="">`:''}<span class="badge">${esc(i.platform)}</span><span class="country">${esc(i.country)}</span>${i.images?.length>1?`<span class="multiBadge">▧ ${i.images.length}</span>`:''}<span class="selectDot ${selected.has(i.id)?'on':''}" data-select="${i.id}">${selected.has(i.id)?'✓':''}</span></div><div class="cardBody"><h3 class="title">${esc(i.title)} ${i.isExample?'<span class="tag example">範例</span>':''}</h3><div class="meta">${esc(i.category)}${i.city?` · ${esc(i.city)}`:''}</div><div class="summary">${esc(i.summary)}</div><div class="tagRow">${(i.tags||[]).slice(0,3).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div></div></button></article>`}
+function cardHTML(i){
+ const img=i.images?.[0]||'';
+ return`<article class="card" data-id="${i.id}">
+   <button class="cardTap" data-open="${i.id}">
+     <div class="cardImg">${img?`<img src="${esc(img)}" alt="">`:''}
+       <span class="badge">${esc(i.platform)}</span><span class="country">${esc(i.country)}</span>
+       ${i.images?.length>1?`<span class="multiBadge">▧ ${i.images.length}</span>`:''}
+       <span class="selectDot ${selected.has(i.id)?'on':''}" data-select="${i.id}">${selected.has(i.id)?'✓':''}</span>
+     </div>
+     <div class="cardBody">
+       <h3 class="title">${esc(i.title)} ${i.isExample?'<span class="tag example">範例</span>':''}</h3>
+       <div class="meta">${esc(i.category)}${i.city?` · ${esc(i.city)}`:''}</div>
+       <div class="originalSnippet"><span>原文</span>${esc(i.body||i.summary||'')}</div>
+       <div class="tagRow">${(i.tags||[]).slice(0,3).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>
+     </div>
+   </button>
+ </article>`}
 function commonProducts(group){const m={};group.forEach(i=>(i.products||[]).forEach((p,idx)=>{const k=norm(p);if(!m[k])m[k]={name:p,count:0,image:productImage(i,p,idx)};m[k].count++}));return Object.values(m).filter(x=>x.count>1).sort((a,b)=>b.count-a.count)}
 function similarClusters(){const items=allSorted(),used=new Set(),out=[];for(let a=0;a<items.length;a++){if(used.has(items[a].id))continue;const g=[items[a]];for(let b=a+1;b<items.length;b++){const A=items[a],B=items[b],pa=new Set((A.products||[]).map(norm)),pb=new Set((B.products||[]).map(norm)),shared=[...pa].filter(x=>pb.has(x)).length,tagShared=(A.tags||[]).filter(x=>(B.tags||[]).includes(x)).length;if(shared>=1||(A.category===B.category&&A.country===B.country&&tagShared>=2))g.push(B)}if(g.length>1){g.forEach(x=>used.add(x.id));out.push(g)}}return out}
 function renderLibrary(){const list=filteredItems();return`<div class="pageHead"><div><h2>收藏庫</h2><p>${list.length} 篇收藏 · 點整張卡片查看</p></div></div>${list.length?`<div class="grid">${list.map(cardHTML).join('')}</div>`:'<div class="empty">沒有符合條件的收藏。</div>'}`}
-function renderSimilar(){const groups=similarClusters();return`<div class="pageHead"><div><h2>相似彙整</h2><p>共同商品與相似主題會自動聚在一起</p></div></div>${groups.length?`<div class="clusterList">${groups.map(g=>{const common=commonProducts(g);return`<section class="cluster"><div class="clusterTop"><div class="clusterTitle">${esc(g[0].country)}・${esc(g[0].category)}</div><span class="count">${g.length} 篇</span></div><div class="common"><div class="commonLabel">共同提到</div><div class="tagRow">${common.length?common.map(x=>`<span class="tag">${esc(x.name)} × ${x.count}</span>`).join(''):'<span class="tag">共同主題</span>'}</div></div><div class="miniCards">${g.map(i=>`<button class="miniCard" data-open="${i.id}">${i.images?.[0]?`<img src="${esc(i.images[0])}" alt="">`:'<span class="miniPh"></span>'}<div>${esc(i.title)}</div></button>`).join('')}</div></section>`}).join('')}</div>`:'<div class="empty">目前沒有偵測到相似文章。</div>'}`}
+function renderSimilar(){
+ const groups=similarClusters();
+ return`<div class="pageHead"><div><h2>相似彙整</h2><p>直接看共同商品，來源文章保留連回即可</p></div></div>
+ ${groups.length?`<div class="clusterList">${groups.map(g=>{
+   const common=commonProducts(g);
+   return`<section class="cluster">
+     <div class="clusterTop"><div class="clusterTitle">${esc(g[0].country)}・${esc(g[0].category)}</div><span class="count">${g.length} 篇</span></div>
+     <div class="commonLabel">共同商品</div>
+     ${common.length?`<div class="commonProductGrid">${common.map(x=>`<div class="commonProductCard">${x.image?`<img src="${esc(x.image)}" alt="">`:'<div class="commonProductPh">無圖</div>'}<div><strong>${esc(x.name)}</strong><span>${x.count} 篇共同提到</span></div></div>`).join('')}</div>`:'<div class="common"><span class="tag">共同主題</span></div>'}
+     <div class="sourceLinks"><span class="sourceLabel">來源文章</span>${g.map(i=>`<button class="sourceArticle uiBtn" data-open="${i.id}">${esc(i.title)}</button>`).join('')}</div>
+   </section>`
+ }).join('')}</div>`:'<div class="empty">目前沒有偵測到相似文章。</div>'}` }
 function renderLists(){return`<div class="pageHead"><div><h2>清單</h2><p>批次勾選收藏後，可建立購物清單或旅遊行程</p></div></div><div class="listTabs"><button class="listTab ${listMode==='shopping'?'active':''}" data-listmode="shopping">購物清單</button><button class="listTab ${listMode==='travel'?'active':''}" data-listmode="travel">旅遊行程</button></div>${listMode==='shopping'?renderShoppingLists():renderTravelPlans()}`}
-function renderShoppingLists(){if(!data.shoppingLists.length)return'<div class="empty">尚未建立購物清單。<br>回收藏庫勾選卡片後，選「建立購物清單」。</div>';return`<div class="listGrid">${data.shoppingLists.map(l=>`<section class="listCard"><div class="listHead"><div><div class="listName">${esc(l.name)}</div><div class="listMeta">${new Date(l.createdAt).toLocaleDateString('zh-TW')} · ${l.items.length} 項</div></div><button class="cardIcon danger" data-delete-list="${l.id}">🗑</button></div><div class="shopItems">${l.items.map((it,idx)=>`<div class="shopItem ${it.done?'done':''}"><button class="${it.image?'shopThumb':'thumbAdd'}" data-shopimg="${l.id}:${idx}">${it.image?`<img src="${esc(it.image)}" style="width:100%;height:100%;object-fit:cover;border-radius:11px">`:'＋'}</button><div><div class="shopItemName">${esc(it.name)}</div><div class="shopItemSub">${it.sourceCount>1?`${it.sourceCount} 篇共同提到`:esc(it.country||'')}</div><label style="display:flex;align-items:center;gap:6px;margin-top:5px"><input type="checkbox" data-done="${l.id}:${idx}" ${it.done?'checked':''} style="width:auto"> 已買</label></div><div class="qty"><button data-qty="${l.id}:${idx}:-1">−</button><span>${it.qty||1}</span><button data-qty="${l.id}:${idx}:1">＋</button></div></div>`).join('')}</div></section>`).join('')}</div>`}
+function renderShoppingLists(){
+ if(!data.shoppingLists.length)return'<div class="empty">尚未建立購物清單。<br>回收藏庫勾選卡片後，選「購物清單」。</div>';
+ return`<div class="listGrid">${data.shoppingLists.map(l=>`<section class="listCard">
+   <div class="listHead"><div><div class="listName">${esc(l.name)}</div><div class="listMeta">${l.items.length} 項 · ${new Date(l.createdAt).toLocaleDateString('zh-TW')}</div></div><button class="iconBtn uiBtn" data-delete-list="${l.id}" aria-label="刪除">🗑</button></div>
+   <div class="shopItems">${l.items.map((it,idx)=>`<div class="shopItem ${it.done?'done':''}">
+     <button class="${it.image?'shopThumb':'thumbAdd'}" data-shopimg="${l.id}:${idx}">${it.image?`<img src="${esc(it.image)}" alt="">`:'＋'}</button>
+     <div class="shopInfo"><div class="shopItemName">${esc(it.name)}</div><div class="shopItemSub">${it.sourceCount>1?`${it.sourceCount} 篇共同提到`:esc(it.country||'')}</div></div>
+     <div class="shopControls"><label class="doneMini"><input type="checkbox" data-done="${l.id}:${idx}" ${it.done?'checked':''}>買</label><div class="qty"><button class="uiBtn" data-qty="${l.id}:${idx}:-1">−</button><span>${it.qty||1}</span><button class="uiBtn" data-qty="${l.id}:${idx}:1">＋</button></div></div>
+   </div>`).join('')}</div>
+ </section>`).join('')}</div>`}
 function renderTravelPlans(){if(!data.travelPlans.length)return'<div class="empty">尚未建立旅遊行程。<br>回收藏庫勾選卡片後，選「建立旅遊行程」。</div>';return`<div class="listGrid">${data.travelPlans.map(p=>`<section class="listCard"><div class="listHead"><div><div class="listName">${esc(p.name)}</div><div class="listMeta">${new Date(p.createdAt).toLocaleDateString('zh-TW')} · ${p.items.length} 個收藏</div></div><button class="cardIcon danger" data-delete-trip="${p.id}">🗑</button></div>${p.items.map(id=>{const i=data.items.find(x=>x.id===id);if(!i)return'';return`<button class="miniCard tripItem" data-open="${i.id}" style="width:100%">${i.images?.[0]?`<img class="tripThumb" src="${esc(i.images[0])}" alt="">`:'<span class="tripThumb"></span>'}<span><div class="tripTitle">${esc(i.title)}</div><div class="tripMeta">${esc(i.country)}${i.city?` · ${esc(i.city)}`:''}</div></span></button>`}).join('')}</section>`).join('')}</div>`}
 function renderSearch(){
  const q=window.searchQuery||'',results=q?filteredItems(q):filteredItems(''),countries=uniq(data.items.map(i=>i.country)).length,clusters=similarClusters().length;
@@ -121,48 +202,115 @@ $$('[data-search-country]').forEach(b=>b.onclick=()=>{countryFilter=b.dataset.se
 $$('[data-search-tag]').forEach(b=>b.onclick=()=>{tagFilter=b.dataset.searchTag;render()});
 if($('#searchInput'))$('#searchInput').oninput=e=>{window.searchQuery=e.target.value;render()}}
 function toggleSelect(id){selected.has(id)?selected.delete(id):selected.add(id);render()}
-function renderBatch(){const bar=$('#batchBar');if(!selected.size){bar.classList.add('hidden');bar.innerHTML='';return}bar.classList.remove('hidden');bar.innerHTML=`<span class="batchCount">已選 ${selected.size}</span><button class="batchBtn" id="batchShop">購物清單</button><button class="batchBtn" id="batchTrip">旅遊行程</button><button class="batchBtn danger" id="batchDelete">刪除</button>`;$('#batchShop').onclick=()=>openShoppingListModal([...selected]);$('#batchTrip').onclick=()=>openTravelPlanModal([...selected]);$('#batchDelete').onclick=()=>{if(confirm(`刪除已選的 ${selected.size} 篇收藏？`)){data.items=data.items.filter(i=>!selected.has(i.id));selected.clear();save();render()}}}
+function renderBatch(){
+ const bar=$('#batchBar');
+ if(!selected.size){bar.classList.add('hidden');bar.innerHTML='';return}
+ bar.classList.remove('hidden');
+ bar.innerHTML=`<span class="batchCount">已選 ${selected.size}</span>
+   <button class="batchBtn uiBtn" id="batchShop">購物清單</button>
+   <button class="batchBtn uiBtn" id="batchTrip">旅遊行程</button>
+   <button class="batchBtn uiBtn" id="batchDelete">刪除</button>
+   <button class="batchBtn uiBtn" id="batchCancel">取消</button>`;
+ $('#batchShop').onclick=()=>openShoppingListModal([...selected]);
+ $('#batchTrip').onclick=()=>openTravelPlanModal([...selected]);
+ $('#batchDelete').onclick=()=>{if(confirm(`刪除已選的 ${selected.size} 篇收藏？`)){data.items=data.items.filter(i=>!selected.has(i.id));selected.clear();save();render()}};
+ $('#batchCancel').onclick=()=>{selected.clear();render()}
+}
 function deleteOne(id){if(confirm('確定刪除這篇收藏？')){data.items=data.items.filter(x=>x.id!==id);selected.delete(id);save();render()}}
 function drawerHTML(){const cats=['全部',...uniq(data.items.map(i=>i.category))],countries=categoryFilter==='全部'?[]:['全部',...uniq(data.items.filter(i=>i.category===categoryFilter).map(i=>i.country))],tags=countryFilter==='全部'?[]:['全部',...uniq(data.items.filter(i=>(categoryFilter==='全部'||i.category===categoryFilter)&&(countryFilter==='全部'||i.country===countryFilter)).flatMap(i=>i.tags||[]))];return`<div class="drawerBackdrop" id="drawerBackdrop"></div><aside class="drawer"><div class="drawerHead"><strong>選單</strong><button class="xBtn" id="closeDrawer">×</button></div><div class="drawerTitle">篩選收藏</div><div class="filterLevel"><div class="filterLabel">1. 分類</div><div class="chips">${cats.map(x=>`<button class="chip ${categoryFilter===x?'active':''}" data-cat="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>${categoryFilter!=='全部'?`<div class="filterLevel"><div class="filterLabel">2. 國家</div><div class="chips">${countries.map(x=>`<button class="chip ${countryFilter===x?'active':''}" data-country="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>`:''}${categoryFilter!=='全部'&&countryFilter!=='全部'?`<div class="filterLevel"><div class="filterLabel">3. 標籤</div><div class="chips">${tags.map(x=>`<button class="chip ${tagFilter===x?'active':''}" data-tag="${esc(x)}">${x==='全部'?'全部':'# '+esc(x)}</button>`).join('')}</div></div>`:''}<div class="drawerSection"><div class="drawerTitle">資料工具</div><div class="toolRow"><button class="smallBtn" id="exportBtn">匯出備份</button><button class="smallBtn" id="importBtn">匯入備份</button><button class="smallBtn" id="resetFilter">清除篩選</button></div></div><div class="drawerSection"><div class="filterLabel">目前版本</div><strong>v${VERSION}</strong></div></aside>`}
 function openDrawer(){$('#drawerHost').innerHTML=drawerHTML();$('#closeDrawer').onclick=$('#drawerBackdrop').onclick=closeDrawer;$$('[data-cat]').forEach(b=>b.onclick=()=>{categoryFilter=b.dataset.cat;countryFilter='全部';tagFilter='全部';openDrawer();render()});$$('[data-country]').forEach(b=>b.onclick=()=>{countryFilter=b.dataset.country;tagFilter='全部';openDrawer();render()});$$('[data-tag]').forEach(b=>b.onclick=()=>{tagFilter=b.dataset.tag;openDrawer();render()});$('#exportBtn').onclick=exportData;$('#importBtn').onclick=()=>$('#importFile').click();$('#resetFilter').onclick=()=>{categoryFilter=countryFilter=tagFilter='全部';openDrawer();render()}}
 function closeDrawer(){$('#drawerHost').innerHTML=''}
-function openModal(html){$('#modalHost').innerHTML=`<div class="modalBackdrop" id="modalBackdrop"><section class="sheet" id="sheet">${html}</section></div>`;$('#modalBackdrop').onclick=e=>{if(e.target.id==='modalBackdrop')closeModal()}}
+function openModal(html){
+ $('#modalHost').innerHTML=`<div class="modalBackdrop" id="modalBackdrop"><section class="sheet" id="sheet">${html}</section></div>`;
+ $('#modalBackdrop').onclick=e=>{if(e.target.id==='modalBackdrop')closeModal()}
+}
 function closeModal(){$('#modalHost').innerHTML=''}
 function detailOrder(){return filteredItems(window.searchQuery||'')}
 function openDetail(id){detailIds=detailOrder().map(i=>i.id);if(!detailIds.includes(id))detailIds=allSorted().map(i=>i.id);detailIndex=Math.max(0,detailIds.indexOf(id));renderDetail()}
-function renderDetail(){const i=data.items.find(x=>x.id===detailIds[detailIndex]);if(!i)return closeModal();const q=encodeURIComponent(i.address||i.title),nq=encodeURIComponent(`${i.title} ${i.address||''}`);openModal(`<div class="sheetHead"><strong>${detailIndex+1} / ${detailIds.length}</strong><div class="headActions"><button class="iconBtn" id="editDetail">✎</button><button class="iconBtn dangerText" id="deleteDetail">🗑</button><button class="iconBtn" id="closeModal">×</button></div></div>${i.images?.length?`<div class="detailGallery">${i.images.map(src=>`<img src="${esc(src)}" alt="">`).join('')}</div>`:''}<button class="detailSideNav left" id="prevDetail">‹</button><button class="detailSideNav right" id="nextDetail">›</button><div class="detailBody"><h2 class="detailTitle">${esc(i.title)}</h2><div class="detailMeta">${esc(i.platform)} · ${esc(i.category)} · ${esc(i.country)}${i.city?` · ${esc(i.city)}`:''}</div>${i.url?`<div class="detailSection"><a class="linkPill" href="${esc(i.url)}" target="_blank" rel="noopener">↗ 原文章</a></div>`:''}<div class="detailSection"><h4>整理摘要</h4><div class="bodyText">${esc(i.summary)}</div></div>${i.products?.length?`<div class="detailSection"><h4>商品與圖片</h4><div class="productGrid">${i.products.map((p,idx)=>{const im=productImage(i,p,idx);return`<div class="productCard">${im?`<img src="${esc(im)}" alt="">`:'<div class="productImgPh">沒有圖片</div>'}<div class="productName">${esc(p)}</div></div>`}).join('')}</div></div>`:''}${i.address?`<div class="detailSection"><h4>地點</h4><div class="bodyText">${esc(i.address)}</div><a class="linkPill" href="https://www.google.com/maps/search/?api=1&query=${q}" target="_blank">Google Maps</a>${i.country==='韓國'?`<a class="linkPill" href="https://map.naver.com/p/search/${nq}" target="_blank">NAVER Map</a>`:''}</div>`:''}<div class="detailSection"><h4>可搜尋文字</h4><div class="tagRow">${(i.terms||[]).map(t=>`<button class="termBtn" data-copy="${esc(t)}">${esc(t)} ⧉</button>`).join('')}</div></div><div class="detailSection"><h4>標籤</h4><div class="tagRow">${(i.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div></div><div class="detailSection noteBox"><h4>我的備註</h4><textarea id="noteInput" placeholder="自己的想法、是否值得去、下次要買什麼…">${esc(i.note||'')}</textarea><div class="formActions"><button class="ghost" id="saveNote">儲存備註</button></div></div><div class="detailSection"><h4>原始文章內容</h4><div class="bodyText">${esc(i.body)}</div></div></div>`);$('#closeModal').onclick=closeModal;$('#editDetail').onclick=()=>openEditor(i.id);$('#deleteDetail').onclick=()=>{if(confirm('確定刪除這篇收藏？')){data.items=data.items.filter(x=>x.id!==i.id);selected.delete(i.id);save();detailIds=detailIds.filter(x=>x!==i.id);if(!detailIds.length){closeModal();render()}else{detailIndex=Math.min(detailIndex,detailIds.length-1);renderDetail();render()}}};$('#prevDetail').onclick=()=>{detailIndex=(detailIndex-1+detailIds.length)%detailIds.length;renderDetail()};$('#nextDetail').onclick=()=>{detailIndex=(detailIndex+1)%detailIds.length;renderDetail()};$('#saveNote').onclick=()=>{i.note=$('#noteInput').value;save();$('#saveNote').textContent='已儲存 ✓'};$$('[data-copy]').forEach(b=>b.onclick=async()=>{try{await navigator.clipboard.writeText(b.dataset.copy);b.textContent='已複製 ✓'}catch{prompt('複製這段文字',b.dataset.copy)}});let sx=null;$('#sheet').addEventListener('touchstart',e=>sx=e.touches[0].clientX,{passive:true});$('#sheet').addEventListener('touchend',e=>{if(sx===null)return;const d=e.changedTouches[0].clientX-sx;if(Math.abs(d)>70){detailIndex=d<0?(detailIndex+1)%detailIds.length:(detailIndex-1+detailIds.length)%detailIds.length;renderDetail()}sx=null},{passive:true})}
-function editorHTML(item){return`<div class="sheetHead"><strong>${item?'編輯收藏':'收藏文章'}</strong><button class="iconBtn" id="closeModal">×</button></div><form class="form" id="editorForm"><div class="formGrid"><label class="full">文章網址<input id="fUrl" type="url" value="${esc(item?.url||'')}" placeholder="https://…"></label><label>平台<select id="fPlatform">${['Instagram','Threads','Facebook','小紅書','YouTube','TikTok','X','網頁','其他'].map(x=>`<option ${item?.platform===x?'selected':''}>${x}</option>`).join('')}</select></label><label>標題<input id="fTitle" required value="${esc(item?.title||'')}"></label><label>分類<select id="fCategory">${['自動判斷','購物','美食','旅遊','設計','產品','娛樂','其他'].map(x=>`<option value="${x==='自動判斷'?'':x}" ${item?.category===x?'selected':''}>${x}</option>`).join('')}</select></label><label>國家<select id="fCountry">${['自動判斷','韓國','日本','台灣','泰國','越南','其他'].map(x=>`<option value="${x==='自動判斷'?'':x}" ${item?.country===x?'selected':''}>${x}</option>`).join('')}</select></label><label>城市 / 區域<input id="fCity" value="${esc(item?.city||'')}"></label><label>購物類型<input id="fShoppingType" value="${esc(item?.shoppingType||'')}"></label><label class="full">文章內容<textarea id="fBody" rows="6">${esc(item?.body||'')}</textarea></label><label class="full">商品（每行一個）<textarea id="fProducts" rows="4" placeholder="商品 1\n商品 2\n商品 3">${esc((item?.products||[]).join('\n'))}</textarea></label><label class="full">圖片網址（每行一個，會依順序對應上方商品）<textarea id="fImages" rows="4" placeholder="商品 1 的圖片\n商品 2 的圖片\n商品 3 的圖片">${esc((item?.images||[]).join('\n'))}</textarea></label><label class="full">標籤（逗號分隔）<input id="fTags" value="${esc((item?.tags||[]).join(', '))}"></label><label class="full">備註<textarea id="fNote" rows="3">${esc(item?.note||'')}</textarea></label></div><div class="formActions"><button type="button" class="ghost" id="cancelEdit">取消</button><button class="primary">${item?'儲存修改':'加入收藏'}</button></div></form>`}
+function renderDetail(){
+ const i=data.items.find(x=>x.id===detailIds[detailIndex]);
+ if(!i)return closeModal();
+ const q=encodeURIComponent(i.address||i.title),nq=encodeURIComponent(`${i.title} ${i.address||''}`);
+ openModal(`<div class="sheetHead">
+   <strong>${detailIndex+1} / ${detailIds.length}</strong>
+   <div class="headActions"><button class="iconBtn uiBtn" id="editDetail">✎</button><button class="iconBtn uiBtn" id="deleteDetail">🗑</button><button class="iconBtn uiBtn" id="closeModal">×</button></div>
+ </div>
+ ${i.images?.length?`<div class="detailGallery">${i.images.map(src=>`<img src="${esc(src)}" alt="">`).join('')}</div>`:''}
+ <button class="detailSideNav left uiBtn" id="prevDetail">‹</button><button class="detailSideNav right uiBtn" id="nextDetail">›</button>
+ <div class="detailBody">
+   <h2 class="detailTitle">${esc(i.title)}</h2>
+   <div class="detailMeta">${esc(i.platform)} · ${esc(i.category)} · ${esc(i.country)}${i.city?` · ${esc(i.city)}`:''}</div>
+   ${i.url?`<div class="detailSection"><a class="linkPill uiBtn" href="${esc(i.url)}" target="_blank" rel="noopener">↗ 原文章</a></div>`:''}
+   <div class="detailSection"><h4>原始文章內容</h4><div class="bodyText originalBody">${esc(i.body)}</div></div>
+   <div class="detailSection"><h4>整理摘要</h4><div class="bodyText">${esc(i.summary)}</div></div>
+   ${i.products?.length?`<div class="detailSection">
+      <div class="productSectionHead"><h4>商品與圖片</h4><span>可逐項勾選加入購物清單</span></div>
+      <div class="productGrid">${i.products.map((p,idx)=>{const im=productImage(i,p,idx);return`<label class="productCard selectableProduct">${im?`<img src="${esc(im)}" alt="">`:'<div class="productImgPh">沒有圖片</div>'}<div class="productCardText"><input type="checkbox" class="detailProductCheck" data-product="${esc(p)}" checked><span class="productName">${esc(p)}</span></div></label>`}).join('')}</div>
+      <button class="primary uiBtn productAddBtn" id="detailAddShop">加入所選商品到購物清單</button>
+   </div>`:''}
+   ${i.address?`<div class="detailSection"><h4>地點</h4><div class="bodyText">${esc(i.address)}</div><a class="linkPill uiBtn" href="https://www.google.com/maps/search/?api=1&query=${q}" target="_blank">Google Maps</a>${i.country==='韓國'?`<a class="linkPill uiBtn" href="https://map.naver.com/p/search/${nq}" target="_blank">NAVER Map</a>`:''}</div>`:''}
+   <div class="detailSection"><h4>可搜尋文字</h4><div class="tagRow">${(i.terms||[]).map(t=>`<button class="termBtn uiBtn" data-copy="${esc(t)}">${esc(t)} ⧉</button>`).join('')}</div></div>
+   <div class="detailSection"><h4>標籤</h4><div class="tagRow">${(i.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div></div>
+   <div class="detailSection noteBox"><h4>我的備註</h4><textarea id="noteInput" placeholder="自己的想法、是否值得去、下次要買什麼…">${esc(i.note||'')}</textarea><div class="formActions"><button class="ghost uiBtn" id="saveNote">儲存備註</button></div></div>
+ </div>`);
+ $('#closeModal').onclick=closeModal;
+ $('#editDetail').onclick=()=>openEditor(i.id);
+ $('#deleteDetail').onclick=()=>{if(confirm('確定刪除這篇收藏？')){data.items=data.items.filter(x=>x.id!==i.id);selected.delete(i.id);save();detailIds=detailIds.filter(x=>x!==i.id);if(!detailIds.length){closeModal();render()}else{detailIndex=Math.min(detailIndex,detailIds.length-1);renderDetail();render()}}};
+ $('#prevDetail').onclick=()=>{detailIndex=(detailIndex-1+detailIds.length)%detailIds.length;renderDetail()};
+ $('#nextDetail').onclick=()=>{detailIndex=(detailIndex+1)%detailIds.length;renderDetail()};
+ $('#saveNote').onclick=()=>{i.note=$('#noteInput').value;save();$('#saveNote').textContent='已儲存 ✓'};
+ if($('#detailAddShop'))$('#detailAddShop').onclick=()=>{
+   const chosen=$$('.detailProductCheck').filter(x=>x.checked).map(x=>x.dataset.product);
+   if(!chosen.length){alert('請至少勾選一個商品');return}
+   openShoppingListModal([i.id],chosen)
+ };
+ $$('[data-copy]').forEach(b=>b.onclick=async()=>{try{await navigator.clipboard.writeText(b.dataset.copy);b.textContent='已複製 ✓'}catch{prompt('複製這段文字',b.dataset.copy)}});
+ let sx=null;
+ $('#sheet').ontouchstart=e=>{sx=e.touches?.[0]?.clientX??null};
+ $('#sheet').ontouchend=e=>{if(sx==null)return;const dx=(e.changedTouches?.[0]?.clientX??sx)-sx;if(Math.abs(dx)>80){detailIndex=(detailIndex+(dx<0?1:-1)+detailIds.length)%detailIds.length;renderDetail()}sx=null}
+}
 function openEditor(id=null){const item=id?data.items.find(x=>x.id===id):null;openModal(editorHTML(item));$('#closeModal').onclick=$('#cancelEdit').onclick=closeModal;$('#editorForm').onsubmit=e=>{e.preventDefault();const title=$('#fTitle').value.trim(),body=$('#fBody').value.trim(),city=$('#fCity').value.trim(),country=$('#fCountry').value||inferCountry(`${title} ${body} ${city}`),category=$('#fCategory').value||inferCategory(`${title} ${body}`),products=$('#fProducts').value.split('\n').map(x=>x.trim()).filter(Boolean),images=$('#fImages').value.split('\n').map(x=>x.trim()).filter(Boolean),tags=$('#fTags').value.split(',').map(x=>x.trim()).filter(Boolean),productImages={};products.forEach((p,idx)=>{if(images[idx])productImages[p]=images[idx]});const obj=normalizeItem({...(item||{}),id:item?.id||uid(),title,body,city,country,category,products,images,productImages,tags,platform:$('#fPlatform').value,url:$('#fUrl').value.trim(),shoppingType:$('#fShoppingType').value.trim(),note:$('#fNote').value,address:extractAddress(body),summary:body.replace(/\s+/g,' ').slice(0,150),terms:uniq([title,...products,...tags]).slice(0,15),createdAt:item?.createdAt||Date.now()});if(item)Object.assign(item,obj);else data.items.unshift(obj);save();closeModal();render()}}
-function openShoppingListModal(ids){
+function openShoppingListModal(ids,presetProducts=null){
  const arts=ids.map(id=>data.items.find(x=>x.id===id)).filter(Boolean),m={};
- arts.forEach(a=>{const ps=(a.products||[]).length?a.products:[a.title];ps.forEach((p,idx)=>{const k=norm(p);if(!m[k])m[k]={name:p,country:a.country,sourceCount:0,qty:1,done:false,image:productImage(a,p,idx)};m[k].sourceCount++})});
+ arts.forEach(a=>{
+   const ps=(a.products||[]).length?a.products:[a.title];
+   ps.forEach((p,idx)=>{
+     if(presetProducts&&!presetProducts.includes(p))return;
+     const k=norm(p);
+     if(!m[k])m[k]={key:k,name:p,country:a.country,sourceCount:0,qty:1,done:false,image:productImage(a,p,idx)};
+     m[k].sourceCount++
+   })
+ });
  const arr=Object.values(m),hasExisting=data.shoppingLists.length>0;
- openModal(`<div class="sheetHead"><strong>加入購物清單</strong><button class="iconBtn" id="closeModal">×</button></div>
+ openModal(`<div class="sheetHead"><strong>加入購物清單</strong><button class="iconBtn uiBtn" id="closeModal">×</button></div>
  <form class="form" id="shopForm">
    <div class="listChoice">
-     <button type="button" class="choiceBtn active" data-shopmode="new">新建清單</button>
-     <button type="button" class="choiceBtn" data-shopmode="existing" ${hasExisting?'':'disabled'}>加入既有</button>
+     <button type="button" class="choiceBtn uiBtn active" data-shopmode="new">新建清單</button>
+     <button type="button" class="choiceBtn uiBtn" data-shopmode="existing" ${hasExisting?'':'disabled'}>加入既有</button>
    </div>
    <div id="newShopFields"><label>清單名稱<input id="shopName" value="${esc((arts[0]?.country||'')+' 購物清單')}"></label></div>
    <div id="existingShopFields" class="hidden"><label>選擇清單<select id="existingShop">${data.shoppingLists.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select></label></div>
-   <div class="detailSection"><h4>品項預覽</h4><div class="shopItems">${arr.map(x=>`<div class="shopItem">${x.image?`<img class="shopThumb" src="${esc(x.image)}">`:'<span class="thumbAdd">＋</span>'}<div><div class="shopItemName">${esc(x.name)}</div><div class="shopItemSub">${x.sourceCount>1?`${x.sourceCount} 篇共同提到`:esc(x.country)}</div></div><span></span></div>`).join('')}</div></div>
-   <div class="formActions"><button type="button" class="ghost" id="cancelShop">取消</button><button class="primary">確認</button></div>
+   <div class="detailSection"><h4>選擇要加入的商品</h4><div class="shopSelectItems">${arr.map((x,idx)=>`<label class="shopSelectItem">${x.image?`<img src="${esc(x.image)}" alt="">`:'<span class="shopSelectPh">無圖</span>'}<input type="checkbox" class="shopPick" data-idx="${idx}" checked><span><strong>${esc(x.name)}</strong><small>${x.sourceCount>1?`${x.sourceCount} 篇共同提到`:esc(x.country)}</small></span></label>`).join('')}</div></div>
+   <div class="formActions"><button type="button" class="ghost uiBtn" id="cancelShop">取消</button><button class="primary uiBtn">確認加入</button></div>
  </form>`);
  let mode='new';
  $('#closeModal').onclick=$('#cancelShop').onclick=closeModal;
  $$('[data-shopmode]').forEach(b=>b.onclick=()=>{if(b.disabled)return;mode=b.dataset.shopmode;$$('[data-shopmode]').forEach(x=>x.classList.toggle('active',x===b));$('#newShopFields').classList.toggle('hidden',mode!=='new');$('#existingShopFields').classList.toggle('hidden',mode!=='existing')});
  $('#shopForm').onsubmit=e=>{
    e.preventDefault();
+   const chosen=$$('.shopPick').filter(x=>x.checked).map(x=>arr[+x.dataset.idx]);
+   if(!chosen.length){alert('請至少勾選一個商品');return}
    if(mode==='existing'){
-     const target=data.shoppingLists.find(x=>x.id===$('#existingShop').value); if(!target)return;
+     const target=data.shoppingLists.find(x=>x.id===$('#existingShop').value);if(!target)return;
      const exist=new Map(target.items.map(x=>[norm(x.name),x]));
-     arr.forEach(x=>{const k=norm(x.name);if(exist.has(k)){const old=exist.get(k);old.sourceCount=Math.max(old.sourceCount||1,x.sourceCount||1);if(!old.image&&x.image)old.image=x.image}else target.items.push(x)});
+     chosen.forEach(x=>{const k=norm(x.name);if(exist.has(k)){const old=exist.get(k);old.sourceCount=Math.max(old.sourceCount||1,x.sourceCount||1);if(!old.image&&x.image)old.image=x.image}else target.items.push({...x})});
    }else{
-     const name=$('#shopName').value.trim(); if(!name)return;
-     data.shoppingLists.unshift({id:uid(),name,createdAt:Date.now(),items:arr});
+     const name=$('#shopName').value.trim();if(!name)return;
+     data.shoppingLists.unshift({id:uid(),name,createdAt:Date.now(),items:chosen.map(x=>({...x}))});
    }
    selected.clear();save();closeModal();view='lists';listMode='shopping';render()
- }}
+ }
+}
 function openTravelPlanModal(ids){const arts=ids.map(id=>data.items.find(x=>x.id===id)).filter(Boolean);openModal(`<div class="sheetHead"><strong>建立旅遊行程</strong><button class="iconBtn" id="closeModal">×</button></div><form class="form" id="tripForm"><label>行程名稱<input id="tripName" required value="${esc((arts[0]?.country||'')+' 旅遊行程')}"></label><div class="detailSection"><h4>已選收藏</h4>${arts.map(i=>`<div class="tripItem">${i.images?.[0]?`<img class="tripThumb" src="${esc(i.images[0])}">`:'<span class="tripThumb"></span>'}<div><div class="tripTitle">${esc(i.title)}</div><div class="tripMeta">${esc(i.country)}${i.city?` · ${esc(i.city)}`:''}</div></div></div>`).join('')}</div><div class="formActions"><button type="button" class="ghost" id="cancelTrip">取消</button><button class="primary">建立</button></div></form>`);$('#closeModal').onclick=$('#cancelTrip').onclick=closeModal;$('#tripForm').onsubmit=e=>{e.preventDefault();data.travelPlans.unshift({id:uid(),name:$('#tripName').value.trim(),createdAt:Date.now(),items:arts.map(i=>i.id)});selected.clear();save();closeModal();view='lists';listMode='travel';render()}}
 function editShoppingImage(listId,idx){const l=data.shoppingLists.find(x=>x.id===listId);if(!l)return;const it=l.items[idx];openModal(`<div class="sheetHead"><strong>商品圖片</strong><button class="iconBtn" id="closeModal">×</button></div><form class="form" id="imgForm"><label>圖片網址<input id="imgUrl" value="${esc(it.image||'')}" placeholder="https://…"></label><label style="margin-top:10px">或選擇照片<input id="imgFile" type="file" accept="image/*"></label><div class="formActions"><button type="button" class="ghost" id="cancelImg">取消</button><button class="primary">儲存</button></div></form>`);$('#closeModal').onclick=$('#cancelImg').onclick=closeModal;$('#imgForm').onsubmit=e=>{e.preventDefault();const f=$('#imgFile').files?.[0];if(f){const r=new FileReader();r.onload=()=>{it.image=r.result;save();closeModal();render()};r.readAsDataURL(f)}else{it.image=$('#imgUrl').value.trim();save();closeModal();render()}}}
 function exportData(){const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`social-saver-v${VERSION}-backup.json`;a.click();URL.revokeObjectURL(a.href)}
