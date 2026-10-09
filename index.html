@@ -3,509 +3,82 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#111111">
+<meta name="theme-color" content="#f5f5f2">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="收藏庫">
-<meta name="format-detection" content="telephone=no">
-<title>收藏庫 Social Saver v1.2.0</title>
+<title>收藏庫 Social Saver v1.3.0</title>
 <style>
-:root{
-  --bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#73736e;--line:#e5e5df;--soft:#efefe9;
-  --radius:22px;--shadow:0 10px 32px rgba(0,0,0,.055);
-}
-*{box-sizing:border-box}
-html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif}
-button,input,textarea,select{font:inherit} button{cursor:pointer}
-.top{
-  position:sticky;top:0;z-index:30;background:rgba(245,245,242,.9);backdrop-filter:blur(16px);
-  border-bottom:1px solid rgba(229,229,223,.85)
-}
-.topInner{max-width:1240px;margin:auto;padding:15px 22px;display:flex;justify-content:space-between;align-items:center;gap:14px}
-.brandRow{display:flex;align-items:center;gap:10px}.brand{font-size:24px;font-weight:900}.version{font-size:11px;font-weight:800;border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 8px;color:#666}
-.eyebrow{font-size:10px;letter-spacing:.17em;color:#81817a;font-weight:900}
-.primary,.secondary,.ghost,.chip,.tab,.iconBtn,.miniBtn{
-  border:0;border-radius:13px;font-weight:800
-}
-.primary{background:#111;color:#fff;padding:11px 15px}.secondary{background:#fff;border:1px solid var(--line);padding:10px 14px;color:#111}
-.ghost{background:var(--soft);padding:10px 13px;color:#333}.miniBtn{background:#f3f3ef;padding:7px 9px;font-size:12px}
-main{max-width:1240px;margin:auto;padding:24px 22px 80px}
-.searchRow{display:grid;grid-template-columns:1fr auto;gap:10px}.search{
-  background:#fff;border:1px solid var(--line);height:56px;border-radius:17px;display:flex;align-items:center;padding:0 16px;gap:10px;box-shadow:var(--shadow)
-}
-.search input{border:0;outline:0;width:100%;font-size:16px;background:transparent}.searchMark{font-size:23px;color:#888}
-.navTabs{display:flex;gap:8px;overflow:auto;margin:18px 0 12px}.tab{background:#e9e9e3;padding:10px 14px;white-space:nowrap;color:#555}.tab.active{background:#111;color:#fff}
-.filterPanel{display:grid;gap:10px;margin-bottom:14px}.filterGroup{display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap}.filterLabel{font-size:11px;font-weight:900;color:#777;min-width:42px;padding-top:8px}.exampleBadge{display:inline-flex;background:#fff4c2;color:#6b5713;border:1px solid #ead67a;border-radius:999px;padding:5px 8px;font-size:10px;font-weight:900;margin-left:5px}.chip{background:#fff;border:1px solid var(--line);padding:8px 11px;color:#555}.chip.active{background:#111;color:#fff;border-color:#111}
-.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:18px 0}
-.stat{background:#fff;border:1px solid var(--line);border-radius:17px;padding:15px}.statN{font-size:25px;font-weight:900}.statL{font-size:12px;color:#777;margin-top:3px}
-.actionBar{display:flex;justify-content:space-between;gap:10px;align-items:center;margin:12px 0}.actionLeft,.actionRight{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}
-.card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);position:relative}
-.cardImg{height:185px;background:linear-gradient(135deg,#e8e8e2,#d6d6cf);position:relative;overflow:hidden}.cardImg img{width:100%;height:100%;object-fit:cover}
-.platform{position:absolute;top:11px;left:11px;background:rgba(0,0,0,.75);color:#fff;border-radius:999px;padding:6px 9px;font-size:11px;font-weight:800}
-.countryBadge{position:absolute;top:11px;right:11px;background:rgba(255,255,255,.9);border-radius:999px;padding:6px 9px;font-size:11px;font-weight:900}
-.selectBox{position:absolute;bottom:12px;left:12px;background:#fff;border-radius:11px;padding:7px 9px;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;box-shadow:0 5px 18px rgba(0,0,0,.12)}
-.cardBody{padding:16px}.cardTitle{font-size:18px;font-weight:900;line-height:1.35;margin:0 0 7px}.meta{font-size:12px;color:#7c7c75;display:flex;gap:7px;flex-wrap:wrap}
-.summary{font-size:13px;color:#444;line-height:1.65;margin:11px 0}.tagRow,.termRow,.productRow{display:flex;gap:6px;flex-wrap:wrap}
-.tag{font-size:11px;background:#f1f1ed;padding:5px 8px;border-radius:999px}.term{font-size:11px;border:1px solid var(--line);background:#fff;padding:5px 8px;border-radius:999px}
-.productPill{font-size:11px;background:#111;color:#fff;padding:5px 8px;border-radius:999px}
-.cardFoot{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:13px}.linkBtn{border:0;background:none;padding:0;font-weight:900;color:#111}
-.sectionTitle{display:flex;justify-content:space-between;align-items:end;margin:24px 0 12px}.sectionTitle h2{font-size:20px;margin:0}.sectionTitle p{font-size:12px;color:#777;margin:3px 0 0}
-.clusterGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:15px}.cluster{
-  background:#fff;border:1px solid var(--line);border-radius:22px;padding:18px;box-shadow:var(--shadow)
-}.clusterHead{display:flex;justify-content:space-between;gap:12px;align-items:start}.clusterTitle{font-size:20px;font-weight:900}.clusterCount{background:#111;color:#fff;border-radius:999px;padding:6px 9px;font-size:11px;font-weight:900}
-.commonBox{margin-top:13px;padding:12px;background:#f3f3ef;border-radius:14px}.commonLabel{font-size:11px;color:#777;font-weight:800;margin-bottom:7px}
-.clusterArticles{display:grid;gap:8px;margin-top:12px}.clusterArticle{border:1px solid var(--line);border-radius:13px;padding:11px}.clusterArticle strong{font-size:13px}.clusterArticle div{font-size:11px;color:#777;margin-top:3px}
-.listGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}.shopList{background:#fff;border:1px solid var(--line);border-radius:20px;padding:16px;box-shadow:var(--shadow)}
-.shopHead{display:flex;justify-content:space-between;align-items:start;gap:10px}.shopName{font-size:19px;font-weight:900}.shopMeta{font-size:12px;color:#777;margin-top:3px}
-.shopItems{display:grid;gap:8px;margin-top:13px}.shopItem{border:1px solid var(--line);border-radius:13px;padding:11px;display:grid;grid-template-columns:auto 1fr auto;gap:9px;align-items:center}
-.shopItem.done{opacity:.52}.shopItem.done .shopItemName{text-decoration:line-through}.shopItemName{font-size:13px;font-weight:850}.shopItemSub{font-size:11px;color:#777;margin-top:2px}
-.qty{display:flex;align-items:center;gap:5px}.qty button{border:0;background:#eee;border-radius:8px;width:25px;height:25px}.qty span{font-size:12px;min-width:18px;text-align:center}
-.empty{background:#fff;border:1px dashed #cfcfc8;border-radius:22px;padding:60px 20px;text-align:center;color:#666}
-dialog{border:0;padding:0;border-radius:24px;width:min(780px,calc(100% - 22px));max-height:92vh;box-shadow:0 30px 80px rgba(0,0,0,.22)}dialog::backdrop{background:rgba(0,0,0,.42);backdrop-filter:blur(3px)}
-.dialog{padding:22px;max-height:92vh;overflow:auto}.dialogHead{display:flex;justify-content:space-between;align-items:start;margin-bottom:16px}.dialogHead h2{margin:3px 0 0;font-size:25px}.iconBtn{font-size:25px;background:none;padding:1px 8px}
-.formGrid{display:grid;grid-template-columns:1fr 1fr;gap:13px}label{font-size:12px;color:#555;font-weight:800;display:grid;gap:6px}label.full{grid-column:1/-1}
-input,textarea,select{width:100%;border:1px solid var(--line);border-radius:11px;background:#fff;padding:11px;outline:none}textarea{resize:vertical}
-.preview{background:#f3f3ef;border-radius:14px;padding:13px;margin-top:14px}.previewTitle{font-size:12px;font-weight:900;margin-bottom:5px}.previewBody{font-size:12px;color:#555;line-height:1.65}
-.dialogActions{display:flex;justify-content:flex-end;gap:8px;margin-top:15px}
-.detailCover{height:300px;background:#eee;position:relative}.detailCover img{width:100%;height:100%;object-fit:cover}.detailClose{position:absolute;right:13px;top:13px;border:0;background:rgba(0,0,0,.72);color:#fff;border-radius:999px;width:38px;height:38px;font-size:22px}
-.detailMain{padding:22px}.detailTitle{font-size:26px;font-weight:900;margin:0 0 7px}.detailSection{margin-top:21px}.detailSection h4{font-size:12px;letter-spacing:.05em;color:#777;margin:0 0 9px}.bodyText{white-space:pre-wrap;font-size:14px;line-height:1.8;color:#333}
-.mapBtns{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}.mapBtn{text-decoration:none;background:#f0f0ec;color:#111;border-radius:10px;padding:8px 10px;font-size:12px;font-weight:800}
-.tableWrap{background:#fff;border:1px solid var(--line);border-radius:20px;overflow:auto}table{border-collapse:collapse;width:100%;min-width:980px}th,td{padding:12px;border-bottom:1px solid var(--line);text-align:left;font-size:12px}th{color:#777;background:#fafaf7;font-size:11px}
- .notice{font-size:12px;background:#fff8dd;border:1px solid #eedb93;padding:10px 12px;border-radius:12px;color:#6d5b14}.compat{margin:0 0 14px;background:#eef6ff;border:1px solid #cfe2f7;border-radius:13px;padding:10px 12px;font-size:12px;color:#31536f}.noscript{margin:12px 0;background:#fff0f0;border:1px solid #efbcbc;border-radius:13px;padding:12px;color:#7a2727;font-size:13px}
-@media(max-width:950px){.grid{grid-template-columns:repeat(2,1fr)}.stats{grid-template-columns:repeat(3,1fr)}.clusterGrid,.listGrid{grid-template-columns:1fr}}
-@media(max-width:620px){
- .topInner{padding:13px 14px}.brand{font-size:21px}main{padding:18px 14px 60px}.searchRow{grid-template-columns:1fr}.grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}
- .formGrid{grid-template-columns:1fr}label.full{grid-column:auto}.cardImg{height:210px}.actionBar{align-items:flex-start;flex-direction:column}.detailCover{height:230px}.detailMain{padding:17px}.detailTitle{font-size:22px}
-}
+:root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#777770;--line:#e5e5df;--soft:#efefe9;--shadow:0 9px 26px rgba(0,0,0,.06);--r:18px}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif}body{min-height:100vh}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
+.top{position:sticky;top:0;z-index:30;background:rgba(245,245,242,.9);backdrop-filter:blur(16px);border-bottom:1px solid rgba(229,229,223,.85)}.topIn{max-width:1040px;margin:auto;padding:12px 14px;display:flex;align-items:center;justify-content:space-between}.brand{font-size:22px;font-weight:900}.sub{font-size:10px;color:var(--muted);font-weight:800;letter-spacing:.08em}.menuBtn{width:40px;height:40px;border:0;border-radius:50%;background:#fff;border:1px solid var(--line);font-size:21px;font-weight:900}
+main{max-width:1040px;margin:auto;padding:14px 12px 110px}.sectionHead{display:flex;align-items:end;justify-content:space-between;margin:4px 2px 12px}.sectionHead h1{font-size:18px;margin:0}.sectionHead span{font-size:11px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.card{background:#fff;border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:var(--shadow);position:relative;min-width:0}.cardTap{display:block;width:100%;border:0;background:none;padding:0;text-align:left;color:inherit}.cardImg{aspect-ratio:1.08/1;background:#e8e8e2;position:relative;overflow:hidden}.cardImg img{width:100%;height:100%;object-fit:cover}.badge{position:absolute;left:8px;top:8px;background:rgba(0,0,0,.72);color:#fff;border-radius:999px;padding:4px 7px;font-size:9px;font-weight:850}.country{position:absolute;right:8px;top:8px;background:rgba(255,255,255,.9);border-radius:999px;padding:4px 7px;font-size:9px;font-weight:850}.shopQuick{position:absolute;right:8px;bottom:8px;width:30px;height:30px;border:0;border-radius:50%;background:rgba(255,255,255,.95);box-shadow:0 4px 12px rgba(0,0,0,.12);font-size:15px;display:grid;place-items:center}.shopQuick.on{background:#111;color:#fff}.cardBody{padding:10px}.title{font-size:14px;font-weight:900;line-height:1.35;margin:0 0 5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.meta{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.summary{font-size:11px;color:#4d4d48;line-height:1.5;margin-top:7px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.tagRow{display:flex;gap:4px;flex-wrap:wrap;margin-top:7px}.tag{font-size:9px;background:#f1f1ed;border-radius:999px;padding:4px 6px}.example{background:#fff1b8;color:#705e12;border:1px solid #eadb8e}
+.fabStack{position:fixed;right:17px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:40;display:grid;gap:10px}.fab{width:52px;height:52px;border:0;border-radius:50%;background:#111;color:#fff;box-shadow:0 10px 25px rgba(0,0,0,.2);font-size:22px}.fab.secondary{background:#fff;color:#111;border:1px solid var(--line)}
+.searchBar{position:sticky;top:66px;z-index:22;background:var(--bg);padding:0 0 10px}.searchWrap{height:46px;background:#fff;border:1px solid var(--line);border-radius:14px;display:flex;align-items:center;gap:8px;padding:0 12px;box-shadow:var(--shadow)}.searchWrap input{border:0;outline:0;width:100%;font-size:14px}.clearSearch{border:0;background:none;font-size:18px}
+.drawerBackdrop{position:fixed;inset:0;background:rgba(0,0,0,.28);z-index:60}.drawer{position:fixed;z-index:61;top:0;right:0;height:100%;width:min(86vw,360px);background:#fff;box-shadow:-20px 0 50px rgba(0,0,0,.15);padding:18px 16px calc(24px + env(safe-area-inset-bottom));overflow:auto}.drawerHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}.drawerHead strong{font-size:20px}.xBtn{border:0;background:#f1f1ed;border-radius:50%;width:34px;height:34px;font-size:19px}.navList{display:grid;gap:7px}.navBtn{border:0;background:#f4f4f0;border-radius:13px;padding:12px;text-align:left;font-weight:850}.navBtn.active{background:#111;color:#fff}details{border-top:1px solid var(--line);margin-top:15px;padding-top:12px}summary{font-size:13px;font-weight:900;cursor:pointer}.filterLevel{margin-top:10px}.filterLabel{font-size:10px;color:var(--muted);font-weight:850;margin-bottom:6px}.chips{display:flex;gap:5px;flex-wrap:wrap}.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 8px;font-size:10px;font-weight:750}.chip.active{background:#111;color:#fff;border-color:#111}.statsMini{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:10px}.stat{background:#f5f5f1;border-radius:12px;padding:10px}.stat b{font-size:18px}.stat div{font-size:9px;color:var(--muted);margin-top:2px}.toolRow{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.smallBtn{border:0;background:#efefe9;border-radius:10px;padding:8px 10px;font-size:11px;font-weight:850}
+.empty{background:#fff;border:1px dashed #cfcfc8;border-radius:18px;padding:55px 18px;text-align:center;color:#666;font-size:13px}.clusterList{display:grid;gap:12px}.cluster{background:#fff;border:1px solid var(--line);border-radius:18px;padding:12px;box-shadow:var(--shadow)}.clusterTop{display:flex;justify-content:space-between;gap:8px}.clusterTitle{font-size:15px;font-weight:900}.count{font-size:9px;background:#111;color:#fff;border-radius:999px;padding:4px 7px;height:max-content}.common{margin:9px 0;padding:9px;background:#f4f4f0;border-radius:11px}.commonLabel{font-size:9px;color:var(--muted);font-weight:850;margin-bottom:5px}.miniCards{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.miniCard{border:0;background:#fafaf8;border-radius:11px;padding:0;overflow:hidden;text-align:left}.miniCard img,.miniPh{width:100%;aspect-ratio:1.25/1;object-fit:cover;background:#e8e8e2;display:block}.miniCard div{font-size:9px;font-weight:800;line-height:1.3;padding:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.listGrid{display:grid;gap:12px}.shopList{background:#fff;border:1px solid var(--line);border-radius:18px;padding:12px;box-shadow:var(--shadow)}.shopHead{display:flex;justify-content:space-between;align-items:flex-start}.shopName{font-size:16px;font-weight:900}.shopMeta{font-size:10px;color:var(--muted);margin-top:3px}.shopItems{display:grid;gap:7px;margin-top:10px}.shopItem{display:grid;grid-template-columns:42px 1fr auto;gap:8px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:7px}.shopThumb{width:42px;height:42px;border-radius:9px;object-fit:cover;background:#eee}.thumbAdd{width:42px;height:42px;border:1px dashed #bbb;border-radius:9px;background:#f7f7f4;font-size:18px}.shopItem.done{opacity:.5}.shopItem.done .shopItemName{text-decoration:line-through}.shopItemName{font-size:11px;font-weight:850}.shopItemSub{font-size:9px;color:var(--muted);margin-top:2px}.qty{display:flex;align-items:center;gap:4px}.qty button{border:0;background:#eee;border-radius:7px;width:24px;height:24px}.qty span{font-size:10px;min-width:14px;text-align:center}
+.modalBackdrop{position:fixed;inset:0;background:rgba(0,0,0,.44);z-index:80;display:grid;place-items:end center}.sheet{width:min(100%,780px);max-height:94vh;background:#fff;border-radius:24px 24px 0 0;overflow:auto;box-shadow:0 -20px 60px rgba(0,0,0,.22);padding-bottom:env(safe-area-inset-bottom)}.sheetHead{position:sticky;top:0;z-index:4;background:rgba(255,255,255,.92);backdrop-filter:blur(12px);display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line)}.sheetHead strong{font-size:15px}.headActions{display:flex;gap:7px}.iconBtn{width:34px;height:34px;border:0;border-radius:50%;background:#f1f1ed;font-size:17px}.form{padding:14px}.formGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}label{display:grid;gap:5px;font-size:10px;font-weight:850;color:#555}label.full{grid-column:1/-1}input,textarea,select{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;outline:none;background:#fff}textarea{resize:vertical}.formActions{display:flex;justify-content:flex-end;gap:7px;margin-top:12px}.primary{border:0;background:#111;color:#fff;border-radius:11px;padding:10px 13px;font-weight:850}.ghost{border:0;background:#efefe9;border-radius:11px;padding:10px 13px;font-weight:850}
+.detailHero{aspect-ratio:1.55/1;background:#e9e9e3;position:relative;overflow:hidden}.detailHero img{width:100%;height:100%;object-fit:cover}.detailBody{padding:14px 15px 22px}.detailTitle{font-size:21px;font-weight:900;line-height:1.35;margin:0}.detailMeta{font-size:10px;color:var(--muted);margin-top:5px}.detailSection{margin-top:17px}.detailSection h4{font-size:10px;letter-spacing:.06em;color:#777;margin:0 0 7px}.bodyText{font-size:12px;line-height:1.75;white-space:pre-wrap;color:#343430}.linkPill{display:inline-flex;align-items:center;text-decoration:none;color:#111;background:#efefe9;border-radius:10px;padding:8px 10px;font-size:11px;font-weight:850;margin-right:5px;margin-top:5px}.termBtn{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 8px;font-size:10px}.detailNav{position:absolute;inset:0;pointer-events:none;display:flex;justify-content:space-between;align-items:center;padding:0 8px}.navArrow{pointer-events:auto;width:36px;height:36px;border:0;border-radius:50%;background:rgba(255,255,255,.9);font-size:20px;box-shadow:0 4px 12px rgba(0,0,0,.12)}.counter{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.62);color:#fff;border-radius:999px;padding:4px 7px;font-size:9px}.noteBox textarea{min-height:70px}.danger{background:#fff0f0;color:#a11616}
+@media(min-width:760px){main{padding-left:18px;padding-right:18px}.grid{gap:14px}.cardImg{aspect-ratio:1.35/1}.title{font-size:16px}.summary{font-size:12px}.miniCards{grid-template-columns:repeat(4,1fr)}}
+@media(max-width:430px){.formGrid{grid-template-columns:1fr}label.full{grid-column:auto}.brand{font-size:20px}.grid{gap:8px}.cardBody{padding:8px}.title{font-size:13px}.summary{font-size:10px}}
 </style>
 </head>
 <body>
-<div class="top">
-  <div class="topInner">
-    <div>
-      <div class="eyebrow">SOCIAL SAVER</div>
-      <div class="brandRow"><div class="brand">收藏庫</div><span class="version">v1.2.0</span></div>
-    </div>
-    <button class="primary" id="addBtn">＋ 收藏文章</button>
-  </div>
-</div>
-
+<header class="top"><div class="topIn"><div><div class="brand">收藏庫</div><div class="sub">SOCIAL SAVER · v1.3.0</div></div><button class="menuBtn" id="menuBtn" aria-label="選單">☰</button></div></header>
 <main>
-  <div class="searchRow">
-    <div class="search"><span class="searchMark">⌕</span><input id="searchInput" placeholder="搜尋文章、商品、國家、城市、地址、標籤…"></div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="secondary" id="loadExamplesBtn">重新載入範例</button><button class="secondary" id="importBtn">匯入備份</button><button class="secondary" id="exportBtn">匯出資料</button><input id="importFile" type="file" accept="application/json,.json" hidden></div>
-  </div>
-
-  <div class="navTabs">
-    <button class="tab active" data-page="library">收藏庫</button>
-    <button class="tab" data-page="similar">相似彙整</button>
-    <button class="tab" data-page="shopping">購物清單</button>
-    <button class="tab" data-page="database">資料庫</button>
-  </div>
-
-<div id="filters" class="filterPanel">
-    <div class="filterGroup"><span class="filterLabel">分類</span><button class="chip active">全部</button><button class="chip">購物</button></div>
-    <div class="filterGroup"><span class="filterLabel">國家</span><button class="chip active">全部</button><button class="chip">韓國</button><button class="chip">日本</button></div>
-    <div class="filterGroup"><span class="filterLabel">標籤</span><button class="chip active">全部</button><button class="chip"># Olive Young</button><button class="chip"># 美妝</button><button class="chip"># 藥妝</button></div>
-  </div>
-<div id="stats" class="stats">
-    <div class="stat"><div class="statN">3</div><div class="statL">範例收藏</div></div>
-    <div class="stat"><div class="statN">3</div><div class="statL">購物文章</div></div>
-    <div class="stat"><div class="statN">2</div><div class="statL">國家</div></div>
-    <div class="stat"><div class="statN">1</div><div class="statL">相似文章群組</div></div>
-    <div class="stat"><div class="statN">0</div><div class="statL">購物清單</div></div>
-  </div>
-<div id="pageContent">
-    <div class="compat">目前先顯示 3 篇內建範例。正常瀏覽器會在載入後啟用篩選、相似彙整、購物清單與新增收藏。</div>
-    <div class="grid">
-      <article class="card"><div class="cardImg"><img src="https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=1200&q=80"><span class="platform">Instagram</span><span class="countryBadge">韓國</span></div><div class="cardBody"><h3 class="cardTitle">Olive Young 弘大｜韓國美妝必買 3 樣 <span class="exampleBadge">範例</span></h3><div class="meta"><span>購物</span><span>· 首爾・弘大</span><span>· 美妝</span></div><div class="summary">包含 JUNGSAEMMOOL 氣墊、Round Lab 防曬、Torriden 精華；其中兩項會和下一篇自動判斷為重複資訊。</div><div class="productRow"><span class="productPill">JUNGSAEMMOOL 氣墊</span><span class="productPill">Round Lab 防曬</span><span class="productPill">Torriden 精華</span></div><div class="tagRow" style="margin-top:8px"><span class="tag">韓國</span><span class="tag">弘大</span><span class="tag">Olive Young</span><span class="tag">美妝</span></div></div></article>
-      <article class="card"><div class="cardImg"><img src="https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&w=1200&q=80"><span class="platform">Threads</span><span class="countryBadge">韓國</span></div><div class="cardBody"><h3 class="cardTitle">韓國藥妝近期熱門｜Olive Young 逛一輪 <span class="exampleBadge">範例</span></h3><div class="meta"><span>購物</span><span>· 首爾</span><span>· 美妝</span></div><div class="summary">與第一篇共同提到 JUNGSAEMMOOL 氣墊與 Round Lab 防曬，用來測試相似文章彙整。</div><div class="productRow"><span class="productPill">JUNGSAEMMOOL 氣墊</span><span class="productPill">Round Lab 防曬</span><span class="productPill">Anua 化妝水</span></div><div class="tagRow" style="margin-top:8px"><span class="tag">韓國</span><span class="tag">Olive Young</span><span class="tag">美妝</span><span class="tag">藥妝</span></div></div></article>
-      <article class="card"><div class="cardImg"><img src="https://images.unsplash.com/photo-1611930022073-b7a4ba5fcccd?auto=format&fit=crop&w=1200&q=80"><span class="platform">小紅書</span><span class="countryBadge">日本</span></div><div class="cardBody"><h3 class="cardTitle">日本藥妝｜東京補貨清單 <span class="exampleBadge">範例</span></h3><div class="meta"><span>購物</span><span>· 東京・新宿</span><span>· 藥妝</span></div><div class="summary">日本東京的購物範例，用來測試國家篩選，會與韓國購物資訊分開。</div><div class="productRow"><span class="productPill">&amp;honey Shampoo</span><span class="productPill">Canmake 蜜粉</span><span class="productPill">Biore UV</span></div><div class="tagRow" style="margin-top:8px"><span class="tag">日本</span><span class="tag">東京</span><span class="tag">藥妝</span><span class="tag">補貨</span></div></div></article>
-    </div>
-  </div>
+  <div id="searchBar" class="searchBar hidden"><div class="searchWrap"><span>⌕</span><input id="searchInput" placeholder="搜尋文章、商品、地點、標籤…"><button class="clearSearch" id="clearSearch">×</button></div></div>
+  <div class="sectionHead"><div><h1 id="pageTitle">收藏庫</h1><span id="pageHint"></span></div></div>
+  <div id="content"></div>
 </main>
-
-<dialog id="editorDialog">
-  <form id="editorForm" class="dialog">
-    <div class="dialogHead">
-      <div><div class="eyebrow">NEW SAVE</div><h2>收藏文章</h2></div>
-      <button type="button" class="iconBtn" id="closeEditor">×</button>
-    </div>
-    <div class="formGrid">
-      <label class="full">文章網址<input id="url" type="url" placeholder="https://…"></label>
-      <label>平台<select id="platform"><option>Instagram</option><option>Threads</option><option>Facebook</option><option>小紅書</option><option>YouTube</option><option>TikTok</option><option>X</option><option>網頁</option><option>其他</option></select></label>
-      <label>標題 / 店名 / 商品<input id="title" required placeholder="例如：韓國 Olive Young 必買"></label>
-      <label class="full">文章內容<textarea id="body" rows="7" placeholder="貼上文章文字，系統會抓國家、分類、地址、商品與搜尋詞…"></textarea></label>
-      <label>國家<select id="country"><option value="">自動判斷</option><option>韓國</option><option>日本</option><option>台灣</option><option>泰國</option><option>越南</option><option>其他</option></select></label>
-      <label>城市 / 區域<input id="city" placeholder="例如：首爾・弘大"></label>
-      <label>主分類<select id="category"><option value="">自動判斷</option><option>購物</option><option>美食</option><option>旅遊</option><option>設計</option><option>產品</option><option>娛樂</option><option>其他</option></select></label>
-      <label>購物類型<input id="shoppingType" placeholder="例如：美妝、藥妝、服飾"></label>
-      <label class="full">文章提到的商品（每行一個）<textarea id="products" rows="4" placeholder="JUNGSAEMMOOL Essential Skin Nuder Cushion&#10;Round Lab 白樺樹防曬"></textarea></label>
-      <label class="full">圖片網址（每行一個）<textarea id="images" rows="2" placeholder="https://…jpg"></textarea></label>
-      <label class="full">自訂標籤<input id="tags" placeholder="例如：Olive Young, 必買, 回購"></label>
-    </div>
-    <div class="preview"><div class="previewTitle">自動整理預覽</div><div id="preview" class="previewBody">貼入內容後會顯示預覽。</div></div>
-    <div class="dialogActions"><button type="button" class="ghost" id="cancelEditor">取消</button><button class="primary">儲存</button></div>
-  </form>
-</dialog>
-
-<dialog id="listDialog">
-  <form id="listForm" class="dialog">
-    <div class="dialogHead">
-      <div><div class="eyebrow">SHOPPING LIST</div><h2>建立此次購物清單</h2></div>
-      <button type="button" class="iconBtn" id="closeList">×</button>
-    </div>
-    <label>清單名稱<input id="listName" required placeholder="例如：2026 首爾購物"></label>
-    <div class="preview" style="margin-top:13px"><div class="previewTitle">將自動去除重複商品</div><div id="listPreview" class="previewBody"></div></div>
-    <div class="dialogActions"><button type="button" class="ghost" id="cancelList">取消</button><button class="primary">建立清單</button></div>
-  </form>
-</dialog>
-
-<dialog id="detailDialog"><div id="detailContent"></div></dialog>
-
+<div class="fabStack"><button class="fab secondary" id="searchFab" aria-label="搜尋">⌕</button><button class="fab" id="addFab" aria-label="新增收藏">＋</button></div>
+<div id="drawerRoot"></div><div id="modalRoot"></div><input id="importFile" type="file" accept="application/json" class="hidden">
 <script>
-const VERSION="1.2.0";
-const STORE="socialSaver_data";
+const VERSION="1.3.0", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-let page="library", categoryFilter="全部", countryFilter="全部", selected=new Set();
-
 const demos=[
-{
- id:"example-kor-1",isExample:true,title:"Olive Young 弘大｜韓國美妝必買 3 樣",platform:"Instagram",url:"https://www.instagram.com/",
- body:"首爾弘大 Olive Young 推薦：JUNGSAEMMOOL Essential Skin Nuder Cushion、Round Lab Birch Juice Moisturizing Sun Cream、Torriden Dive-In Serum。弘大入口站附近很好買。서울 마포구 홍익로 10。適合一次補齊底妝、防曬與保養。",
- category:"購物",country:"韓國",city:"首爾・弘大",shoppingType:"美妝",address:"서울 마포구 홍익로 10",
- products:["JUNGSAEMMOOL Essential Skin Nuder Cushion","Round Lab Birch Juice Moisturizing Sun Cream","Torriden Dive-In Serum"],
- tags:["韓國","首爾","弘大","Olive Young","美妝","必買"],
- terms:["올리브영 홍대","정샘물 에센셜 스킨 누더 쿠션","라운드랩 자작나무 선크림","토리든 다이브인 세럼"],
- images:["https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=1200&q=80"],
- summary:"弘大 Olive Young 美妝採買清單，包含氣墊、防曬與精華；其中兩項與另一篇韓國文章重複，可測試「相似彙整」。",
- createdAt:Date.now()-30000,status:"想買"
-},
-{
- id:"example-kor-2",isExample:true,title:"韓國藥妝近期熱門｜Olive Young 逛一輪",platform:"Threads",url:"https://www.threads.net/",
- body:"最近在韓國 Olive Young 很常看到 JUNGSAEMMOOL 氣墊、Round Lab 白樺樹防曬，也推薦 Anua Heartleaf 77% Soothing Toner。明洞、弘大、江南分店都容易找到。想比價可以搜尋 정샘물 쿠션、라운드랩 선크림。",
- category:"購物",country:"韓國",city:"首爾",shoppingType:"美妝",address:"",
- products:["JUNGSAEMMOOL Essential Skin Nuder Cushion","Round Lab Birch Juice Moisturizing Sun Cream","Anua Heartleaf 77% Soothing Toner"],
- tags:["韓國","首爾","Olive Young","美妝","藥妝"],
- terms:["정샘물 쿠션","라운드랩 선크림","아누아 어성초 토너","올리브영 추천"],
- images:["https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&w=1200&q=80"],
- summary:"與第一篇有兩項重複商品，進入「相似彙整」會看到共同商品被合併顯示。",
- createdAt:Date.now()-60000,status:"想買"
-},
-{
- id:"example-jp-1",isExample:true,title:"日本藥妝｜東京補貨清單",platform:"小紅書",url:"",
- body:"東京藥妝補貨：&honey Deep Moist Shampoo、Canmake Marshmallow Finish Powder、Biore UV Aqua Rich。新宿與澀谷都很好買，適合旅途中集中採買。",
- category:"購物",country:"日本",city:"東京・新宿",shoppingType:"藥妝",address:"",
- products:["&honey Deep Moist Shampoo","Canmake Marshmallow Finish Powder","Biore UV Aqua Rich"],
- tags:["日本","東京","藥妝","美妝","補貨"],
- terms:["&honey Deep Moist Shampoo","キャンメイク マシュマロフィニッシュパウダー","ビオレUV アクアリッチ","新宿 ドラッグストア"],
- images:["https://images.unsplash.com/photo-1611930022073-b7a4ba5fcccd?auto=format&fit=crop&w=1200&q=80"],
- summary:"日本東京藥妝範例，用來測試「購物 → 國家」篩選，以及與韓國購物文章分開顯示。",
- createdAt:Date.now()-90000,status:"想買"
-}
-]
-
-function seed(){return {version:VERSION,items:[],shoppingLists:[],meta:{examplesInitialized:false,migratedFrom:[]}}}
-function normalizeItem(i){
- return {
-  id:i.id||crypto.randomUUID(),isExample:!!i.isExample,title:i.title||"未命名收藏",platform:i.platform||"其他",url:i.url||"",body:i.body||"",
-  category:i.category||"其他",country:i.country||inferCountry(`${i.title||""} ${i.body||""} ${i.city||""}`),
-  city:i.city||"",shoppingType:i.shoppingType||"",address:i.address||extractAddress(i.body||""),
-  products:Array.isArray(i.products)?i.products:[],tags:Array.isArray(i.tags)?i.tags:[],terms:Array.isArray(i.terms)?i.terms:[],
-  images:Array.isArray(i.images)?i.images:[],summary:i.summary||makeSummary(i.body||"",i.category||"其他",i.country||inferCountry(i.body||""),i.city||""),
-  createdAt:i.createdAt||Date.now(),status:i.status||((i.category||"")==="購物"?"想買":"剛收藏")
- }
-}
-let storageAvailable=true;
-let memoryStore={};
-function readStore(key){
- try{
-  if(storageAvailable){const v=localStorage.getItem(key);return v?JSON.parse(v):null}
- }catch(e){storageAvailable=false}
- try{return memoryStore[key]?JSON.parse(memoryStore[key]):null}catch{return null}
-}
-function writeStore(key,value){
- const raw=JSON.stringify(value);
- try{if(storageAvailable){localStorage.setItem(key,raw);return true}}catch(e){storageAvailable=false}
- memoryStore[key]=raw;return false
-}
-function migrate(){
- let current=readStore(STORE)||seed();
- current.items=Array.isArray(current.items)?current.items.map(normalizeItem):[];
- current.shoppingLists=Array.isArray(current.shoppingLists)?current.shoppingLists:[];
- current.meta=current.meta||{examplesInitialized:false,migratedFrom:[]};
- const sources=[
-  ["socialSaver_v112",readStore("socialSaver_v112")],
-  ["socialSaver_v111",readStore("socialSaver_v111")],
-  ["socialSaver_v110",readStore("socialSaver_v110")],
-  ["socialSaverV1",readStore("socialSaverV1")]
- ];
- for(const [key,src] of sources){
-  if(!src) continue;
-  const srcItems=Array.isArray(src.items)?src.items:(Array.isArray(src)?src:[]);
-  if(!current.meta.migratedFrom.includes(key)){
-   const existing=new Set(current.items.map(x=>x.id));
-   srcItems.map(normalizeItem).forEach(i=>{if(!existing.has(i.id)){current.items.push(i);existing.add(i.id)}});
-   if(Array.isArray(src.shoppingLists)){
-    const listIds=new Set(current.shoppingLists.map(x=>x.id));
-    src.shoppingLists.forEach(l=>{if(!listIds.has(l.id)){current.shoppingLists.push(l);listIds.add(l.id)}})
-   }
-   current.meta.migratedFrom.push(key)
-  }
- }
- if(!current.meta.examplesInitialized){
-  const existing=new Set(current.items.map(x=>x.id));
-  demos.forEach(d=>{if(!existing.has(d.id))current.items.unshift({...d})});
-  current.meta.examplesInitialized=true
- }
- current.version=VERSION;
- writeStore(STORE,current);
- return current
-}
-let data=migrate();
+{id:"example-kor-1",isExample:true,title:"Olive Young 弘大｜韓國美妝必買 3 樣",platform:"Instagram",url:"https://www.instagram.com/",body:"首爾弘大 Olive Young 推薦：JUNGSAEMMOOL Essential Skin Nuder Cushion、Round Lab Birch Juice Moisturizing Sun Cream、Torriden Dive-In Serum。弘大入口站附近很好買。서울 마포구 홍익로 10。",category:"購物",country:"韓國",city:"首爾・弘大",shoppingType:"美妝",address:"서울 마포구 홍익로 10",products:["JUNGSAEMMOOL Essential Skin Nuder Cushion","Round Lab Birch Juice Moisturizing Sun Cream","Torriden Dive-In Serum"],tags:["韓國","首爾","弘大","Olive Young","美妝","必買"],terms:["올리브영 홍대","정샘물 에센셜 스킨 누더 쿠션","라운드랩 자작나무 선크림","토리든 다이브인 세럼"],images:["https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=1200&q=80"],summary:"弘大 Olive Young 美妝採買清單，包含氣墊、防曬與精華；其中兩項與另一篇韓國文章重複。",note:"下次去弘大時順路看，不用特地跑。",createdAt:Date.now()-30000,status:"想買"},
+{id:"example-kor-2",isExample:true,title:"韓國藥妝近期熱門｜Olive Young 逛一輪",platform:"Threads",url:"https://www.threads.net/",body:"最近在韓國 Olive Young 很常看到 JUNGSAEMMOOL 氣墊、Round Lab 白樺樹防曬，也推薦 Anua Heartleaf 77% Soothing Toner。明洞、弘大、江南分店都容易找到。",category:"購物",country:"韓國",city:"首爾",shoppingType:"美妝",address:"",products:["JUNGSAEMMOOL Essential Skin Nuder Cushion","Round Lab Birch Juice Moisturizing Sun Cream","Anua Heartleaf 77% Soothing Toner"],tags:["韓國","首爾","Olive Young","美妝","藥妝"],terms:["정샘물 쿠션","라운드랩 선크림","아누아 어성초 토너","올리브영 추천"],images:["https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&w=1200&q=80"],summary:"與第一篇有兩項重複商品，適合測試相似文章彙整。",note:"",createdAt:Date.now()-60000,status:"想買"},
+{id:"example-jp-1",isExample:true,title:"日本藥妝｜東京補貨清單",platform:"小紅書",url:"",body:"東京藥妝補貨：&honey Deep Moist Shampoo、Canmake Marshmallow Finish Powder、Biore UV Aqua Rich。新宿與澀谷都很好買，適合旅途中集中採買。",category:"購物",country:"日本",city:"東京・新宿",shoppingType:"藥妝",address:"",products:["&honey Deep Moist Shampoo","Canmake Marshmallow Finish Powder","Biore UV Aqua Rich"],tags:["日本","東京","藥妝","美妝","補貨"],terms:["&honey Deep Moist Shampoo","キャンメイク マシュマロフィニッシュパウダー","ビオレUV アクアリッチ","新宿 ドラッグストア"],images:["https://images.unsplash.com/photo-1611930022073-b7a4ba5fcccd?auto=format&fit=crop&w=1200&q=80"],summary:"日本東京藥妝範例，用來測試購物分類與國家篩選。",note:"",createdAt:Date.now()-90000,status:"想買"}
+];
+let storageOK=true,memory={};
+function readStore(k){try{if(storageOK){const v=localStorage.getItem(k);return v?JSON.parse(v):null}}catch(e){storageOK=false}try{return memory[k]?JSON.parse(memory[k]):null}catch{return null}}
+function writeStore(k,v){const raw=JSON.stringify(v);try{if(storageOK){localStorage.setItem(k,raw);return true}}catch(e){storageOK=false}memory[k]=raw;return false}
+function uid(){return crypto?.randomUUID?.()||("id-"+Date.now()+"-"+Math.random().toString(36).slice(2))}
+function inferCountry(t=""){if(/[가-힣]/.test(t)||/서울|부산|제주|올리브영/.test(t))return"韓國";if(/[ぁ-んァ-ン]/.test(t)||/東京|大阪|京都|日本/.test(t))return"日本";if(/台灣|臺灣|台北|新竹|台中|高雄/.test(t))return"台灣";if(/泰國|Bangkok|Thailand/i.test(t))return"泰國";if(/越南|Hanoi|Vietnam/i.test(t))return"越南";return"其他"}
+function inferCategory(t=""){for(const [n,r] of [["購物",/購物|必買|藥妝|美妝|百貨|商品|品牌|olive young|올리브영|大創|다이소|shop/i],["美食",/餐廳|咖啡|美食|烤肉|甜點|맛집|카페|restaurant|food/i],["旅遊",/景點|飯店|機場|地鐵|行程|旅遊|hotel|airport|station/i],["設計",/設計|排版|字體|海報|design|font/i],["產品",/產品|規格|型號|model|spec/i],["娛樂",/演唱會|歌手|藝人|concert|콘서트/i]])if(r.test(t))return n;return"其他"}
+function extractAddress(t=""){const a=t.split(/[。；;\n]/).map(x=>x.trim()).filter(Boolean);return a.find(x=>/(서울|부산|제주).*(구|로|길)\s*\d*/.test(x))||a.find(x=>/(市|縣).*(區|鄉|鎮|市).*(路|街|巷|號)/.test(x))||""}
+function uniq(a){return [...new Set((a||[]).filter(Boolean))]};function norm(s=""){return String(s).toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]+/g," ").trim()};function esc(s=""){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+function normalizeItem(i={}){const country=i.country||inferCountry(`${i.title||""} ${i.body||""}`),category=i.category||inferCategory(`${i.title||""} ${i.body||""}`);return{id:i.id||uid(),isExample:!!i.isExample,title:i.title||"未命名收藏",platform:i.platform||"其他",url:i.url||"",body:i.body||"",category,country,city:i.city||"",shoppingType:i.shoppingType||"",address:i.address||extractAddress(i.body||""),products:Array.isArray(i.products)?i.products:[],tags:Array.isArray(i.tags)?i.tags:[],terms:Array.isArray(i.terms)?i.terms:[],images:Array.isArray(i.images)?i.images:[],summary:i.summary||String(i.body||"").slice(0,120),note:i.note||"",createdAt:i.createdAt||Date.now(),status:i.status||(category==="購物"?"想買":"剛收藏")}}
+function seed(){return{version:VERSION,items:[],shoppingLists:[],meta:{examplesInitialized:false}}}
+function migrate(){let d=readStore(STORE)||seed();d.items=Array.isArray(d.items)?d.items.map(normalizeItem):[];d.shoppingLists=Array.isArray(d.shoppingLists)?d.shoppingLists:[];d.meta=d.meta||{};if(!d.meta.v130ExamplesEnsured){const ids=new Set(d.items.map(x=>x.id));demos.forEach(x=>{if(!ids.has(x.id))d.items.unshift(normalizeItem(x))});d.meta.examplesInitialized=true;d.meta.v130ExamplesEnsured=true}d.version=VERSION;writeStore(STORE,d);return d}
+let data=migrate();let view="library",categoryFilter="全部",countryFilter="全部",tagFilter="全部",searchText="",shoppingSelected=new Set(),detailIndex=0,detailIds=[];
 function save(){data.version=VERSION;writeStore(STORE,data)}
-function esc(s=""){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
-function uniq(a){return [...new Set(a.filter(Boolean))]}
-function norm(s=""){return s.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]+/g," ").trim()}
-function inferCountry(text){
- if(/[가-힣]/.test(text)||/서울|부산|제주|올리브영/.test(text))return"韓國";
- if(/[ぁ-んァ-ン]/.test(text)||/東京|大阪|京都|日本/.test(text))return"日本";
- if(/台灣|臺灣|台北|新竹|台中|高雄/.test(text))return"台灣";
- if(/Thailand|泰國|Bangkok|曼谷/.test(text))return"泰國";
- if(/Vietnam|越南|Hanoi|河內/.test(text))return"越南";
- return"其他";
-}
-function inferCategory(text){
- const rules=[
-  ["購物",/購物|必買|藥妝|美妝|百貨|商品|品牌|olive young|올리브영|다이소|大創|shopping|shop/i],
-  ["美食",/餐廳|咖啡|美食|烤肉|甜點|맛집|카페|restaurant|food/i],
-  ["旅遊",/景點|飯店|機場|地鐵|行程|旅遊|hotel|airport|station/i],
-  ["設計",/設計|排版|字體|海報|design|font|poster/i],
-  ["產品",/產品|規格|型號|model|spec/i],
-  ["娛樂",/演唱會|歌手|藝人|concert|콘서트/i]
- ];for(const[r,rx]of rules)if(rx.test(text))return r;return"其他"
-}
-function extractAddress(text){
- const parts=text.split(/[。；;\n]/).map(x=>x.trim()).filter(Boolean);
- return parts.find(x=>/(서울|부산|제주).*(구|로|길)\s*\d*/.test(x))||parts.find(x=>/(市|縣).*(區|鄉|鎮|市).*(路|街|巷|號)/.test(x))||"";
-}
-function extractTerms(title,body,country,city){
- let out=[title];
- (body.match(/[가-힣]{2,}(?:\s+[가-힣0-9%]{2,}){0,4}/g)||[]).slice(0,5).forEach(x=>out.push(x));
- (body.match(/[A-Z][A-Za-z0-9&'%-]+(?:\s+[A-Za-z0-9&'%-]+){1,6}/g)||[]).slice(0,4).forEach(x=>out.push(x.trim()));
- if(country==="韓國"&&city.includes("弘大"))out.push("홍대 쇼핑","올리브영 홍대");
- return uniq(out).slice(0,10)
-}
-function makeSummary(body,category,country,city){
- let t=body.replace(/\s+/g," ").trim();if(t.length>115)t=t.slice(0,115)+"…";
- return `${country}${city?`・${city}`:""}｜${category}：${t||"尚未提供文章內容。"}`
-}
-function filteredItems(){
- let q=norm($("#searchInput").value);
- return data.items.filter(i=>{
-  if(categoryFilter!=="全部"&&i.category!==categoryFilter)return false;
-  if(countryFilter!=="全部"&&i.country!==countryFilter)return false;
-  if(window.tagFilter&&window.tagFilter!=="全部"&&!(i.tags||[]).includes(window.tagFilter))return false;
-  if(!q)return true;
-  let h=norm([i.title,i.body,i.country,i.city,i.category,i.shoppingType,i.address,...(i.tags||[]),...(i.terms||[]),...(i.products||[])].join(" "));
-  return h.includes(q)
- }).sort((a,b)=>b.createdAt-a.createdAt)
-}
-function commonProducts(items){
- const m={};items.forEach(i=>(i.products||[]).forEach(p=>{let k=norm(p);m[k]??={name:p,count:0};m[k].count++}));
- return Object.values(m).filter(x=>x.count>1).sort((a,b)=>b.count-a.count)
-}
-function similarClusters(){
- const items=data.items, clusters=[], used=new Set();
- for(let a=0;a<items.length;a++){
-  if(used.has(items[a].id))continue;
-  let group=[items[a]];
-  for(let b=a+1;b<items.length;b++){
-   let A=items[a],B=items[b];
-   let prodA=new Set((A.products||[]).map(norm)), prodB=new Set((B.products||[]).map(norm));
-   let shared=[...prodA].filter(x=>prodB.has(x)).length;
-   let tagShared=(A.tags||[]).filter(x=>(B.tags||[]).includes(x)).length;
-   let sameCountry=A.country===B.country, sameCat=A.category===B.category;
-   if((shared>=1)||(sameCountry&&sameCat&&tagShared>=2))group.push(B)
-  }
-  if(group.length>1){group.forEach(x=>used.add(x.id));clusters.push(group)}
- }
- return clusters
-}
-function renderFilters(){
- const cats=["全部",...uniq(data.items.map(i=>i.category))];
- const countries=["全部",...uniq(data.items.map(i=>i.country))];
- const allTags=uniq(data.items.flatMap(i=>i.tags||[])).slice(0,18);
- $("#filters").innerHTML=`
-  <div class="filterGroup"><span class="filterLabel">分類</span>${cats.map(c=>`<button class="chip ${categoryFilter===c?"active":""}" data-cat="${esc(c)}">${esc(c)}</button>`).join("")}</div>
-  <div class="filterGroup"><span class="filterLabel">國家</span>${countries.map(c=>`<button class="chip ${countryFilter===c?"active":""}" data-country="${esc(c)}">${esc(c)}</button>`).join("")}</div>
-  <div class="filterGroup"><span class="filterLabel">標籤</span><button class="chip ${window.tagFilter==="全部"||!window.tagFilter?"active":""}" data-tag="全部">全部</button>${allTags.map(t=>`<button class="chip ${window.tagFilter===t?"active":""}" data-tag="${esc(t)}"># ${esc(t)}</button>`).join("")}</div>`;
- $$("[data-cat]").forEach(b=>b.onclick=()=>{categoryFilter=b.dataset.cat;render()});
- $$("[data-country]").forEach(b=>b.onclick=()=>{countryFilter=b.dataset.country;render()});
- $$("[data-tag]").forEach(b=>b.onclick=()=>{window.tagFilter=b.dataset.tag;render()});
-}
-function renderStats(){
- const clusters=similarClusters();
- $("#stats").innerHTML=`
- <div class="stat"><div class="statN">${data.items.length}</div><div class="statL">全部收藏</div></div>
- <div class="stat"><div class="statN">${data.items.filter(i=>i.category==="購物").length}</div><div class="statL">購物文章</div></div>
- <div class="stat"><div class="statN">${uniq(data.items.map(i=>i.country)).length}</div><div class="statL">國家</div></div>
- <div class="stat"><div class="statN">${clusters.length}</div><div class="statL">相似文章群組</div></div>
- <div class="stat"><div class="statN">${data.shoppingLists.length}</div><div class="statL">購物清單</div></div>`;
-}
-function mapLinks(i){
- let q=encodeURIComponent(i.address||i.title),nq=encodeURIComponent(`${i.title} ${i.address||""}`);
- return {google:`https://www.google.com/maps/search/?api=1&query=${q}`,naver:`https://map.naver.com/p/search/${nq}`}
-}
-function card(i){
- let img=i.images?.[0]||"";
- return `<article class="card">
-  <div class="cardImg">${img?`<img src="${esc(img)}" alt="">`:""}
-   <span class="platform">${esc(i.platform)}</span><span class="countryBadge">${esc(i.country)}</span>
-   ${i.category==="購物"?`<label class="selectBox"><input type="checkbox" class="selectArticle" data-id="${i.id}" ${selected.has(i.id)?"checked":""}> 加入此次購物</label>`:""}
-  </div>
-  <div class="cardBody">
-   <h3 class="cardTitle">${esc(i.title)}${i.isExample?`<span class="exampleBadge">範例</span>`:""}</h3>
-   <div class="meta"><span>${esc(i.category)}</span>${i.city?`<span>· ${esc(i.city)}</span>`:""}${i.shoppingType?`<span>· ${esc(i.shoppingType)}</span>`:""}</div>
-   <div class="summary">${esc(i.summary)}</div>
-   ${(i.products||[]).length?`<div class="productRow">${i.products.slice(0,3).map(p=>`<span class="productPill">${esc(p)}</span>`).join("")}</div>`:""}
-   <div class="tagRow" style="margin-top:8px">${(i.tags||[]).slice(0,5).map(t=>`<span class="tag">${esc(t)}</span>`).join("")}</div>
-   <div class="cardFoot"><button class="linkBtn detailBtn" data-id="${i.id}">查看整理</button><button class="linkBtn copyBtn" data-copy="${esc(i.terms?.[0]||i.title)}">複製搜尋詞</button></div>
-  </div>
- </article>`
-}
-function renderLibrary(){
- let list=filteredItems();
- return `<div class="actionBar">
-  <div class="actionLeft"><span class="notice">購物文章可直接勾選，系統建立清單時會自動把重複商品合併。</span></div>
-  <div class="actionRight">${selected.size?`<button class="primary" id="makeListBtn">用已選 ${selected.size} 篇建立購物清單</button>`:""}</div>
- </div>${list.length?`<div class="grid">${list.map(card).join("")}</div>`:`<div class="empty">沒有符合條件的收藏。</div>`}`
-}
-function renderSimilar(){
- const groups=similarClusters();
- if(!groups.length)return`<div class="empty">目前沒有偵測到相似文章。</div>`;
- return `<div class="sectionTitle"><div><h2>相似文章彙整</h2><p>用共同商品、標籤與分類判斷，可避免同一資訊散落在多篇收藏。</p></div></div>
- <div class="clusterGrid">${groups.map((g,idx)=>{
-   let common=commonProducts(g), commonTags=(g[0].tags||[]).filter(t=>g.slice(1).every(x=>(x.tags||[]).includes(t)));
-   return `<section class="cluster">
-    <div class="clusterHead"><div><div class="clusterTitle">${esc(g[0].country)}・${esc(g[0].category)}相似內容</div><div class="shopMeta">${esc(g[0].shoppingType||"")} · 可彙整共同資訊</div></div><span class="clusterCount">${g.length} 篇</span></div>
-    <div class="commonBox"><div class="commonLabel">共同提到</div>
-      <div class="productRow">${common.length?common.map(x=>`<span class="productPill">${esc(x.name)} × ${x.count}</span>`).join(""):`<span class="tag">${commonTags.map(esc).join("・")||"共同主題"}</span>`}</div>
-    </div>
-    <div class="clusterArticles">${g.map(i=>`<div class="clusterArticle"><strong>${esc(i.title)}</strong><div>${esc(i.platform)} · ${(i.products||[]).length} 個商品</div></div>`).join("")}</div>
-    <div class="dialogActions"><button class="secondary clusterListBtn" data-ids="${g.map(i=>i.id).join(",")}">把這組建立購物清單</button></div>
-   </section>`
- }).join("")}</div>`
-}
-function renderShopping(){
- if(!data.shoppingLists.length)return`<div class="empty">還沒有購物清單。<br>到「收藏庫」勾選購物文章，或從「相似彙整」直接建立。</div>`;
- return `<div class="listGrid">${data.shoppingLists.map(list=>`
-  <section class="shopList">
-   <div class="shopHead"><div><div class="shopName">${esc(list.name)}</div><div class="shopMeta">${new Date(list.createdAt).toLocaleDateString("zh-TW")} · ${list.items.length} 項</div></div><button class="miniBtn deleteList" data-id="${list.id}">刪除</button></div>
-   <div class="shopItems">${list.items.map((it,idx)=>`
-    <div class="shopItem ${it.done?"done":""}">
-      <input type="checkbox" class="doneItem" data-list="${list.id}" data-idx="${idx}" ${it.done?"checked":""}>
-      <div><div class="shopItemName">${esc(it.name)}</div><div class="shopItemSub">${esc(it.country||"")} ${it.sourceCount>1?`· ${it.sourceCount} 篇文章共同提到`:""}</div></div>
-      <div class="qty"><button class="qtyBtn" data-list="${list.id}" data-idx="${idx}" data-d="-1">−</button><span>${it.qty||1}</span><button class="qtyBtn" data-list="${list.id}" data-idx="${idx}" data-d="1">＋</button></div>
-    </div>`).join("")}</div>
-  </section>`).join("")}</div>`
-}
-function renderDatabase(){
- let list=filteredItems();
- return `<div class="tableWrap"><table><thead><tr><th>名稱</th><th>國家</th><th>城市/區域</th><th>分類</th><th>購物類型</th><th>商品數</th><th>平台</th><th>狀態</th></tr></thead>
- <tbody>${list.map(i=>`<tr><td><button class="linkBtn detailBtn" data-id="${i.id}">${esc(i.title)}</button></td><td>${esc(i.country)}</td><td>${esc(i.city||"")}</td><td>${esc(i.category)}</td><td>${esc(i.shoppingType||"")}</td><td>${(i.products||[]).length}</td><td>${esc(i.platform)}</td><td>${esc(i.status||"")}</td></tr>`).join("")}</tbody></table></div>`
-}
-function render(){
- renderFilters();renderStats();
- const existing=document.querySelector(".runtimeNotice");if(existing)existing.remove();
- const note=document.createElement("div");note.className="compat runtimeNotice";note.textContent=storageAvailable?"互動模式已啟用，資料會保存在此瀏覽器。":"互動模式已啟用，但這個開啟環境禁止本機儲存；本次操作可用，關閉頁面後可能不會保留。";
- document.querySelector("#pageContent").before(note);
- $("#pageContent").innerHTML=page==="library"?renderLibrary():page==="similar"?renderSimilar():page==="shopping"?renderShopping():renderDatabase();
- bind()
-}
-function bind(){
- $$(".detailBtn").forEach(b=>b.onclick=()=>showDetail(b.dataset.id));
- $$(".copyBtn").forEach(b=>b.onclick=async()=>{await navigator.clipboard.writeText(b.dataset.copy);b.textContent="已複製 ✓";setTimeout(()=>b.textContent="複製搜尋詞",800)});
- $$(".selectArticle").forEach(c=>c.onchange=()=>{c.checked?selected.add(c.dataset.id):selected.delete(c.dataset.id);render()});
- if($("#makeListBtn"))$("#makeListBtn").onclick=()=>openList([...selected]);
- $$(".clusterListBtn").forEach(b=>b.onclick=()=>openList(b.dataset.ids.split(",")));
- $$(".doneItem").forEach(c=>c.onchange=()=>{let l=data.shoppingLists.find(x=>x.id===c.dataset.list);l.items[+c.dataset.idx].done=c.checked;save();render()});
- $$(".qtyBtn").forEach(b=>b.onclick=()=>{let l=data.shoppingLists.find(x=>x.id===b.dataset.list),it=l.items[+b.dataset.idx];it.qty=Math.max(1,(it.qty||1)+(+b.dataset.d));save();render()});
- $$(".deleteList").forEach(b=>b.onclick=()=>{data.shoppingLists=data.shoppingLists.filter(x=>x.id!==b.dataset.id);save();render()});
-}
-function showDetail(id){
- const i=data.items.find(x=>x.id===id);if(!i)return;let links=mapLinks(i),img=i.images?.[0]||"";
- $("#detailContent").innerHTML=`
- <div class="detailCover">${img?`<img src="${esc(img)}">`:""}<button class="detailClose" id="closeDetail">×</button></div>
- <div class="detailMain">
-  <h2 class="detailTitle">${esc(i.title)}</h2><div class="meta">${esc(i.country)} · ${esc(i.city||"")} · ${esc(i.category)} · ${esc(i.platform)}</div>
-  <div class="detailSection"><h4>整理摘要</h4><div class="summary">${esc(i.summary)}</div></div>
-  ${(i.products||[]).length?`<div class="detailSection"><h4>文章提到的商品</h4><div class="productRow">${i.products.map(p=>`<span class="productPill">${esc(p)}</span>`).join("")}</div></div>`:""}
-  ${i.address?`<div class="detailSection"><h4>地點</h4><div>${esc(i.address)}</div><div class="mapBtns">${i.country==="韓國"?`<a class="mapBtn" href="${links.naver}" target="_blank">NAVER Map</a>`:""}<a class="mapBtn" href="${links.google}" target="_blank">Google Maps</a></div></div>`:""}
-  <div class="detailSection"><h4>可搜尋 / 可複製文字</h4><div class="termRow">${(i.terms||[]).map(t=>`<button class="term termCopy" data-copy="${esc(t)}">${esc(t)} ⧉</button>`).join("")}</div></div>
-  <div class="detailSection"><h4>原始文章</h4><div class="bodyText">${esc(i.body)}</div></div>
- </div>`;
- $("#detailDialog").showModal();$("#closeDetail").onclick=()=>$("#detailDialog").close();
- $$(".termCopy").forEach(b=>b.onclick=async()=>{await navigator.clipboard.writeText(b.dataset.copy);b.textContent="已複製 ✓"})
-}
-function openList(ids){
- const items=ids.map(id=>data.items.find(x=>x.id===id)).filter(Boolean), map={};
- items.forEach(a=>(a.products||[]).forEach(p=>{let k=norm(p);if(!map[k])map[k]={name:p,count:0,country:a.country};map[k].count++}));
- const products=Object.values(map);
- $("#listPreview").innerHTML=products.length?products.map(p=>`<span class="productPill">${esc(p.name)}${p.count>1?` × ${p.count}篇`:""}</span>`).join(" "):"這些文章沒有商品資料，請先補商品名稱。";
- $("#listForm").dataset.ids=ids.join(",");$("#listName").value=`${items[0]?.country||""} 購物清單`;
- $("#listDialog").showModal()
-}
-$("#listForm").onsubmit=e=>{
- e.preventDefault();let ids=$("#listForm").dataset.ids.split(","),arts=ids.map(id=>data.items.find(x=>x.id===id)).filter(Boolean),map={};
- arts.forEach(a=>(a.products||[]).forEach(p=>{let k=norm(p);if(!map[k])map[k]={name:p,country:a.country,sourceCount:0,qty:1,done:false};map[k].sourceCount++}));
- let arr=Object.values(map);if(!arr.length)return;
- data.shoppingLists.unshift({id:crypto.randomUUID(),name:$("#listName").value.trim(),createdAt:Date.now(),items:arr});selected.clear();save();$("#listDialog").close();page="shopping";syncTabs();render()
-}
-function syncTabs(){$$(".tab").forEach(t=>t.classList.toggle("active",t.dataset.page===page))}
-function preview(){
- let title=$("#title").value,body=$("#body").value,city=$("#city").value,country=$("#country").value||inferCountry(`${title} ${body} ${city}`),cat=$("#category").value||inferCategory(`${title} ${body}`),addr=extractAddress(body),products=$("#products").value.split("\n").map(x=>x.trim()).filter(Boolean);
- $("#preview").innerHTML=`<strong>國家：</strong>${esc(country)}　<strong>分類：</strong>${esc(cat)}<br><strong>地址：</strong>${esc(addr||"尚未辨識")}<br><strong>商品：</strong>${products.length?products.map(p=>`<span class="productPill">${esc(p)}</span>`).join(" "):"尚未輸入"}`
-}
-$("#addBtn").onclick=()=>{$("#editorForm").reset();$("#preview").textContent="貼入內容後會顯示預覽。";$("#editorDialog").showModal()}
-$("#closeEditor").onclick=$("#cancelEditor").onclick=()=>$("#editorDialog").close();
-$("#closeList").onclick=$("#cancelList").onclick=()=>$("#listDialog").close();
-["title","body","city","country","category","products"].forEach(id=>$("#"+id).addEventListener("input",preview));
-$("#editorForm").onsubmit=e=>{
- e.preventDefault();let title=$("#title").value.trim(),body=$("#body").value.trim(),city=$("#city").value.trim(),country=$("#country").value||inferCountry(`${title} ${body} ${city}`),category=$("#category").value||inferCategory(`${title} ${body}`),address=extractAddress(body),products=$("#products").value.split("\n").map(x=>x.trim()).filter(Boolean),tags=$("#tags").value.split(",").map(x=>x.trim()).filter(Boolean),images=$("#images").value.split("\n").map(x=>x.trim()).filter(Boolean),terms=extractTerms(title,body,country,city);
- data.items.unshift({id:crypto.randomUUID(),title,platform:$("#platform").value,url:$("#url").value.trim(),body,category,country,city,shoppingType:$("#shoppingType").value.trim(),address,products,tags:uniq([country,category,...tags]),terms,images,summary:makeSummary(body,category,country,city),createdAt:Date.now(),status:category==="購物"?"想買":"剛收藏"});
- save();$("#editorDialog").close();render()
-}
-$("#searchInput").oninput=render;
-$$(".tab").forEach(t=>t.onclick=()=>{page=t.dataset.page;syncTabs();render()});
-
-$("#loadExamplesBtn").onclick=()=>{
- const existing=new Set(data.items.map(x=>x.id));
- demos.forEach(d=>{if(!existing.has(d.id))data.items.unshift({...d})});
- data.meta=data.meta||{};data.meta.examplesInitialized=true;save();render()
-};
-
-$("#importBtn").onclick=()=>$("#importFile").click();
-$("#importFile").onchange=async e=>{
- const file=e.target.files?.[0];if(!file)return;
- try{
-  const parsed=JSON.parse(await file.text());
-  const incomingItems=Array.isArray(parsed)?parsed:(Array.isArray(parsed.items)?parsed.items:[]);
-  const incomingLists=Array.isArray(parsed.shoppingLists)?parsed.shoppingLists:[];
-  if(!incomingItems.length&&!incomingLists.length)throw new Error("找不到可匯入資料");
-  const ids=new Set(data.items.map(x=>x.id));
-  incomingItems.map(normalizeItem).forEach(i=>{if(!ids.has(i.id)){data.items.push(i);ids.add(i.id)}});
-  const listIds=new Set(data.shoppingLists.map(x=>x.id));
-  incomingLists.forEach(l=>{if(!listIds.has(l.id)){data.shoppingLists.push(l);listIds.add(l.id)}});
-  save();render();alert("匯入完成");
- }catch(err){alert("匯入失敗："+err.message)}
- e.target.value="";
-};
-
-$("#exportBtn").onclick=()=>{
- let blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`social-saver-v${VERSION}-backup.json`;a.click();URL.revokeObjectURL(a.href)
-}
+function currentPool(){let a=[...data.items].sort((x,y)=>y.createdAt-x.createdAt);if(categoryFilter!=="全部")a=a.filter(i=>i.category===categoryFilter);if(countryFilter!=="全部")a=a.filter(i=>i.country===countryFilter);if(tagFilter!=="全部")a=a.filter(i=>(i.tags||[]).includes(tagFilter));if(searchText){const q=norm(searchText);a=a.filter(i=>norm([i.title,i.body,i.country,i.city,i.category,i.address,...i.tags,...i.products,...i.terms].join(" ")).includes(q))}return a}
+function card(i){const img=i.images?.[0]||"";return `<article class="card"><div class="cardTap" role="button" tabindex="0" data-open="${i.id}"><div class="cardImg">${img?`<img src="${esc(img)}" alt="">`:""}<span class="badge">${esc(i.platform)}</span><span class="country">${esc(i.country)}</span>${i.category==="購物"?`<button class="shopQuick ${shoppingSelected.has(i.id)?"on":""}" data-shop="${i.id}" title="加入購物">${shoppingSelected.has(i.id)?"✓":"🛒"}</button>`:""}</div><div class="cardBody"><h3 class="title">${esc(i.title)}</h3><div class="meta">${esc(i.category)}${i.city?` · ${esc(i.city)}`:""}</div><div class="summary">${esc(i.summary)}</div><div class="tagRow">${i.isExample?`<span class="tag example">範例</span>`:""}${(i.tags||[]).slice(0,3).map(t=>`<span class="tag">${esc(t)}</span>`).join("")}</div></div></div></article>`}
+function renderLibrary(){const a=currentPool();return a.length?`<div class="grid">${a.map(card).join("")}</div>`:`<div class="empty">沒有符合條件的收藏。</div>`}
+function similarClusters(){const items=data.items,used=new Set(),out=[];for(let a=0;a<items.length;a++){if(used.has(items[a].id))continue;let g=[items[a]];for(let b=a+1;b<items.length;b++){const A=items[a],B=items[b],pa=new Set((A.products||[]).map(norm)),pb=new Set((B.products||[]).map(norm)),shared=[...pa].filter(x=>pb.has(x)).length,tags=(A.tags||[]).filter(x=>(B.tags||[]).includes(x)).length;if(shared>=1||(A.category===B.category&&A.country===B.country&&tags>=2))g.push(B)}if(g.length>1){g.forEach(x=>used.add(x.id));out.push(g)}}return out}
+function renderSimilar(){const groups=similarClusters();if(!groups.length)return`<div class="empty">目前沒有偵測到相似文章。</div>`;return`<div class="clusterList">${groups.map(g=>{const m={};g.forEach(i=>(i.products||[]).forEach(p=>{const k=norm(p);m[k]??={name:p,n:0};m[k].n++}));const common=Object.values(m).filter(x=>x.n>1).sort((a,b)=>b.n-a.n);return`<section class="cluster"><div class="clusterTop"><div><div class="clusterTitle">${esc(g[0].country)}・${esc(g[0].category)} 相似內容</div><div class="meta">點小圖可直接打開文章</div></div><span class="count">${g.length} 篇</span></div><div class="common"><div class="commonLabel">共同資訊</div><div class="tagRow">${common.length?common.map(x=>`<span class="tag">${esc(x.name)} × ${x.n}</span>`).join(""):`<span class="tag">主題與標籤相近</span>`}</div></div><div class="miniCards">${g.map(i=>`<button class="miniCard" data-open="${i.id}">${i.images?.[0]?`<img src="${esc(i.images[0])}" alt="">`:`<span class="miniPh"></span>`}<div>${esc(i.title)}</div></button>`).join("")}</div>${g.some(x=>x.category==="購物")?`<div class="formActions"><button class="ghost clusterShop" data-ids="${g.map(x=>x.id).join(",")}">建立購物清單</button></div>`:""}</section>`}).join("")}</div>`}
+function renderShopping(){if(!data.shoppingLists.length)return`<div class="empty">還沒有購物清單。<br>在購物文章卡片右下角點 🛒，再從選單建立清單。</div>`;return`<div class="listGrid">${data.shoppingLists.map(l=>`<section class="shopList"><div class="shopHead"><div><div class="shopName">${esc(l.name||"未命名購物清單")}</div><div class="shopMeta">${new Date(l.createdAt||Date.now()).toLocaleDateString("zh-TW")} · ${l.items.length} 項</div></div><button class="smallBtn deleteList" data-id="${l.id}">刪除</button></div><div class="shopItems">${l.items.map((it,idx)=>`<div class="shopItem ${it.done?"done":""}">${it.image?`<img class="shopThumb editShopImg" data-list="${l.id}" data-idx="${idx}" src="${esc(it.image)}" alt="">`:`<button class="thumbAdd editShopImg" data-list="${l.id}" data-idx="${idx}">＋</button>`}<div><label style="display:flex;grid-template-columns:auto 1fr;align-items:center;gap:6px"><input type="checkbox" class="doneItem" data-list="${l.id}" data-idx="${idx}" ${it.done?"checked":""}><span class="shopItemName">${esc(it.name)}</span></label><div class="shopItemSub">${esc(it.country||"")}${it.sourceCount>1?` · ${it.sourceCount} 篇共同提到`:""}</div></div><div class="qty"><button class="qtyBtn" data-list="${l.id}" data-idx="${idx}" data-d="-1">−</button><span>${it.qty||1}</span><button class="qtyBtn" data-list="${l.id}" data-idx="${idx}" data-d="1">＋</button></div></div>`).join("")}</div></section>`).join("")}</div>`}
+function render(){const title=view==="library"?"收藏庫":view==="similar"?"相似彙整":"購物清單";$("#pageTitle").textContent=title;$("#pageHint").textContent=view==="library"?filterSummary():view==="similar"?"重複資訊會集中在一起":"";$("#content").innerHTML=view==="library"?renderLibrary():view==="similar"?renderSimilar():renderShopping();bindContent()}
+function filterSummary(){const parts=[];if(categoryFilter!=="全部")parts.push(categoryFilter);if(countryFilter!=="全部")parts.push(countryFilter);if(tagFilter!=="全部")parts.push("#"+tagFilter);return parts.length?parts.join(" › "):"全部文章"}
+function bindContent(){$$("[data-open]").forEach(b=>b.onclick=e=>{if(e.target.closest("[data-shop]"))return;openDetail(b.dataset.open)});$$('[data-shop]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();shoppingSelected.has(b.dataset.shop)?shoppingSelected.delete(b.dataset.shop):shoppingSelected.add(b.dataset.shop);render()});$$('.clusterShop').forEach(b=>b.onclick=()=>openShoppingListModal(b.dataset.ids.split(',')));$$('.doneItem').forEach(c=>c.onchange=()=>{const l=data.shoppingLists.find(x=>x.id===c.dataset.list);if(l){l.items[+c.dataset.idx].done=c.checked;save();render()}});$$('.qtyBtn').forEach(b=>b.onclick=()=>{const l=data.shoppingLists.find(x=>x.id===b.dataset.list);if(l){const it=l.items[+b.dataset.idx];it.qty=Math.max(1,(it.qty||1)+(+b.dataset.d));save();render()}});$$('.deleteList').forEach(b=>b.onclick=()=>{if(confirm('刪除這個購物清單？')){data.shoppingLists=data.shoppingLists.filter(x=>x.id!==b.dataset.id);save();render()}});$$('.editShopImg').forEach(b=>b.onclick=()=>editShoppingImage(b.dataset.list,+b.dataset.idx))}
+function drawerHTML(){const cats=["全部",...uniq(data.items.map(i=>i.category))];const countryBase=categoryFilter==="全部"?data.items:data.items.filter(i=>i.category===categoryFilter),countries=["全部",...uniq(countryBase.map(i=>i.country))];const tagBase=countryBase.filter(i=>countryFilter==="全部"||i.country===countryFilter),tags=["全部",...uniq(tagBase.flatMap(i=>i.tags||[])).slice(0,20)];return`<div class="drawerBackdrop" id="drawerBackdrop"></div><aside class="drawer"><div class="drawerHead"><div><strong>選單</strong><div class="sub">v${VERSION}</div></div><button class="xBtn" id="closeDrawer">×</button></div><div class="navList"><button class="navBtn ${view==="library"?"active":""}" data-view="library">收藏庫</button><button class="navBtn ${view==="similar"?"active":""}" data-view="similar">相似彙整</button><button class="navBtn ${view==="shopping"?"active":""}" data-view="shopping">購物清單</button></div><details open><summary>篩選</summary><div class="filterLevel"><div class="filterLabel">1. 分類</div><div class="chips">${cats.map(x=>`<button class="chip ${categoryFilter===x?"active":""}" data-cat="${esc(x)}">${esc(x)}</button>`).join("")}</div></div>${categoryFilter!=="全部"?`<div class="filterLevel"><div class="filterLabel">2. 國家</div><div class="chips">${countries.map(x=>`<button class="chip ${countryFilter===x?"active":""}" data-country="${esc(x)}">${esc(x)}</button>`).join("")}</div></div>`:""}${categoryFilter!=="全部"&&countryFilter!=="全部"?`<div class="filterLevel"><div class="filterLabel">3. 標籤</div><div class="chips">${tags.map(x=>`<button class="chip ${tagFilter===x?"active":""}" data-tag="${esc(x)}">${x==="全部"?"全部":"# "+esc(x)}</button>`).join("")}</div></div>`:""}</details><details><summary>工具與資訊</summary><div class="statsMini"><div class="stat"><b>${data.items.length}</b><div>收藏文章</div></div><div class="stat"><b>${similarClusters().length}</b><div>相似群組</div></div><div class="stat"><b>${data.shoppingLists.length}</b><div>購物清單</div></div><div class="stat"><b>${uniq(data.items.map(i=>i.country)).length}</b><div>國家</div></div></div><div class="toolRow"><button class="smallBtn" id="exportBtn">匯出資料</button><button class="smallBtn" id="importBtn">匯入備份</button><button class="smallBtn" id="loadExamplesBtn">補回範例</button></div></details>${shoppingSelected.size?`<details open><summary>此次購物</summary><div class="toolRow"><button class="primary" id="makeSelectedList">用已選 ${shoppingSelected.size} 篇建立清單</button><button class="smallBtn" id="clearSelected">清除選取</button></div></details>`:""}</aside>`}
+function openDrawer(){$("#drawerRoot").innerHTML=drawerHTML();$("#closeDrawer").onclick=closeDrawer;$("#drawerBackdrop").onclick=closeDrawer;$$('[data-view]').forEach(b=>b.onclick=()=>{view=b.dataset.view;closeDrawer();render()});$$('[data-cat]').forEach(b=>b.onclick=()=>{categoryFilter=b.dataset.cat;countryFilter='全部';tagFilter='全部';openDrawer();render()});$$('[data-country]').forEach(b=>b.onclick=()=>{countryFilter=b.dataset.country;tagFilter='全部';openDrawer();render()});$$('[data-tag]').forEach(b=>b.onclick=()=>{tagFilter=b.dataset.tag;openDrawer();render()});if($('#makeSelectedList'))$('#makeSelectedList').onclick=()=>openShoppingListModal([...shoppingSelected]);if($('#clearSelected'))$('#clearSelected').onclick=()=>{shoppingSelected.clear();openDrawer();render()};if($('#exportBtn'))$('#exportBtn').onclick=exportData;if($('#importBtn'))$('#importBtn').onclick=()=>$('#importFile').click();if($('#loadExamplesBtn'))$('#loadExamplesBtn').onclick=()=>{const ids=new Set(data.items.map(i=>i.id));demos.forEach(d=>{if(!ids.has(d.id))data.items.unshift(normalizeItem(d))});save();openDrawer();render()}}
+function closeDrawer(){$("#drawerRoot").innerHTML=""}
+function openModal(html){$("#modalRoot").innerHTML=`<div class="modalBackdrop" id="modalBackdrop"><section class="sheet">${html}</section></div>`;$("#modalBackdrop").onclick=e=>{if(e.target.id==='modalBackdrop')closeModal()}}
+function closeModal(){$("#modalRoot").innerHTML=""}
+function detailOrder(){return currentPool().length?currentPool():[...data.items].sort((a,b)=>b.createdAt-a.createdAt)}
+function openDetail(id){detailIds=detailOrder().map(i=>i.id);detailIndex=Math.max(0,detailIds.indexOf(id));renderDetail()}
+function renderDetail(){const id=detailIds[detailIndex],i=data.items.find(x=>x.id===id);if(!i)return closeModal();const img=i.images?.[0]||"",q=encodeURIComponent(i.address||i.title),nq=encodeURIComponent(`${i.title} ${i.address||""}`);openModal(`<div class="sheetHead"><strong>${detailIndex+1} / ${detailIds.length}</strong><div class="headActions"><button class="iconBtn" id="editDetail">✎</button><button class="iconBtn danger" id="deleteDetail">⌫</button><button class="iconBtn" id="closeModal">×</button></div></div><div class="detailHero">${img?`<img src="${esc(img)}" alt="">`:""}<div class="detailNav"><button class="navArrow" id="prevDetail">‹</button><button class="navArrow" id="nextDetail">›</button></div><div class="counter">左右切換文章</div></div><div class="detailBody"><h2 class="detailTitle">${esc(i.title)}</h2><div class="detailMeta">${esc(i.platform)} · ${esc(i.category)} · ${esc(i.country)}${i.city?` · ${esc(i.city)}`:""}</div>${i.url?`<div class="detailSection"><a class="linkPill" href="${esc(i.url)}" target="_blank" rel="noopener">↗ 開啟原文章</a></div>`:""}<div class="detailSection"><h4>整理摘要</h4><div class="bodyText">${esc(i.summary)}</div></div>${i.products?.length?`<div class="detailSection"><h4>文章提到的商品</h4><div class="tagRow">${i.products.map(p=>`<span class="tag">${esc(p)}</span>`).join("")}</div></div>`:""}${i.address?`<div class="detailSection"><h4>地點</h4><div class="bodyText">${esc(i.address)}</div><a class="linkPill" href="https://www.google.com/maps/search/?api=1&query=${q}" target="_blank">Google Maps</a>${i.country==='韓國'?`<a class="linkPill" href="https://map.naver.com/p/search/${nq}" target="_blank">NAVER Map</a>`:""}</div>`:""}<div class="detailSection"><h4>可搜尋文字</h4><div class="tagRow">${(i.terms||[]).map(t=>`<button class="termBtn" data-copy="${esc(t)}">${esc(t)} ⧉</button>`).join("")}</div></div><div class="detailSection"><h4>標籤</h4><div class="tagRow">${(i.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join("")}</div></div><div class="detailSection noteBox"><h4>我的備註</h4><textarea id="noteInput" placeholder="自己的想法、是否值得去、下次要買什麼…">${esc(i.note||"")}</textarea><div class="formActions"><button class="ghost" id="saveNote">儲存備註</button></div></div><div class="detailSection"><h4>原始文章內容</h4><div class="bodyText">${esc(i.body)}</div></div></div>`);$('#closeModal').onclick=closeModal;$('#editDetail').onclick=()=>openEditor(i.id);$('#deleteDetail').onclick=()=>{if(confirm('確定刪除這篇收藏？')){data.items=data.items.filter(x=>x.id!==i.id);shoppingSelected.delete(i.id);save();detailIds=detailIds.filter(x=>x!==i.id);if(!detailIds.length){closeModal();render()}else{detailIndex=Math.min(detailIndex,detailIds.length-1);renderDetail();render()}}};$('#prevDetail').onclick=()=>{detailIndex=(detailIndex-1+detailIds.length)%detailIds.length;renderDetail()};$('#nextDetail').onclick=()=>{detailIndex=(detailIndex+1)%detailIds.length;renderDetail()};$('#saveNote').onclick=()=>{i.note=$('#noteInput').value;save();$('#saveNote').textContent='已儲存 ✓'};$$('[data-copy]').forEach(b=>b.onclick=async()=>{try{await navigator.clipboard.writeText(b.dataset.copy);b.textContent='已複製 ✓'}catch{prompt('複製這段文字',b.dataset.copy)}});let sx=null;$('.detailHero').addEventListener('touchstart',e=>sx=e.touches[0].clientX,{passive:true});$('.detailHero').addEventListener('touchend',e=>{if(sx===null)return;const d=e.changedTouches[0].clientX-sx;if(Math.abs(d)>55){detailIndex=d<0?(detailIndex+1)%detailIds.length:(detailIndex-1+detailIds.length)%detailIds.length;renderDetail()}sx=null},{passive:true})}
+function editorHTML(item){const edit=!!item;return`<div class="sheetHead"><strong>${edit?'編輯收藏':'收藏文章'}</strong><button class="iconBtn" id="closeModal">×</button></div><form class="form" id="editorForm"><div class="formGrid"><label class="full">文章網址<input id="fUrl" type="url" value="${esc(item?.url||'')}" placeholder="https://…"></label><label>平台<select id="fPlatform">${['Instagram','Threads','Facebook','小紅書','YouTube','TikTok','X','網頁','其他'].map(x=>`<option ${item?.platform===x?'selected':''}>${x}</option>`).join('')}</select></label><label>標題<input id="fTitle" required value="${esc(item?.title||'')}"></label><label>分類<select id="fCategory">${['自動判斷','購物','美食','旅遊','設計','產品','娛樂','其他'].map(x=>`<option value="${x==='自動判斷'?'':x}" ${item?.category===x?'selected':''}>${x}</option>`).join('')}</select></label><label>國家<select id="fCountry">${['自動判斷','韓國','日本','台灣','泰國','越南','其他'].map(x=>`<option value="${x==='自動判斷'?'':x}" ${item?.country===x?'selected':''}>${x}</option>`).join('')}</select></label><label>城市 / 區域<input id="fCity" value="${esc(item?.city||'')}"></label><label>購物類型<input id="fShoppingType" value="${esc(item?.shoppingType||'')}"></label><label class="full">文章內容<textarea id="fBody" rows="6">${esc(item?.body||'')}</textarea></label><label class="full">商品（每行一個）<textarea id="fProducts" rows="4">${esc((item?.products||[]).join('\n'))}</textarea></label><label class="full">圖片網址（每行一個）<textarea id="fImages" rows="3">${esc((item?.images||[]).join('\n'))}</textarea></label><label class="full">標籤（逗號分隔）<input id="fTags" value="${esc((item?.tags||[]).join(', '))}"></label><label class="full">備註<textarea id="fNote" rows="3">${esc(item?.note||'')}</textarea></label></div><div class="formActions"><button type="button" class="ghost" id="cancelEdit">取消</button><button class="primary">${edit?'儲存修改':'加入收藏'}</button></div></form>`}
+function openEditor(id=null){const item=id?data.items.find(x=>x.id===id):null;openModal(editorHTML(item));$('#closeModal').onclick=$('#cancelEdit').onclick=closeModal;$('#editorForm').onsubmit=e=>{e.preventDefault();const title=$('#fTitle').value.trim(),body=$('#fBody').value.trim(),city=$('#fCity').value.trim(),country=$('#fCountry').value||inferCountry(`${title} ${body} ${city}`),category=$('#fCategory').value||inferCategory(`${title} ${body}`),products=$('#fProducts').value.split('\n').map(x=>x.trim()).filter(Boolean),images=$('#fImages').value.split('\n').map(x=>x.trim()).filter(Boolean),tags=$('#fTags').value.split(',').map(x=>x.trim()).filter(Boolean);const obj=normalizeItem({...(item||{}),id:item?.id||uid(),title,body,city,country,category,products,images,tags,platform:$('#fPlatform').value,url:$('#fUrl').value.trim(),shoppingType:$('#fShoppingType').value.trim(),note:$('#fNote').value,address:extractAddress(body),summary:body.replace(/\s+/g,' ').slice(0,130),terms:uniq([title,...products,...tags]).slice(0,12),createdAt:item?.createdAt||Date.now()});if(item)Object.assign(item,obj);else data.items.unshift(obj);save();closeModal();render()}}
+function openShoppingListModal(ids){const arts=ids.map(id=>data.items.find(x=>x.id===id)).filter(Boolean),m={};arts.forEach(a=>(a.products||[]).forEach(p=>{const k=norm(p);if(!m[k])m[k]={name:p,country:a.country,sourceCount:0,qty:1,done:false,image:a.images?.[0]||''};m[k].sourceCount++}));const arr=Object.values(m);openModal(`<div class="sheetHead"><strong>建立購物清單</strong><button class="iconBtn" id="closeModal">×</button></div><form class="form" id="shopForm"><label>清單名稱<input id="shopName" required value="${esc((arts[0]?.country||'')+' 購物清單')}"></label><div class="detailSection"><h4>品項預覽</h4><div class="shopItems">${arr.map(x=>`<div class="shopItem">${x.image?`<img class="shopThumb" src="${esc(x.image)}">`:`<span class="thumbAdd">＋</span>`}<div><div class="shopItemName">${esc(x.name)}</div><div class="shopItemSub">${x.sourceCount>1?`${x.sourceCount} 篇共同提到`:''}</div></div><span></span></div>`).join('')||'沒有可加入的商品'}</div></div><div class="formActions"><button type="button" class="ghost" id="cancelShop">取消</button><button class="primary" ${arr.length?'':'disabled'}>建立</button></div></form>`);$('#closeModal').onclick=$('#cancelShop').onclick=closeModal;$('#shopForm').onsubmit=e=>{e.preventDefault();data.shoppingLists.unshift({id:uid(),name:$('#shopName').value.trim(),createdAt:Date.now(),items:arr});shoppingSelected.clear();save();closeModal();view='shopping';render()}}
+function editShoppingImage(listId,idx){const l=data.shoppingLists.find(x=>x.id===listId);if(!l)return;const it=l.items[idx];openModal(`<div class="sheetHead"><strong>商品圖片</strong><button class="iconBtn" id="closeModal">×</button></div><form class="form" id="imgForm"><label>圖片網址<input id="imgUrl" value="${esc(it.image||'')}" placeholder="https://…"></label><label style="margin-top:10px">或選擇照片<input id="imgFile" type="file" accept="image/*"></label><div class="formActions"><button type="button" class="ghost" id="cancelImg">取消</button><button class="primary">儲存</button></div></form>`);$('#closeModal').onclick=$('#cancelImg').onclick=closeModal;$('#imgForm').onsubmit=e=>{e.preventDefault();const file=$('#imgFile').files?.[0];if(file){const r=new FileReader();r.onload=()=>{it.image=r.result;save();closeModal();render()};r.readAsDataURL(file)}else{it.image=$('#imgUrl').value.trim();save();closeModal();render()}}}
+function exportData(){const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`social-saver-v${VERSION}-backup.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)}
+$('#importFile').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const p=JSON.parse(await f.text()),items=Array.isArray(p)?p:(p.items||[]),lists=p.shoppingLists||[],ids=new Set(data.items.map(x=>x.id));items.map(normalizeItem).forEach(i=>{if(!ids.has(i.id)){data.items.push(i);ids.add(i.id)}});const li=new Set(data.shoppingLists.map(x=>x.id));lists.forEach(l=>{if(!li.has(l.id)){data.shoppingLists.push(l);li.add(l.id)}});save();alert('匯入完成');render()}catch(err){alert('匯入失敗：'+err.message)}e.target.value=''};
+$('#menuBtn').onclick=openDrawer;$('#addFab').onclick=()=>openEditor();$('#searchFab').onclick=()=>{$('#searchBar').classList.toggle('hidden');if(!$('#searchBar').classList.contains('hidden'))setTimeout(()=>$('#searchInput').focus(),50)};$('#searchInput').oninput=e=>{searchText=e.target.value;render()};$('#clearSearch').onclick=()=>{$('#searchInput').value='';searchText='';$('#searchBar').classList.add('hidden');render()};
 render();
 </script>
 </body>
