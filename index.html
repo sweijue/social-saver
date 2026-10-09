@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="收藏庫">
-<title>收藏庫 Social Saver v1.5.1</title>
+<title>收藏庫 Social Saver v1.6.0</title>
 <style>
 :root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#6e6e68;--line:#e4e4de;--soft:#efefe9;--shadow:0 10px 28px rgba(0,0,0,.07);--r:20px;--navh:74px}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif;font-size:17px}body{min-height:100vh;padding-bottom:calc(var(--navh) + env(safe-area-inset-bottom) + 18px)}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
@@ -223,6 +223,38 @@ input[type=checkbox]{accent-color:var(--ui-active)}
 /* Keep the dialog clear of iPhone safe areas as well as the visible viewport edge. */
 .modalBackdrop{padding-top:max(24px,env(safe-area-inset-top));padding-bottom:max(24px,env(safe-area-inset-bottom))}
 .sheet{max-height:calc(100dvh - max(24px,env(safe-area-inset-top)) - max(24px,env(safe-area-inset-bottom)))}
+
+
+/* v1.6.0 -- URL first capture, stable shopping item layout, responsive IME search. */
+.shopItem{display:block!important;padding:9px!important;min-width:0}
+.shopTopLine{display:grid;grid-template-columns:48px minmax(0,1fr);gap:9px;align-items:center}
+.shopThumbWrap{width:46px;height:46px}.shopThumb,.thumbAdd{width:46px;height:46px}
+.shopInfo{min-width:0}.shopItemName{font-size:13px;line-height:1.4;overflow-wrap:anywhere}.shopItemSub{font-size:11px}
+.shopBottomLine{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+.shopNoteBtn.uiBtn{flex:0 1 auto!important;min-width:70px;max-width:none!important;width:auto!important;height:29px!important;padding:5px 8px!important;margin:0!important;font-size:11px!important;white-space:nowrap!important}
+.shopControls{display:flex;gap:12px;align-items:center;flex-wrap:nowrap!important;justify-content:flex-end}
+.shopNoteContent{margin-top:7px;font-size:12px;color:#41433f;background:#f4f5f1;border-radius:8px;padding:7px 9px;line-height:1.55;overflow-wrap:anywhere;white-space:pre-wrap}
+.shopNoteContent>span{font-size:10px;color:#888;font-weight:800;margin-right:7px}
+.shopItem.done{opacity:.58}.shopItem.done .shopItemName{text-decoration:line-through}
+.quickForm{padding:18px 16px 14px}.quickUrlLabel{font-size:14px;color:var(--text)}
+.quickUrlLabel input{height:46px;font-size:15px;border-color:#bbbcb6}
+.quickStatus{font-size:12px;line-height:1.5;margin-top:10px;padding:10px 11px;border-radius:9px;background:#f5f5f1;color:#555}
+.quickStatus[data-state=loading]{background:#f0f2f2}.quickStatus[data-state=ok]{background:#eef5ee;color:#3d6b4a}.quickStatus[data-state=fail]{background:#fff5ea;color:#886329}
+.quickPreview{display:grid;grid-template-columns:62px minmax(0,1fr);align-items:start;gap:10px;margin-top:12px;padding:10px;border:1px solid var(--line);border-radius:11px;background:#fafaf9}
+.quickPreview:has(>div:only-child){grid-template-columns:1fr}
+.quickCover{width:62px;height:62px;object-fit:cover;border-radius:7px;background:#eee}
+.quickPreview strong{font-size:14px;line-height:1.45;display:block}.quickPreview small{display:block;font-size:11px;color:#777;margin:4px 0}.quickPreview p{font-size:12px;line-height:1.5;margin:0;color:#555}
+.quickAdvanced{border:1px solid var(--line);border-radius:11px;margin-top:12px;overflow:hidden}
+.quickAdvanced summary{padding:10px 12px;font-size:13px;font-weight:850;cursor:pointer;background:#fafaf8;list-style:none}
+.quickAdvanced summary::before{content:'＋';margin-right:6px}.quickAdvanced[open] summary::before{content:'－'}
+.quickAdvanced .formGrid{padding:12px;display:grid;grid-template-columns:1fr;gap:10px}
+.quickAdvanced .formGrid label{grid-column:1/-1}
+.quickPrivacy{font-size:10px;color:#777;line-height:1.5;margin-top:12px}
+.persistBanner{position:fixed;z-index:210;left:12px;right:12px;top:max(12px,env(safe-area-inset-top));padding:11px 13px;font-size:12px;line-height:1.5;border-radius:10px;border:1px solid #e8cf97;background:#fff8e9;color:#664a10;box-shadow:0 8px 30px rgba(0,0,0,.14)}
+.storageWarning{padding:10px;border:1px solid #e8cf97;background:#fff8e9;border-radius:9px;font-size:12px;color:#6b521b;line-height:1.5;margin-bottom:10px}
+.storageFoot{font-size:11px;color:#777;line-height:1.5;margin:8px 0}
+.searchCompact input{ime-mode:auto}
+@media(max-width:390px){.shopBottomLine{gap:5px}.shopControls{gap:7px}.shopNoteBtn.uiBtn{padding:4px 6px!important;font-size:10px!important}}
 </style>
 </head>
 <body>
@@ -242,7 +274,8 @@ input[type=checkbox]{accent-color:var(--ui-active)}
 <input id="importFile" type="file" accept="application/json" class="hidden">
 
 <script>
-const VERSION="1.5.1", STORE="socialSaver_data";
+
+const VERSION="1.6.0", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -273,9 +306,82 @@ function formatSavedAt(ms){const d=new Date(ms||Date.now());return Number.isFini
 function sortControl(){const opts=[['newest','最新收藏'],['oldest','最早收藏'],['title','標題 A–Z'],['country','國家'],['category','分類']];return `<label class="sortWrap"><span>排序</span><select id="sortSelect" aria-label="卡片排序">${opts.map(([value,label])=>`<option value="${value}" ${sortMode===value?'selected':''}>${label}</option>`).join('')}</select></label>`}
 
 let memoryStore=null;
+let dbHandle=null;
+let storageMode='checking';
+let storageError='';
+let pendingBeforeDB=false;
+let bootReady=false;
+let saveChain=Promise.resolve();
+function safeClone(value){return JSON.parse(JSON.stringify(value))}
 function readStore(){try{return JSON.parse(localStorage.getItem(STORE)||'null')}catch{return memoryStore}}
-function writeStore(x){memoryStore=x;try{localStorage.setItem(STORE,JSON.stringify(x))}catch{}}
-function inferCountry(text){if(/[가-힣]/.test(text)||/서울|부산|제주|올리브영/.test(text))return'韓國';if(/[ぁ-んァ-ン]/.test(text)||/東京|大阪|京都|日本/.test(text))return'日本';if(/台灣|臺灣|台北|新竹|台中|高雄/.test(text))return'台灣';if(/Thailand|泰國|Bangkok|曼谷/i.test(text))return'泰國';if(/Vietnam|越南|Hanoi|河內/i.test(text))return'越南';return'其他'}
+function showStorageWarning(message){
+ storageError=message;
+ const notice=document.querySelector('#storageWarning');
+ if(notice){notice.textContent=message;notice.classList.remove('hidden')}
+ let banner=document.querySelector('#persistBanner');
+ if(!banner){banner=document.createElement('div');banner.id='persistBanner';banner.setAttribute('role','alert');document.body.appendChild(banner)}
+ banner.className='persistBanner';banner.textContent=message;
+}
+function openDB(){return new Promise((resolve,reject)=>{
+ if(!('indexedDB' in window)){reject(new Error('不支援 IndexedDB'));return}
+ const r=indexedDB.open('socialSaverDatabase',1);
+ r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains('state'))r.result.createObjectStore('state')};
+ r.onerror=()=>reject(r.error||new Error('開啟 IndexedDB 失敗'));
+ r.onblocked=()=>reject(new Error('本機儲存被其他頁面鎖住'));
+ r.onsuccess=()=>resolve(r.result);
+})}
+function dbRead(db){return new Promise((resolve,reject)=>{
+ const tx=db.transaction('state','readonly');const req=tx.objectStore('state').get('latest');
+ req.onsuccess=()=>resolve(req.result||null);req.onerror=()=>reject(req.error||new Error('讀取失敗'));
+})}
+function dbWrite(db,value){return new Promise((resolve,reject)=>{
+ const tx=db.transaction('state','readwrite');
+ tx.objectStore('state').put(value,'latest');
+ tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error||new Error('寫入失敗'));
+ tx.onabort=()=>reject(tx.error||new Error('交易已取消'));
+})}
+function writeStore(x){
+ x.version=VERSION;
+ x._savedAt=Date.now();
+ memoryStore=x;
+ if(!bootReady)pendingBeforeDB=true;
+ const snapshot=safeClone(x);
+ let localOK=false;
+ try{localStorage.setItem(STORE,JSON.stringify(snapshot));localOK=true}
+ catch(err){/* IndexedDB may still be available; warn only if both backends fail. */}
+ saveChain=saveChain.catch(()=>{}).then(async()=>{
+   if(dbHandle){
+     try{await dbWrite(dbHandle,snapshot);storageMode='indexeddb';return true}
+     catch(err){storageMode=localOK?'localStorage':'memory';if(!localOK)showStorageWarning('無法將清單永久儲存到此瀏覽器，重新整理可能遺失。請先匯出備份。');return localOK}
+   }
+   storageMode=localOK?'localStorage':'memory';
+   if(!localOK)showStorageWarning('此瀏覽器不允許永久儲存，重新整理可能遺失。請先匯出備份。');
+   return localOK;
+ });
+ return saveChain;
+}
+async function initStorage(){
+ try{
+   const db=await openDB();
+   dbHandle=db;
+   const saved=await dbRead(db);
+   if(!pendingBeforeDB && saved){
+     const local=readStore();
+     const fromDB=Number(saved._savedAt||0),fromLocal=Number(local?._savedAt||0);
+     if(!local||fromDB>fromLocal){data=loadData(saved)}
+     else data=loadData(local);
+   }
+   storageMode='indexeddb';
+ }catch(err){
+   storageMode='localStorage';
+   try{localStorage.setItem('__socialSaverTest','1');localStorage.removeItem('__socialSaverTest')}
+   catch{storageMode='memory';showStorageWarning('目前瀏覽器沒有可用的永久儲存空間。清單可能在重新整理後消失，請先匯出備份。')}
+ }
+ bootReady=true;
+ await writeStore(data);
+ render();
+}
+function inferCountry(text){if(/[가-힣]/.test(text)||/서울|부산|제주|올리브영|韓國|首爾|弘大|聖水|Seoul|Korea|Hongdae/i.test(text))return'韓國';if(/[ぁ-んァ-ン]/.test(text)||/東京|大阪|京都|日本/.test(text))return'日本';if(/台灣|臺灣|台北|新竹|台中|高雄/.test(text))return'台灣';if(/Thailand|泰國|Bangkok|曼谷/i.test(text))return'泰國';if(/Vietnam|越南|Hanoi|河內/i.test(text))return'越南';return'其他'}
 function inferCategory(text){const rules=[['購物',/購物|必買|藥妝|美妝|百貨|商品|品牌|olive young|올리브영|大創|다이소|shopping|shop/i],['美食',/餐廳|咖啡|美食|烤肉|甜點|맛집|카페|restaurant|food/i],['旅遊',/景點|飯店|機場|地鐵|行程|旅遊|hotel|airport|station/i],['設計',/設計|排版|字體|海報|design|font|poster/i],['產品',/產品|規格|型號|model|spec/i],['娛樂',/演唱會|歌手|藝人|concert|콘서트/i]];for(const [c,r] of rules)if(r.test(text))return c;return'其他'}
 function extractAddress(text){const p=String(text||'').split(/[。；;\n]/).map(x=>x.trim()).filter(Boolean);return p.find(x=>/(서울|부산|제주).*(구|로|길)\s*\d*/.test(x))||p.find(x=>/(市|縣).*(區|鄉|鎮|市).*(路|街|巷|號)/.test(x))||''}
 const demos=[
@@ -300,19 +406,34 @@ function demoArtwork(name,idx,country){
  return 'data:image/svg+xml;charset=UTF-8,'+encodeURIComponent(svg);
 }
 demos.forEach(d=>{if(d.isExample&&d.products?.length)d.images=d.products.map((name,idx)=>demoArtwork(name,idx,d.country))});
-function normalizeItem(i){const products=Array.isArray(i.products)?i.products:[];const images=Array.isArray(i.images)?i.images:[];const productImages=i.productImages||{};products.forEach((p,idx)=>{if(!productImages[p]&&images[idx])productImages[p]=images[idx]});return{id:i.id||uid(),isExample:!!i.isExample,title:i.title||'未命名收藏',platform:i.platform||'其他',url:i.url||'',body:i.body||'',category:i.category||inferCategory(`${i.title||''} ${i.body||''}`),country:i.country||inferCountry(`${i.title||''} ${i.body||''} ${i.city||''}`),city:i.city||'',shoppingType:i.shoppingType||'',address:i.address||extractAddress(i.body||''),products,tags:Array.isArray(i.tags)?i.tags:[],terms:Array.isArray(i.terms)?i.terms:[],images,productImages,summary:i.summary||String(i.body||'').replace(/\s+/g,' ').slice(0,130),note:i.note||'',createdAt:i.createdAt||Date.now(),status:i.status||((i.category||'')==='購物'?'想買':'剛收藏')}}
-function loadData(){
- let d=readStore()||{items:[],shoppingLists:[],travelPlans:[]};
+function normalizeItem(i){
+ const products=Array.isArray(i.products)?i.products:[];
+ const images=Array.isArray(i.images)?i.images:[];
+ const productImages={...(i.productImages||{})};
+ // Sequential mapping is only defensible if the source provides equal numbers of photos and products.
+ if(images.length===products.length && products.length){products.forEach((p,idx)=>{if(!productImages[p])productImages[p]=images[idx]})}
+ return {
+  id:i.id||uid(),isExample:!!i.isExample,title:i.title||'未命名收藏',platform:i.platform||'其他',url:i.url||'',body:i.body||'',
+  category:i.category||inferCategory(`${i.title||''} ${i.body||''}`),country:i.country||inferCountry(`${i.title||''} ${i.body||''} ${i.city||''}`),
+  city:i.city||'',shoppingType:i.shoppingType||'',address:i.address||extractAddress(i.body||''),products,
+  tags:Array.isArray(i.tags)?i.tags:[],terms:Array.isArray(i.terms)?i.terms:[],images,productImages,
+  summary:i.summary||String(i.body||'').replace(/\s+/g,' ').slice(0,130),note:i.note||'',
+  sourceQuality:i.sourceQuality||'manual',sourceCapturedAt:i.sourceCapturedAt||null,
+  createdAt:i.createdAt||Date.now(),status:i.status||((i.category||'')==='購物'?'想買':'剛收藏')
+ }
+}
+function loadData(snapshot=readStore()){
+ let d=snapshot||{items:[],shoppingLists:[],travelPlans:[]};
  d.items=Array.isArray(d.items)?d.items.map(normalizeItem):[];
  d.shoppingLists=Array.isArray(d.shoppingLists)?d.shoppingLists:[];
  d.travelPlans=Array.isArray(d.travelPlans)?d.travelPlans:[];
  d.preferences=d.preferences||{};
  // Every new version includes three working examples; deleting an example stays deleted within the same version.
  if(d.exampleVersion!==VERSION){d.items=d.items.filter(i=>!i.isExample);d.items.unshift(...demos.map(normalizeItem));d.exampleVersion=VERSION}
- d.version=VERSION;writeStore(d);return d
+ d.version=VERSION;return d
 }
 let data=loadData();
-function save(){data.version=VERSION;writeStore(data)}
+function save(){data.version=VERSION;return writeStore(data)}
 let view='library',listMode='shopping',categoryFilter='全部',countryFilter='全部',tagFilter='全部',selected=new Set(),detailIds=[],detailIndex=0;
 let sortMode=['newest','oldest','title','country','category'].includes(data.preferences.sortMode)?data.preferences.sortMode:'newest';
 function allSorted(){return [...data.items].sort((a,b)=>{
@@ -324,7 +445,19 @@ function allSorted(){return [...data.items].sort((a,b)=>{
 })}
 
 function filteredItems(q=''){return allSorted().filter(i=>{if(categoryFilter!=='全部'&&i.category!==categoryFilter)return false;if(countryFilter!=='全部'&&i.country!==countryFilter)return false;if(tagFilter!=='全部'&&!(i.tags||[]).includes(tagFilter))return false;if(!q)return true;const h=norm([i.title,i.body,i.category,i.country,i.city,i.shoppingType,i.address,...i.tags,...i.terms,...i.products].join(' '));return h.includes(norm(q))})}
-function productImage(item,p,idx){return item.productImages?.[p]||item.images?.[idx]||item.images?.[0]||''}
+
+function productImage(item,p,idx){
+ const imgs=item.images||[],ps=item.products||[], mapped=item.productImages?.[p]||'';
+ if(mapped){
+   if(imgs.length!==ps.length && imgs.includes(mapped)){
+     const repeated=ps.filter(n=>item.productImages?.[n]===mapped).length;
+     if(repeated>1)return '';
+     return ''; // Old automatic assignment to an article cover is unverified.
+   }
+   return mapped; // An explicitly supplied product photo.
+ }
+ return imgs.length===ps.length ? (imgs[idx]||'') : '';
+}
 function cardHTML(i){
  const img=i.images?.[0]||'';
  return `<article class="card" data-id="${i.id}">
@@ -336,7 +469,7 @@ function cardHTML(i){
    <div class="cardBody">
     <h3 class="title">${esc(i.title)} ${i.isExample?'<span class="tag example">範例</span>':''}</h3>
     <div class="meta">${esc(i.category)}${i.city?` · ${esc(i.city)}`:''}</div>
-    <div class="originalSnippet"><span>原文</span>${esc(i.body||i.summary||'')}</div>
+    <div class="originalSnippet"><span>${i.sourceQuality==='preview'?'摘要':i.sourceQuality==='linkOnly'?'連結':'原文'}</span>${esc(i.body||i.summary||'')}</div>
     <div class="tagRow">${(i.tags||[]).slice(0,3).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>
     <div class="savedTime">收藏於 ${formatSavedAt(i.createdAt)}</div>
    </div>
@@ -369,21 +502,27 @@ function renderLists(){return`<div class="pageHead"><div><h2>清單</h2><p>批�
 function renderShoppingLists(){
  if(!data.shoppingLists.length)return '<div class="empty">尚未建立購物清單。回收藏庫勾選文章後，選「購物清單」。</div>';
  return `<div class="listGrid">${data.shoppingLists.map(l=>`<section class="listCard">
-   <div class="listHead"><div><div class="listName">${esc(l.name)}</div><div class="listMeta">${l.items.length} 項 · ${new Date(l.createdAt).toLocaleDateString('zh-TW')}</div></div><button type="button" class="iconBtn uiBtn" data-delete-list="${l.id}" aria-label="刪除購物清單">${icon('trash')}</button></div>
-   <div class="shopItems">${l.items.map((it,idx)=>`<div class="shopItem ${it.done?'done':''}">
-     <div class="shopThumbWrap">
-       ${it.image?`<button type="button" class="shopThumb" data-view-shop-image="${l.id}:${idx}" aria-label="放大 ${esc(it.name)} 商品圖片"><img src="${esc(it.image)}" alt="${esc(it.name)}"></button>
-        <button type="button" class="shopThumbEdit" data-shopimg="${l.id}:${idx}" title="更換圖片" aria-label="更換商品圖片">${icon('edit',12)}</button>`
-       :`<button type="button" class="thumbAdd" data-shopimg="${l.id}:${idx}" aria-label="新增商品圖片">${icon('plus',16)}</button>`}
-     </div>
-     <div class="shopInfo"><div class="shopItemName">${esc(it.name)}</div><div class="shopItemSub">${it.sourceCount>1?`${it.sourceCount} 篇共同提到`:esc(it.country||'')}</div>
-       <button type="button" class="shopNoteBtn" data-shopnote="${l.id}:${idx}">${icon('note',13)} ${it.note?`<span class="shopNoteText">${esc(it.note)}</span>`:'新增備註'}</button>
-     </div>
-     <div class="shopControls"><label class="doneMini"><input type="checkbox" data-done="${l.id}:${idx}" ${it.done?'checked':''}>已買</label><div class="qty"><button type="button" class="uiBtn" data-qty="${l.id}:${idx}:-1" aria-label="減少數量">${icon('minus',13)}</button><span>${it.qty||1}</span><button type="button" class="uiBtn" data-qty="${l.id}:${idx}:1" aria-label="增加數量">${icon('plus',13)}</button></div></div>
-   </div>`).join('')}</div>
+  <div class="listHead"><div><div class="listName">${esc(l.name)}</div><div class="listMeta">${l.items.length} 項 · ${new Date(l.createdAt).toLocaleDateString('zh-TW')}</div></div>
+   <button type="button" class="iconBtn uiBtn" data-delete-list="${l.id}" aria-label="刪除購物清單">${icon('trash')}</button></div>
+  <div class="shopItems">${l.items.map((it,idx)=>`<div class="shopItem ${it.done?'done':''}">
+   <div class="shopTopLine">
+    <div class="shopThumbWrap">
+      ${it.image?`<button type="button" class="shopThumb" data-view-shop-image="${l.id}:${idx}" aria-label="放大 ${esc(it.name)} 的商品圖片"><img src="${esc(it.image)}" alt="${esc(it.name)}"></button>
+      <button type="button" class="shopThumbEdit" data-shopimg="${l.id}:${idx}" aria-label="更換商品圖片">${icon('edit',12)}</button>`
+      :`<button type="button" class="thumbAdd" data-shopimg="${l.id}:${idx}" aria-label="新增 ${esc(it.name)} 商品圖片">${icon('plus',16)}</button>`}
+    </div>
+    <div class="shopInfo"><div class="shopItemName">${esc(it.name)}</div><div class="shopItemSub">${it.sourceCount>1?`${it.sourceCount} 篇文章共同提到`:esc(it.country||'')}</div></div>
+   </div>
+   <div class="shopBottomLine">
+    <button type="button" class="shopNoteBtn uiBtn" data-shopnote="${l.id}:${idx}" aria-label="編輯 ${esc(it.name)} 的備註">${icon('note',13)} <span>${it.note?'編輯備註':'加備註'}</span></button>
+    <div class="shopControls"><label class="doneMini"><input type="checkbox" data-done="${l.id}:${idx}" ${it.done?'checked':''}><span>已買</span></label>
+      <div class="qty"><button type="button" class="uiBtn" data-qty="${l.id}:${idx}:-1" aria-label="減少數量">${icon('minus',13)}</button><span>${it.qty||1}</span><button type="button" class="uiBtn" data-qty="${l.id}:${idx}:1" aria-label="增加數量">${icon('plus',13)}</button></div>
+    </div>
+   </div>
+   ${it.note?`<div class="shopNoteContent"><span>備註</span>${esc(it.note)}</div>`:''}
+  </div>`).join('')}</div>
  </section>`).join('')}</div>`
 }
-
 function renderTravelPlans(){if(!data.travelPlans.length)return'<div class="empty">尚未建立旅遊行程。<br>回收藏庫勾選卡片後，選「建立旅遊行程」。</div>';return`<div class="listGrid">${data.travelPlans.map(p=>`<section class="listCard"><div class="listHead"><div><div class="listName">${esc(p.name)}</div><div class="listMeta">${new Date(p.createdAt).toLocaleDateString('zh-TW')} · ${p.items.length} 個收藏</div></div><button class="iconBtn uiBtn" data-delete-trip="${p.id}" aria-label="刪除行程">${icon('trash')}</button></div>${p.items.map(id=>{const i=data.items.find(x=>x.id===id);if(!i)return'';return`<button class="miniCard tripItem" data-open="${i.id}" style="width:100%">${i.images?.[0]?`<img class="tripThumb" src="${esc(i.images[0])}" alt="">`:'<span class="tripThumb"></span>'}<span><div class="tripTitle">${esc(i.title)}</div><div class="tripMeta">${esc(i.country)}${i.city?` · ${esc(i.city)}`:''}</div></span></button>`}).join('')}</section>`).join('')}</div>`}
 function renderSearch(){
  const q=window.searchQuery||'',results=q?filteredItems(q):filteredItems(''),countries=uniq(data.items.map(i=>i.country)).length,clusters=similarClusters().length;
@@ -399,8 +538,8 @@ function renderSearch(){
    <div class="searchFilterRow"><span>國家</span><div class="chips">${countryOpts.map(c=>`<button class="chip ${countryFilter===c?'active':''}" data-search-country="${esc(c)}">${esc(c)}</button>`).join('')}</div></div>
    <div class="searchFilterRow"><span>標籤</span><div class="chips">${tags.map(t=>`<button class="chip ${tagFilter===t?'active':''}" data-search-tag="${esc(t)}">${t==='全部'?'全部':'#'+esc(t)}</button>`).join('')}</div></div>
  </div>
- <div class="searchResultsHead"><div class="searchResultsTitle">${q?`搜尋結果 · ${results.length}`:`全部收藏 · ${results.length}`}</div>${sortControl()}</div>
- ${results.length?`<div class="grid">${results.map(cardHTML).join('')}</div>`:'<div class="empty">找不到符合的收藏。</div>'}`}
+ <div class="searchResultsHead"><div class="searchResultsTitle" id="searchResultsTitle">${q?`搜尋結果 · ${results.length}`:`全部收藏 · ${results.length}`}</div>${sortControl()}</div>
+ <div id="searchResults">${results.length?`<div class="grid">${results.map(cardHTML).join('')}</div>`:'<div class="empty">找不到符合的收藏。</div>'}</div>`}
 function render(){const host=$('#pageContent');host.innerHTML=view==='library'?renderLibrary():view==='similar'?renderSimilar():view==='lists'?renderLists():renderSearch();$$('.bottomBtn').forEach(b=>b.classList.toggle('active',b.dataset.view===view));bindPage();renderBatch()}
 function bindPage(){$$('[data-open]').forEach(b=>b.onclick=e=>{if(e.target.closest('[data-select]'))return;openDetail(b.dataset.open)});$$('[data-select]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();toggleSelect(b.dataset.select)});$$('[data-edit]').forEach(b=>b.onclick=e=>{e.stopPropagation();openEditor(b.dataset.edit)});$$('[data-delete]').forEach(b=>b.onclick=e=>{e.stopPropagation();deleteOne(b.dataset.delete)});$$('[data-listmode]').forEach(b=>b.onclick=()=>{listMode=b.dataset.listmode;render()});$$('[data-done]').forEach(c=>c.onchange=()=>{const [lid,idx]=c.dataset.done.split(':');const l=data.shoppingLists.find(x=>x.id===lid);if(l){l.items[+idx].done=c.checked;save();render()}});$$('[data-qty]').forEach(b=>b.onclick=()=>{const [lid,idx,d]=b.dataset.qty.split(':');const l=data.shoppingLists.find(x=>x.id===lid);if(l){l.items[+idx].qty=Math.max(1,(l.items[+idx].qty||1)+(+d));save();render()}});$$('[data-shopimg]').forEach(b=>b.onclick=()=>{const [lid,idx]=b.dataset.shopimg.split(':');editShoppingImage(lid,+idx)});
 $$('[data-view-shop-image]').forEach(b=>b.onclick=()=>{const [lid,idx]=b.dataset.viewShopImage.split(':');const l=data.shoppingLists.find(x=>x.id===lid);if(!l)return;const photos=l.items.map((it,j)=>({src:it.image,caption:it.name,originalIdx:j})).filter(x=>x.src);openImageViewer(photos,Math.max(0,photos.findIndex(x=>x.originalIdx===+idx)),l.name)});
@@ -408,7 +547,24 @@ $$('[data-shopnote]').forEach(b=>b.onclick=()=>{const [lid,idx]=b.dataset.shopno
 if($('#sortSelect'))$('#sortSelect').onchange=e=>{sortMode=e.target.value;data.preferences.sortMode=sortMode;save();render()};$$('[data-delete-list]').forEach(b=>b.onclick=()=>{if(confirm('刪除這份購物清單？')){data.shoppingLists=data.shoppingLists.filter(x=>x.id!==b.dataset.deleteList);save();render()}});$$('[data-delete-trip]').forEach(b=>b.onclick=()=>{if(confirm('刪除這份旅遊行程？')){data.travelPlans=data.travelPlans.filter(x=>x.id!==b.dataset.deleteTrip);save();render()}});$$('[data-search-cat]').forEach(b=>b.onclick=()=>{categoryFilter=b.dataset.searchCat;countryFilter='全部';tagFilter='全部';render()});
 $$('[data-search-country]').forEach(b=>b.onclick=()=>{countryFilter=b.dataset.searchCountry;render()});
 $$('[data-search-tag]').forEach(b=>b.onclick=()=>{tagFilter=b.dataset.searchTag;render()});
-if($('#searchInput'))$('#searchInput').oninput=e=>{const pos=e.target.selectionStart;window.searchQuery=e.target.value;render();const newInput=$('#searchInput');if(newInput){newInput.focus();try{newInput.setSelectionRange(pos,pos)}catch{}}}}
+if($('#searchInput')){
+  const inp=$('#searchInput');let composing=false;
+  inp.addEventListener('compositionstart',()=>{composing=true});
+  inp.addEventListener('compositionend',()=>{composing=false;updateSearchResults(inp.value)});
+  inp.addEventListener('input',()=>{if(!composing)updateSearchResults(inp.value)});
+ }}
+
+function updateSearchResults(value){
+ window.searchQuery=value;
+ if(view!=='search')return;
+ const results=filteredItems(value);
+ const title=$('#searchResultsTitle'),slot=$('#searchResults');
+ if(title)title.textContent=value?`搜尋結果 · ${results.length}`:`全部收藏 · ${results.length}`;
+ if(slot){slot.innerHTML=results.length?`<div class="grid">${results.map(cardHTML).join('')}</div>`:'<div class="empty">找不到符合的收藏。</div>';
+   slot.querySelectorAll('[data-open]').forEach(b=>b.onclick=e=>{if(e.target.closest('[data-select]'))return;openDetail(b.dataset.open)});
+   slot.querySelectorAll('[data-select]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();toggleSelect(b.dataset.select)});
+ }
+}
 function toggleSelect(id){selected.has(id)?selected.delete(id):selected.add(id);render()}
 function renderBatch(){
  const bar=$('#batchBar');
@@ -425,7 +581,7 @@ function renderBatch(){
  $('#batchCancel').onclick=()=>{selected.clear();render()}
 }
 function deleteOne(id){if(confirm('確定刪除這篇收藏？')){data.items=data.items.filter(x=>x.id!==id);selected.delete(id);save();render()}}
-function drawerHTML(){const cats=['全部',...uniq(data.items.map(i=>i.category))],countries=categoryFilter==='全部'?[]:['全部',...uniq(data.items.filter(i=>i.category===categoryFilter).map(i=>i.country))],tags=countryFilter==='全部'?[]:['全部',...uniq(data.items.filter(i=>(categoryFilter==='全部'||i.category===categoryFilter)&&(countryFilter==='全部'||i.country===countryFilter)).flatMap(i=>i.tags||[]))];return`<div class="drawerBackdrop" id="drawerBackdrop"></div><aside class="drawer"><div class="drawerHead"><strong>選單</strong><button class="xBtn" id="closeDrawer" aria-label="關閉選單">${icon('close')}</button></div><div class="drawerTitle">篩選收藏</div><div class="filterLevel"><div class="filterLabel">1. 分類</div><div class="chips">${cats.map(x=>`<button class="chip ${categoryFilter===x?'active':''}" data-cat="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>${categoryFilter!=='全部'?`<div class="filterLevel"><div class="filterLabel">2. 國家</div><div class="chips">${countries.map(x=>`<button class="chip ${countryFilter===x?'active':''}" data-country="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>`:''}${categoryFilter!=='全部'&&countryFilter!=='全部'?`<div class="filterLevel"><div class="filterLabel">3. 標籤</div><div class="chips">${tags.map(x=>`<button class="chip ${tagFilter===x?'active':''}" data-tag="${esc(x)}">${x==='全部'?'全部':'# '+esc(x)}</button>`).join('')}</div></div>`:''}<div class="drawerSection"><div class="drawerTitle">資料工具</div><div class="toolRow"><button class="smallBtn" id="exportBtn">匯出備份</button><button class="smallBtn" id="importBtn">匯入備份</button><button class="smallBtn" id="resetFilter">清除篩選</button></div></div><div class="drawerSection"><div class="filterLabel">目前版本</div><strong>v${VERSION}</strong></div></aside>`}
+function drawerHTML(){const cats=['全部',...uniq(data.items.map(i=>i.category))],countries=categoryFilter==='全部'?[]:['全部',...uniq(data.items.filter(i=>i.category===categoryFilter).map(i=>i.country))],tags=countryFilter==='全部'?[]:['全部',...uniq(data.items.filter(i=>(categoryFilter==='全部'||i.category===categoryFilter)&&(countryFilter==='全部'||i.country===countryFilter)).flatMap(i=>i.tags||[]))];return`<div class="drawerBackdrop" id="drawerBackdrop"></div><aside class="drawer"><div class="drawerHead"><strong>選單</strong><button class="xBtn" id="closeDrawer" aria-label="關閉選單">${icon('close')}</button></div><div class="drawerTitle">篩選收藏</div><div class="filterLevel"><div class="filterLabel">1. 分類</div><div class="chips">${cats.map(x=>`<button class="chip ${categoryFilter===x?'active':''}" data-cat="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>${categoryFilter!=='全部'?`<div class="filterLevel"><div class="filterLabel">2. 國家</div><div class="chips">${countries.map(x=>`<button class="chip ${countryFilter===x?'active':''}" data-country="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>`:''}${categoryFilter!=='全部'&&countryFilter!=='全部'?`<div class="filterLevel"><div class="filterLabel">3. 標籤</div><div class="chips">${tags.map(x=>`<button class="chip ${tagFilter===x?'active':''}" data-tag="${esc(x)}">${x==='全部'?'全部':'# '+esc(x)}</button>`).join('')}</div></div>`:''}<div class="drawerSection"><div class="drawerTitle">資料工具</div><div class="toolRow"><button class="smallBtn" id="exportBtn">匯出備份</button><button class="smallBtn" id="importBtn">匯入備份</button><button class="smallBtn" id="resetFilter">清除篩選</button></div></div><div class="drawerSection"><div id="storageWarning" class="storageWarning ${storageError?'':'hidden'}">${esc(storageError||'')}</div><div class="storageFoot">資料保存在此裝置瀏覽器，尚未雲端同步；請定期匯出備份。</div><div class="filterLabel">目前版本</div><strong>v${VERSION}</strong></div></aside>`}
 function openDrawer(){$('#drawerHost').innerHTML=drawerHTML();$('#closeDrawer').onclick=$('#drawerBackdrop').onclick=closeDrawer;$$('[data-cat]').forEach(b=>b.onclick=()=>{categoryFilter=b.dataset.cat;countryFilter='全部';tagFilter='全部';openDrawer();render()});$$('[data-country]').forEach(b=>b.onclick=()=>{countryFilter=b.dataset.country;tagFilter='全部';openDrawer();render()});$$('[data-tag]').forEach(b=>b.onclick=()=>{tagFilter=b.dataset.tag;openDrawer();render()});$('#exportBtn').onclick=exportData;$('#importBtn').onclick=()=>$('#importFile').click();$('#resetFilter').onclick=()=>{categoryFilter=countryFilter=tagFilter='全部';openDrawer();render()}}
 function closeDrawer(){$('#drawerHost').innerHTML=''}
 function openModal(html){
@@ -449,7 +605,7 @@ function renderDetail(){
    <h2 class="detailTitle">${esc(i.title)}</h2>
    <div class="detailMeta">${esc(i.platform)} · ${esc(i.category)} · ${esc(i.country)}${i.city?` · ${esc(i.city)}`:''}</div><div class="detailSaved">收藏於 ${formatSavedAt(i.createdAt)}</div>
    ${i.url?`<div class="detailSection"><a class="linkPill uiBtn" href="${esc(i.url)}" target="_blank" rel="noopener">↗ 原文章</a></div>`:''}
-   <div class="detailSection"><h4>原始文章內容</h4><div class="bodyText originalBody">${esc(i.body)}</div></div>
+   <div class="detailSection"><h4>${i.sourceQuality==='preview'?'公開摘要（非全文）':i.sourceQuality==='linkOnly'?'文章內容未擷取':'原始文章內容'}</h4><div class="bodyText originalBody">${esc(i.body||'此平台未提供可讀取的內文，可透過「原文章」查看，或編輯卡片補充。')}</div></div>
    <div class="detailSection"><h4>整理摘要</h4><div class="bodyText">${esc(i.summary)}</div></div>
    ${i.products?.length?`<div class="detailSection">
       <div class="productSectionHead"><h4>商品與圖片</h4><span>可逐項勾選加入購物清單</span></div>
@@ -510,8 +666,126 @@ function editShoppingNote(listId,idx){
  <form class="form" id="itemNoteForm"><div class="noteItemTitle">${esc(item.name)}</div><label>我的備註<textarea id="shopNoteInput" rows="5" placeholder="色號、價格、購買店家、代買對象…">${esc(item.note||'')}</textarea></label>
  <div class="formActions"><button class="ghost uiBtn" type="button" id="cancelShopNote">取消</button><button class="primary uiBtn">儲存備註</button></div></form>`);
  $('#closeModal').onclick=$('#cancelShopNote').onclick=closeModal;
- $('#itemNoteForm').onsubmit=e=>{e.preventDefault();item.note=$('#shopNoteInput').value.trim();save();closeModal();render()};
+ $('#itemNoteForm').onsubmit=async e=>{e.preventDefault();item.note=$('#shopNoteInput').value.trim();await save();closeModal();render()};
 }
+
+function platformFromURL(url){
+ try{const host=new URL(url).hostname.toLowerCase().replace(/^www\./,'');
+   if(host.includes('instagram.com'))return'Instagram';if(host.includes('threads.net')||host.includes('threads.com'))return'Threads';
+   if(host.includes('facebook.com')||host.includes('fb.watch'))return'Facebook';
+   if(host.includes('xiaohongshu.com')||host.includes('xhslink.com'))return'小紅書';
+   if(host.includes('youtube.com')||host.includes('youtu.be'))return'YouTube';
+   if(host.includes('tiktok.com'))return'TikTok';
+   if(host==='x.com'||host==='twitter.com'||host.endsWith('.x.com'))return'X';
+ }catch{}return'網頁';
+}
+function cleanExternalURL(url){
+ try{const u=new URL(String(url||'').trim());return ['https:','http:'].includes(u.protocol)?u.href:''}catch{return''}
+}
+function isGenericPreview(title,platform){
+ const s=String(title||'').trim().toLowerCase();
+ return !s||[platform.toLowerCase(),'instagram','threads','facebook','小紅書','x','tiktok','youtube','login • instagram'].includes(s)||/^log in (to|or)/.test(s)
+}
+async function fetchPublicMetadata(url){
+ // External public preview API; no secret token is bundled with this static GitHub Pages app.
+ const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),13000);
+ try{
+  const res=await fetch('https://api.microlink.io/?url='+encodeURIComponent(url),{signal:ctl.signal,cache:'no-store'});
+  if(!res.ok)throw new Error(res.status===429?'公開預覽服務已達次數限制':`預覽服務回應 ${res.status}`);
+  const json=await res.json();if(json.status!=='success'||!json.data)throw new Error(json.message||'無法取得文章公開資訊');
+  const d=json.data,platform=platformFromURL(url);
+  const title=String(d.title||'').trim(),description=String(d.description||'').trim();
+  const cover=cleanExternalURL(d.image?.url||'');
+  if(isGenericPreview(title,platform)&&!description&&!cover)throw new Error('來源平台限制，沒有公開文章資訊');
+  return {title:!isGenericPreview(title,platform)?title:'',body:description,images:cover?[cover]:[],author:String(d.author||'').trim(),date:d.date||null};
+ }finally{clearTimeout(timer)}
+}
+function quickFallbackTitle(url){
+ const platform=platformFromURL(url);return `${platform} 收藏連結`;
+}
+function detectProductCandidates(text){
+ // Only a tiny explicit list after "推薦：" etc.; no claim to full AI extraction.
+ const m=String(text||'').match(/(?:推薦(?:清單|商品|三樣|幾樣)?|必買(?:清單)?|商品(?:包含|包括)?)[^：:\n]{0,16}[：:]\s*([^。.!?\n]{6,220})/i);
+ if(!m)return[];
+ const parts=m[1].split(/[、，,；;]/).map(x=>x.trim().replace(/[。.!?]+$/,'')).filter(x=>x.length>2&&x.length<90);
+ return uniq(parts).slice(0,8)
+}
+function guessTags(text,country,category){
+ const tags=[country,category].filter(x=>x!=='其他');
+ const rules=[['Olive Young',/Olive Young|올리브영/i],['弘大',/弘大|홍대|Hongdae/i],['聖水',/聖水|성수/i],['美妝',/美妝|氣墊|防曬|cushion|serum/i],['咖啡',/咖啡|카페|cafe/i]];
+ rules.forEach(([tag,rx])=>{if(rx.test(text))tags.push(tag)});return uniq(tags)
+}
+function quickItem(url,meta,fields={}){
+ const platform=platformFromURL(url);
+ const title=fields.title||meta?.title||quickFallbackTitle(url);
+ const body=fields.body||meta?.body||'';
+ const content=[title,body].join(' ');
+ const country=inferCountry(content),category=inferCategory(content);
+ const products=fields.products?.length?fields.products:detectProductCandidates(body);
+ const articleImages=fields.images?.length?fields.images:(meta?.images||[]);
+ const productImages={};
+ // Only user supplied one-to-one images qualify as mapped product images.
+ if(fields.images?.length && fields.images.length===products.length)products.forEach((p,idx)=>productImages[p]=fields.images[idx]);
+ const quality=fields.body?'manual':meta?'preview':'linkOnly';
+ return normalizeItem({id:uid(),title,platform,url,body,category,country,products,images:articleImages,productImages,
+  tags:uniq([...guessTags(content,country,category),...(fields.tags||[])]),address:extractAddress(body),
+  terms:uniq([title,...products,...(fields.tags||[])]).slice(0,15),
+  summary:body?body.replace(/\s+/g,' ').slice(0,165):'尚未讀到文章內容；已先保留原始連結。',
+  sourceQuality:quality,sourceCapturedAt:Date.now(),createdAt:Date.now(),status:category==='購物'?'想買':'剛收藏'
+ })
+}
+function openQuickAdd(prefill=''){
+ openModal(`<div class="sheetHead"><strong>收藏文章</strong><button type="button" class="iconBtn uiBtn" id="closeModal" aria-label="關閉">${icon('close')}</button></div>
+ <form class="form quickForm" id="quickForm">
+  <label class="quickUrlLabel">貼入社群文章網址<input id="quickUrl" type="url" inputmode="url" autocomplete="url" placeholder="https://www.instagram.com/p/…" required value="${esc(prefill)}"></label>
+  <div id="quickStatus" class="quickStatus">貼入連結後會嘗試抓取公開標題、摘要與封面。</div>
+  <div id="quickPreview" class="quickPreview hidden"></div>
+  <details id="quickAdvanced" class="quickAdvanced"><summary>手動補充或修改（選填）</summary>
+   <div class="formGrid">
+    <label class="full">標題<input id="qTitle" placeholder="未擷取到時可以自行輸入"></label>
+    <label class="full">文章文字<textarea id="qBody" rows="3" placeholder="如果平台不提供內文，可貼文字協助分類"></textarea></label>
+    <label class="full">商品名稱（每行一項）<textarea id="qProducts" rows="3"></textarea></label>
+    <label class="full">對應商品圖片網址（每行一張）<textarea id="qImages" rows="2" placeholder="只有確認每張圖片對應的商品時才填寫"></textarea></label>
+    <label class="full">自訂標籤（逗號分隔）<input id="qTags" placeholder="旅行, 必買"></label>
+   </div>
+  </details>
+  <div class="quickPrivacy">公開連結將送往第三方連結預覽服務。社群平台若限制讀取，仍可只存網址，之後再編輯補充。</div>
+  <div class="formActions"><button class="ghost uiBtn" type="button" id="cancelQuick">取消</button><button class="primary uiBtn" id="saveQuick" type="submit">儲存收藏</button></div>
+ </form>`);
+ $('#closeModal').onclick=$('#cancelQuick').onclick=closeModal;
+ const inp=$('#quickUrl'),status=$('#quickStatus'),preview=$('#quickPreview');
+ let cached=null,loadedURL='',job=0,delay=null,lookupPromise=null;
+ async function runLookup(){
+  const url=cleanExternalURL(inp.value);
+  if(!url){status.textContent='請貼上有效的 http / https 網址';preview.classList.add('hidden');cached=null;return}
+  const thisJob=++job;loadedURL=url;cached=null;status.textContent='正在取得公開預覽資訊…';status.dataset.state='loading';
+  try{
+   const found=await fetchPublicMetadata(url);
+   if(thisJob!==job)return;
+   cached=found;status.dataset.state='ok';
+   status.textContent='已取得公開預覽（非完整文章）；分類會根據可讀到的文字判斷。';
+   const p=quickItem(url,found);
+   preview.classList.remove('hidden');
+   preview.innerHTML=`${found.images?.[0]?`<img class="quickCover" src="${esc(found.images[0])}" alt="文章封面">`:''}<div><strong>${esc(p.title)}</strong><small>${esc(p.platform)} · ${esc(p.category)} · ${esc(p.country)}</small><p>${esc(p.body||'沒有公開摘要')}</p></div>`;
+  }catch(err){if(thisJob!==job)return;cached=null;status.dataset.state='fail';
+   status.textContent=`無法讀取文章內容：${err.message||'來源限制'}。可以先儲存連結，或展開下方補充文字。`;
+   preview.classList.add('hidden');if($('#quickAdvanced'))$('#quickAdvanced').open=true;
+  }
+ }
+ inp.addEventListener('input',()=>{clearTimeout(delay);delay=setTimeout(()=>{if(cleanExternalURL(inp.value))lookupPromise=runLookup()},500)});
+ $('#quickForm').onsubmit=async e=>{
+   e.preventDefault();clearTimeout(delay);
+   const url=cleanExternalURL(inp.value);if(!url){status.textContent='請貼上正確網址';return}
+   if(loadedURL!==url){lookupPromise=runLookup();await lookupPromise}else if(lookupPromise){await lookupPromise}
+   const fields={title:$('#qTitle').value.trim(),body:$('#qBody').value.trim(),products:$('#qProducts').value.split('\n').map(s=>s.trim()).filter(Boolean),images:$('#qImages').value.split('\n').map(s=>s.trim()).filter(Boolean),tags:$('#qTags').value.split(',').map(s=>s.trim()).filter(Boolean)};
+   const duplicate=data.items.find(i=>i.url&&i.url===url);
+   if(duplicate){status.textContent='這篇網址已收藏過，可回到原卡片編輯。';return}
+   const item=quickItem(url,cached,fields);
+   data.items.unshift(item);await save();closeModal();view='library';render();
+ };
+ if(prefill){lookupPromise=runLookup()}else inp.focus();
+}
+
 function editorHTML(item){
  const platforms=['Instagram','Threads','Facebook','小紅書','YouTube','TikTok','X','網頁','其他'];
  const countries=['韓國','日本','台灣','泰國','越南','其他'];
@@ -536,7 +810,7 @@ function editorHTML(item){
   <div class="formActions"><button type="button" class="ghost uiBtn" id="cancelEdit">取消</button><button class="primary uiBtn" type="submit">${item?'儲存修改':'儲存收藏'}</button></div>
   </form>`;
 }
-function openEditor(id=null){const item=id?data.items.find(x=>x.id===id):null;openModal(editorHTML(item));$('#closeModal').onclick=$('#cancelEdit').onclick=closeModal;$('#editorForm').onsubmit=e=>{e.preventDefault();const title=$('#fTitle').value.trim(),body=$('#fBody').value.trim(),city=$('#fCity').value.trim(),country=$('#fCountry').value||inferCountry(`${title} ${body} ${city}`),category=$('#fCategory').value||inferCategory(`${title} ${body}`),products=$('#fProducts').value.split('\n').map(x=>x.trim()).filter(Boolean),images=$('#fImages').value.split('\n').map(x=>x.trim()).filter(Boolean),tags=$('#fTags').value.split(',').map(x=>x.trim()).filter(Boolean),productImages={};products.forEach((p,idx)=>{if(images[idx])productImages[p]=images[idx]});const obj=normalizeItem({...(item||{}),id:item?.id||uid(),title,body,city,country,category,products,images,productImages,tags,platform:$('#fPlatform').value,url:$('#fUrl').value.trim(),shoppingType:$('#fShoppingType').value.trim(),note:$('#fNote').value,address:extractAddress(body),summary:body.replace(/\s+/g,' ').slice(0,150),terms:uniq([title,...products,...tags]).slice(0,15),createdAt:item?.createdAt||Date.now()});if(item)Object.assign(item,obj);else data.items.unshift(obj);save();closeModal();render()}}
+function openEditor(id=null){if(!id)return openQuickAdd();const item=data.items.find(x=>x.id===id);openModal(editorHTML(item));$('#closeModal').onclick=$('#cancelEdit').onclick=closeModal;$('#editorForm').onsubmit=e=>{e.preventDefault();const title=$('#fTitle').value.trim(),body=$('#fBody').value.trim(),city=$('#fCity').value.trim(),country=$('#fCountry').value||inferCountry(`${title} ${body} ${city}`),category=$('#fCategory').value||inferCategory(`${title} ${body}`),products=$('#fProducts').value.split('\n').map(x=>x.trim()).filter(Boolean),images=$('#fImages').value.split('\n').map(x=>x.trim()).filter(Boolean),tags=$('#fTags').value.split(',').map(x=>x.trim()).filter(Boolean),productImages={};products.forEach((p,idx)=>{if(images[idx])productImages[p]=images[idx]});const obj=normalizeItem({...(item||{}),id:item?.id||uid(),title,body,city,country,category,products,images,productImages,tags,platform:$('#fPlatform').value,url:$('#fUrl').value.trim(),shoppingType:$('#fShoppingType').value.trim(),note:$('#fNote').value,address:extractAddress(body),summary:body.replace(/\s+/g,' ').slice(0,150),terms:uniq([title,...products,...tags]).slice(0,15),createdAt:item?.createdAt||Date.now()});if(item)Object.assign(item,obj);else data.items.unshift(obj);save();closeModal();render()}}
 function openShoppingListModal(ids,presetProducts=null){
  const arts=ids.map(id=>data.items.find(x=>x.id===id)).filter(Boolean),m={};
  arts.forEach(a=>{
@@ -563,7 +837,7 @@ function openShoppingListModal(ids,presetProducts=null){
  let mode='new';
  $('#closeModal').onclick=$('#cancelShop').onclick=closeModal;
  $$('[data-shopmode]').forEach(b=>b.onclick=()=>{if(b.disabled)return;mode=b.dataset.shopmode;$$('[data-shopmode]').forEach(x=>x.classList.toggle('active',x===b));$('#newShopFields').classList.toggle('hidden',mode!=='new');$('#existingShopFields').classList.toggle('hidden',mode!=='existing')});
- $('#shopForm').onsubmit=e=>{
+ $('#shopForm').onsubmit=async e=>{
    e.preventDefault();
    const chosen=$$('.shopPick').filter(x=>x.checked).map(x=>arr[+x.dataset.idx]);
    if(!chosen.length){alert('請至少勾選一個商品');return}
@@ -575,13 +849,13 @@ function openShoppingListModal(ids,presetProducts=null){
      const name=$('#shopName').value.trim();if(!name)return;
      data.shoppingLists.unshift({id:uid(),name,createdAt:Date.now(),items:chosen.map(x=>({...x}))});
    }
-   selected.clear();save();closeModal();view='lists';listMode='shopping';render()
+   selected.clear();await save();closeModal();view='lists';listMode='shopping';render()
  }
 }
 function openTravelPlanModal(ids){const arts=ids.map(id=>data.items.find(x=>x.id===id)).filter(Boolean);openModal(`<div class="sheetHead"><strong>建立旅遊行程</strong><button class="iconBtn uiBtn" id="closeModal" aria-label="關閉">${icon('close')}</button></div><form class="form" id="tripForm"><label>行程名稱<input id="tripName" required value="${esc((arts[0]?.country||'')+' 旅遊行程')}"></label><div class="detailSection"><h4>已選收藏</h4>${arts.map(i=>`<div class="tripItem">${i.images?.[0]?`<img class="tripThumb" src="${esc(i.images[0])}">`:'<span class="tripThumb"></span>'}<div><div class="tripTitle">${esc(i.title)}</div><div class="tripMeta">${esc(i.country)}${i.city?` · ${esc(i.city)}`:''}</div></div></div>`).join('')}</div><div class="formActions"><button type="button" class="ghost" id="cancelTrip">取消</button><button class="primary">建立</button></div></form>`);$('#closeModal').onclick=$('#cancelTrip').onclick=closeModal;$('#tripForm').onsubmit=e=>{e.preventDefault();data.travelPlans.unshift({id:uid(),name:$('#tripName').value.trim(),createdAt:Date.now(),items:arts.map(i=>i.id)});selected.clear();save();closeModal();view='lists';listMode='travel';render()}}
 function editShoppingImage(listId,idx){const l=data.shoppingLists.find(x=>x.id===listId);if(!l)return;const it=l.items[idx];openModal(`<div class="sheetHead"><strong>商品圖片</strong><button class="iconBtn uiBtn" id="closeModal" aria-label="關閉">${icon('close')}</button></div><form class="form" id="imgForm"><label>圖片網址<input id="imgUrl" value="${esc(it.image||'')}" placeholder="https://…"></label><label style="margin-top:10px">或選擇照片<input id="imgFile" type="file" accept="image/*"></label><div class="formActions"><button type="button" class="ghost" id="cancelImg">取消</button><button class="primary">儲存</button></div></form>`);$('#closeModal').onclick=$('#cancelImg').onclick=closeModal;$('#imgForm').onsubmit=e=>{e.preventDefault();const f=$('#imgFile').files?.[0];if(f){const r=new FileReader();r.onload=()=>{it.image=r.result;save();closeModal();render()};r.readAsDataURL(f)}else{it.image=$('#imgUrl').value.trim();save();closeModal();render()}}}
 function exportData(){const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`social-saver-v${VERSION}-backup.json`;a.click();URL.revokeObjectURL(a.href)}
-$('#importFile').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const p=JSON.parse(await f.text()),items=Array.isArray(p)?p:(p.items||[]),lists=p.shoppingLists||[],trips=p.travelPlans||[],ids=new Set(data.items.map(x=>x.id));items.map(normalizeItem).filter(i=>!i.isExample).forEach(i=>{if(!ids.has(i.id)){data.items.push(i);ids.add(i.id)}});const li=new Set(data.shoppingLists.map(x=>x.id));lists.forEach(l=>{if(!li.has(l.id)){data.shoppingLists.push(l);li.add(l.id)}});const ti=new Set(data.travelPlans.map(x=>x.id));trips.forEach(t=>{if(!ti.has(t.id)){data.travelPlans.push(t);ti.add(t.id)}});save();alert('匯入完成');render()}catch(err){alert('匯入失敗：'+err.message)}e.target.value=''};
+$('#importFile').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const p=JSON.parse(await f.text()),items=Array.isArray(p)?p:(p.items||[]),lists=p.shoppingLists||[],trips=p.travelPlans||[],ids=new Set(data.items.map(x=>x.id));items.map(normalizeItem).filter(i=>!i.isExample).forEach(i=>{if(!ids.has(i.id)){data.items.push(i);ids.add(i.id)}});const li=new Set(data.shoppingLists.map(x=>x.id));lists.forEach(l=>{if(!li.has(l.id)){data.shoppingLists.push(l);li.add(l.id)}});const ti=new Set(data.travelPlans.map(x=>x.id));trips.forEach(t=>{if(!ti.has(t.id)){data.travelPlans.push(t);ti.add(t.id)}});await save();alert('匯入完成');render()}catch(err){alert('匯入失敗：'+err.message)}e.target.value=''};
 // Demo art is only used when the remote example photo cannot load.
 // It is explicitly labeled illustrative and never saved over the original image URL.
 function imageFallbackData(label='圖片',originalUrl=''){
@@ -617,8 +891,13 @@ $('#menuBtn').innerHTML=icon('menu',20);
 $('#addBtn').innerHTML=icon('plus',28);
 const navIcons={library:'grid',similar:'layers',lists:'list',search:'search'};
 $$('.bottomBtn').forEach(b=>{const slot=b.querySelector('.ico');if(slot)slot.innerHTML=icon(navIcons[b.dataset.view]||'grid',21)});
-$('#menuBtn').onclick=openDrawer;$('#addBtn').onclick=()=>openEditor();$$('.bottomBtn').forEach(b=>b.onclick=()=>{view=b.dataset.view;render()});
+$('#menuBtn').onclick=openDrawer;$('#addBtn').onclick=()=>openQuickAdd();$$('.bottomBtn').forEach(b=>b.onclick=()=>{view=b.dataset.view;render()});
 render();
+initStorage();
+
+// Open a supplied link from a shortcut or share URL when supported.
+try{const shared=new URL(location.href).searchParams.get('url');if(shared&&cleanExternalURL(shared))setTimeout(()=>openQuickAdd(shared),250)}catch{}
+
 </script>
 </body>
 </html>
