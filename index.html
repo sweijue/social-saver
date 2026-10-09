@@ -6,8 +6,8 @@
 <meta name="theme-color" content="#f5f5f2">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="收藏庫">
-<title>收藏庫 Social Saver v1.6.0</title>
+<meta name="apple-mobile-web-app-title" content="拾集">
+<title>拾集 v1.6.3</title>
 <style>
 :root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#6e6e68;--line:#e4e4de;--soft:#efefe9;--shadow:0 10px 28px rgba(0,0,0,.07);--r:20px;--navh:74px}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif;font-size:17px}body{min-height:100vh;padding-bottom:calc(var(--navh) + env(safe-area-inset-bottom) + 18px)}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
@@ -263,6 +263,16 @@ input[type=checkbox]{accent-color:var(--ui-active)}
 .filterDisclosure[open] summary::after{transform:rotate(180deg)}
 .filterDisclosure .chips{padding:0 11px 12px}
 .filterDisclosure .filterArrow{display:none}
+
+.shop162Note{color:#235a77!important;font-weight:750;line-height:1.5;background:#edf6f9;border-radius:8px;padding:5px 7px;margin-top:5px}
+.shop162Actions{display:flex;align-items:center;gap:5px;margin-top:5px}.shop162Actions .shopIcon{display:inline-flex;align-items:center;justify-content:center;width:32px;height:30px;padding:5px;border:1px solid var(--ui-border,#d8d9d5);border-radius:10px;background:#fff;color:#292a28}
+.listHead .listName{line-height:1.35}
+
+/* v1.6.4: compact, centered collection composer */
+#modalBackdrop:has(#quickForm){align-items:center!important;justify-content:center!important;padding:clamp(20px,5vh,44px) clamp(18px,5vw,32px)!important;box-sizing:border-box}
+#modalBackdrop:has(#quickForm) .sheet{width:min(590px,100%)!important;max-height:calc(100dvh - clamp(40px,10vh,88px))!important;border-radius:19px!important;margin:auto!important;overflow-y:auto}
+.filterAdd{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;margin-left:5px;min-width:27px;height:27px;padding:0!important;border-radius:8px!important;border:1px solid var(--ui-border,#d8d8d3)!important;background:#fff!important;color:#262923!important;font-size:16px!important;line-height:1}
+[data-tax-kind]{touch-action:pan-y;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 </style>
 <style>
 .cascadeFilter{border:1px solid var(--line);border-radius:13px;background:#fff;overflow:hidden;margin:8px 0 14px}
@@ -281,7 +291,7 @@ input[type=checkbox]{accent-color:var(--ui-active)}
 <main><div id="pageContent"></div></main>
 
 <nav class="bottomNav" aria-label="主要功能">
-  <button class="bottomBtn active" data-view="library"><span class="ico">▦</span><span>收藏庫</span></button>
+  <button class="bottomBtn active" data-view="library"><span class="ico">▦</span><span>拾集</span></button>
   <button class="bottomBtn" data-view="similar"><span class="ico">≋</span><span>彙整</span></button>
   <div style="display:grid;justify-items:center"><button class="addMain" id="addBtn" aria-label="收藏文章">＋</button><div class="addLabel">收藏</div></div>
   <button class="bottomBtn" data-view="lists"><span class="ico">✓</span><span>清單</span></button>
@@ -294,7 +304,7 @@ input[type=checkbox]{accent-color:var(--ui-active)}
 
 <script>
 
-const VERSION="1.6.2", STORE="socialSaver_data";
+const VERSION="1.6.4", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -501,7 +511,7 @@ function commonProducts(group){const m={};group.forEach(i=>(i.products||[]).forE
 function similarClusters(){const items=allSorted(),used=new Set(),out=[];for(let a=0;a<items.length;a++){if(used.has(items[a].id))continue;const g=[items[a]];for(let b=a+1;b<items.length;b++){const A=items[a],B=items[b],pa=new Set((A.products||[]).map(norm)),pb=new Set((B.products||[]).map(norm)),shared=[...pa].filter(x=>pb.has(x)).length,tagShared=(A.tags||[]).filter(x=>(B.tags||[]).includes(x)).length;if(shared>=1||(A.category===B.category&&A.country===B.country&&tagShared>=2))g.push(B)}if(g.length>1){g.forEach(x=>used.add(x.id));out.push(g)}}return out}
 function renderLibrary(){
  const list=filteredItems();
- return `<div class="pageHead"><div><h2>收藏庫</h2><p>${list.length} 篇收藏 · 點卡片查看內容</p></div>${sortControl()}</div>
+ return `<div class="pageHead"><div><h2>拾集</h2><p>${list.length} 篇收藏 · 點卡片查看內容</p></div>${sortControl()}</div>
  ${list.length?`<div class="grid">${list.map(cardHTML).join('')}</div>`:'<div class="empty">沒有符合條件的收藏。</div>'}`
 }
 
@@ -519,41 +529,56 @@ function renderSimilar(){
  }).join('')}</div>`:'<div class="empty">目前沒有偵測到相似文章。</div>'}` }
 function renderLists(){return`<div class="pageHead"><div><h2>清單</h2><p>批次勾選收藏後，可建立購物清單或旅遊行程</p></div></div><div class="listTabs"><button class="listTab ${listMode==='shopping'?'active':''}" data-listmode="shopping">購物清單</button><button class="listTab ${listMode==='travel'?'active':''}" data-listmode="travel">旅遊行程</button></div>${listMode==='shopping'?renderShoppingLists():renderTravelPlans()}`}
 function renderShoppingLists(){
- if(!data.shoppingLists.length)return '<div class="empty">尚未建立購物清單。回收藏庫勾選文章後，選「購物清單」。</div>';
+ if(!data.shoppingLists.length)return '<div class="empty">尚未建立購物清單。回拾集勾選文章後，選「購物清單」。</div>';
  return `<div class="listGrid">${data.shoppingLists.map(l=>`<section class="listCard">
-  <div class="listHead"><div><div class="listName">${esc(l.name)}</div><div class="listMeta">${l.items.length} 項 · ${new Date(l.createdAt).toLocaleDateString('zh-TW')}</div></div>
+  <div class="listHead"><div><div class="listName">${esc(l.name)}</div><div class="listMeta">${l.items.length} 項 · ${new Date(l.createdAt).toLocaleDateString('zh-TW')}</div></div><button type="button" class="iconBtn uiBtn" data-rename-list="${l.id}" title="編輯清單名稱" aria-label="編輯清單名稱">${icon('edit')}</button>
    <button type="button" class="iconBtn uiBtn" data-delete-list="${l.id}" aria-label="刪除購物清單">${icon('trash')}</button></div>
   <div class="shopItems">${l.items.map((it,idx)=>`<div class="shopItem ${it.done?'done':''}">
   <div class="shop162Row"><div class="shopThumbWrap">${it.image?`<button class="shopThumb" data-view-shop-image="${l.id}:${idx}" aria-label="放大商品圖片"><img src="${esc(it.image)}" alt="${esc(it.name)}"></button>`:`<button class="thumbAdd" data-shopimg="${l.id}:${idx}" aria-label="新增商品圖片">${icon('plus',16)}</button>`}</div>
-  <div class="shop162Info"><div class="shopItemName">${esc(it.name)}</div><div class="shopItemSub">${it.sourceCount>1?`${it.sourceCount} 篇文章共同提到`:esc(it.country||'')}</div>
+  <div class="shop162Info"><div class="shopItemName">${esc(it.name)}</div>${(it.alias||it.altName)?`<div class="shopItemSub">${esc(it.alias||it.altName)}</div>`:''}
    ${it.note?`<div class="shop162Note">${esc(it.note)}</div>`:''}
-   <div class="shop162Actions"><button class="uiBtn" data-shopnote="${l.id}:${idx}">${icon('note',12)} 備註</button><button class="uiBtn" data-edit-shop="${l.id}:${idx}">${icon('edit',12)} 編輯</button><button class="uiBtn" data-remove-shop="${l.id}:${idx}">${icon('trash',12)} 刪除</button></div>
+   <div class="shop162Actions"><button class="uiBtn shopIcon" data-edit-shop="${l.id}:${idx}" title="編輯商品與備註" aria-label="編輯商品與備註">${icon('edit',15)}</button><button class="uiBtn shopIcon" data-remove-shop="${l.id}:${idx}" title="刪除商品" aria-label="刪除商品">${icon('trash',15)}</button></div>
   </div><div class="shop162Qty"><button class="uiBtn" data-qty="${l.id}:${idx}:1" aria-label="增加數量">＋</button><span>${it.qty||1}</span><button class="uiBtn" data-qty="${l.id}:${idx}:-1" aria-label="減少數量">−</button></div>
   <label class="shop162Done"><input type="checkbox" data-done="${l.id}:${idx}" ${it.done?'checked':''} aria-label="已購買 ${esc(it.name)}"></label>
   </div></div>`).join('')}</div>
  </section>`).join('')}</div>`
 }
-function renderTravelPlans(){if(!data.travelPlans.length)return'<div class="empty">尚未建立旅遊行程。<br>回收藏庫勾選卡片後，選「建立旅遊行程」。</div>';return`<div class="listGrid">${data.travelPlans.map(p=>`<section class="listCard"><div class="listHead"><div><div class="listName">${esc(p.name)}</div><div class="listMeta">${new Date(p.createdAt).toLocaleDateString('zh-TW')} · ${p.items.length} 個收藏</div></div><button class="iconBtn uiBtn" data-delete-trip="${p.id}" aria-label="刪除行程">${icon('trash')}</button></div>${p.items.map(id=>{const i=data.items.find(x=>x.id===id);if(!i)return'';return`<button class="miniCard tripItem" data-open="${i.id}" style="width:100%">${i.images?.[0]?`<img class="tripThumb" src="${esc(i.images[0])}" alt="">`:'<span class="tripThumb"></span>'}<span><div class="tripTitle">${esc(i.title)}</div><div class="tripMeta">${esc(i.country)}${i.city?` · ${esc(i.city)}`:''}</div></span></button>`}).join('')}</section>`).join('')}</div>`}
+function renderTravelPlans(){if(!data.travelPlans.length)return'<div class="empty">尚未建立旅遊行程。<br>回拾集勾選卡片後，選「建立旅遊行程」。</div>';return`<div class="listGrid">${data.travelPlans.map(p=>`<section class="listCard"><div class="listHead"><div><div class="listName">${esc(p.name)}</div><div class="listMeta">${new Date(p.createdAt).toLocaleDateString('zh-TW')} · ${p.items.length} 個收藏</div></div><button class="iconBtn uiBtn" data-delete-trip="${p.id}" aria-label="刪除行程">${icon('trash')}</button></div>${p.items.map(id=>{const i=data.items.find(x=>x.id===id);if(!i)return'';return`<button class="miniCard tripItem" data-open="${i.id}" style="width:100%">${i.images?.[0]?`<img class="tripThumb" src="${esc(i.images[0])}" alt="">`:'<span class="tripThumb"></span>'}<span><div class="tripTitle">${esc(i.title)}</div><div class="tripMeta">${esc(i.country)}${i.city?` · ${esc(i.city)}`:''}</div></span></button>`}).join('')}</section>`).join('')}</div>`}
 function renderSearch(){
  const q=window.searchQuery||'',results=q?filteredItems(q):filteredItems(''),countries=uniq(data.items.map(i=>i.country)).length,clusters=similarClusters().length;
  const cats=['全部',...uniq([...data.items.map(i=>i.category),...(data.customCategories||[])])];
  const tagPool=(categoryFilter==='全部'?data.items:data.items.filter(i=>i.category===categoryFilter));
- const tags=['全部',...uniq(tagPool.flatMap(i=>i.tags||[])).slice(0,24)];
+ const tags=['全部',...uniq(data.items.filter(i=>(categoryFilter==='全部'||i.category===categoryFilter)&&(countryFilter==='全部'||i.country===countryFilter)).flatMap(i=>i.tags||[])).slice(0,80),...(data.customTags||[])];
  const countryPool=(categoryFilter==='全部'?data.items:data.items.filter(i=>i.category===categoryFilter));
  const countryOpts=['全部',...uniq(countryPool.map(i=>i.country))];
  return`<div class="searchCompact"><span class="searchIcon">${icon('search',18)}</span><input id="searchInput" value="${esc(q)}" placeholder="搜尋文章、商品、地點…"></div>
  <div class="statsStrip"><span><b>${data.items.length}</b> 收藏</span><span><b>${data.items.filter(i=>i.category==='購物').length}</b> 購物</span><span><b>${countries}</b> 國家</span><span><b>${clusters}</b> 彙整</span></div>
- <div class="cascadeFilter searchCascade"><details open><summary>分類 · ${esc(categoryFilter)}</summary><div class="chips">${cats.map(c=>`<button class="chip ${categoryFilter===c?'active':''}" data-search-cat="${esc(c)}">${esc(c)}</button>`).join('')}</div></details>
- ${categoryFilter!=='全部'?`<details open><summary>　↳ 國家 · ${esc(countryFilter)}</summary><div class="chips">${countryOpts.map(c=>`<button class="chip ${countryFilter===c?'active':''}" data-search-country="${esc(c)}">${esc(c)}</button>`).join('')}</div></details>`:''}
- ${categoryFilter!=='全部'&&countryFilter!=='全部'?`<details open><summary>　　↳ 標籤 · ${esc(tagFilter)}</summary><div class="chips">${tags.map(t=>`<button class="chip ${tagFilter===t?'active':''}" data-search-tag="${esc(t)}">${t==='全部'?'全部':'#'+esc(t)}</button>`).join('')}</div></details>`:''}</div>
+ <div class="cascadeFilter searchCascade"><details open><summary>分類 · ${esc(categoryFilter)} <button type="button" class="filterAdd uiBtn" data-tax-add="category" title="新增分類" aria-label="新增分類">＋</button></summary><div class="chips">${cats.map(c=>`<button class="chip ${categoryFilter===c?'active':''}" data-tax-kind="category" data-search-cat="${esc(c)}">${esc(c)}</button>`).join('')}</div></details>
+ ${`<details><summary>　↳ 國家 · ${esc(countryFilter)}</summary><div class="chips">${countryOpts.map(c=>`<button class="chip ${countryFilter===c?'active':''}" data-search-country="${esc(c)}">${esc(c)}</button>`).join('')}</div></details>`}
+ ${`<details><summary>　　↳ 標籤 · ${esc(tagFilter)} <button type="button" class="filterAdd uiBtn" data-tax-add="tag" title="新增標籤" aria-label="新增標籤">＋</button></summary><div class="chips">${tags.map(t=>`<button class="chip ${tagFilter===t?'active':''}" data-tax-kind="tag" data-search-tag="${esc(t)}">${t==='全部'?'全部':'#'+esc(t)}</button>`).join('')}</div></details>`}</div>
  <div class="searchResultsHead"><div class="searchResultsTitle" id="searchResultsTitle">${q?`搜尋結果 · ${results.length}`:`全部收藏 · ${results.length}`}</div>${sortControl()}</div>
  <div id="searchResults">${results.length?`<div class="grid">${results.map(cardHTML).join('')}</div>`:'<div class="empty">找不到符合的收藏。</div>'}</div>`}
 function render(){const host=$('#pageContent');host.innerHTML=view==='library'?renderLibrary():view==='similar'?renderSimilar():view==='lists'?renderLists():renderSearch();$$('.bottomBtn').forEach(b=>b.classList.toggle('active',b.dataset.view===view));bindPage();renderBatch()}
-function bindPage(){$$('[data-open]').forEach(b=>b.onclick=e=>{if(e.target.closest('[data-select]'))return;openDetail(b.dataset.open)});$$('[data-select]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();toggleSelect(b.dataset.select)});$$('[data-edit]').forEach(b=>b.onclick=e=>{e.stopPropagation();openEditor(b.dataset.edit)});$$('[data-delete]').forEach(b=>b.onclick=e=>{e.stopPropagation();deleteOne(b.dataset.delete)});$$('[data-listmode]').forEach(b=>b.onclick=()=>{listMode=b.dataset.listmode;render()});$$('[data-done]').forEach(c=>c.onchange=()=>{const [lid,idx]=c.dataset.done.split(':');const l=data.shoppingLists.find(x=>x.id===lid);if(l){l.items[+idx].done=c.checked;save();render()}});$$('[data-qty]').forEach(b=>b.onclick=()=>{const [lid,idx,d]=b.dataset.qty.split(':');const l=data.shoppingLists.find(x=>x.id===lid);if(l){l.items[+idx].qty=Math.max(1,(l.items[+idx].qty||1)+(+d));save();render()}});$$('[data-shopimg]').forEach(b=>b.onclick=()=>{const [lid,idx]=b.dataset.shopimg.split(':');editShoppingImage(lid,+idx)});
+function bindTaxonomyChips(){
+ $$('[data-tax-add]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();openTaxonomyManager(b.dataset.taxAdd,'',true)});
+ $$('[data-tax-kind]').forEach(b=>{
+  const kind=b.dataset.taxKind,value=b.dataset.searchCat||b.dataset.searchTag;
+  if(value==='全部')return;
+  let timer=null, startX=0,startY=0,triggered=false;
+  const clear=()=>{if(timer){clearTimeout(timer);timer=null}};
+  b.addEventListener('pointerdown',e=>{if(e.button!==0)return;triggered=false;startX=e.clientX;startY=e.clientY;clear();timer=setTimeout(()=>{triggered=true;b.dataset.longActivated='1';openTaxonomyManager(kind,value);},550)});
+  b.addEventListener('pointermove',e=>{if(Math.abs(e.clientX-startX)>12||Math.abs(e.clientY-startY)>12)clear()});
+  ['pointerup','pointercancel','pointerleave'].forEach(n=>b.addEventListener(n,clear));
+  b.addEventListener('click',e=>{if(b.dataset.longActivated==='1'){e.preventDefault();e.stopImmediatePropagation();delete b.dataset.longActivated}},true);
+  b.addEventListener('contextmenu',e=>{e.preventDefault();clear();openTaxonomyManager(kind,value)});
+ });
+}
+function bindPage(){bindTaxonomyChips();$$('[data-open]').forEach(b=>b.onclick=e=>{if(e.target.closest('[data-select]'))return;openDetail(b.dataset.open)});$$('[data-select]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();toggleSelect(b.dataset.select)});$$('[data-edit]').forEach(b=>b.onclick=e=>{e.stopPropagation();openEditor(b.dataset.edit)});$$('[data-delete]').forEach(b=>b.onclick=e=>{e.stopPropagation();deleteOne(b.dataset.delete)});$$('[data-listmode]').forEach(b=>b.onclick=()=>{listMode=b.dataset.listmode;render()});$$('[data-done]').forEach(c=>c.onchange=()=>{const [lid,idx]=c.dataset.done.split(':');const l=data.shoppingLists.find(x=>x.id===lid);if(l){l.items[+idx].done=c.checked;save();render()}});$$('[data-qty]').forEach(b=>b.onclick=()=>{const [lid,idx,d]=b.dataset.qty.split(':');const l=data.shoppingLists.find(x=>x.id===lid);if(l){l.items[+idx].qty=Math.max(1,(l.items[+idx].qty||1)+(+d));save();render()}});$$('[data-shopimg]').forEach(b=>b.onclick=()=>{const [lid,idx]=b.dataset.shopimg.split(':');editShoppingImage(lid,+idx)});
 $$('[data-view-shop-image]').forEach(b=>b.onclick=()=>{const [lid,idx]=b.dataset.viewShopImage.split(':');const l=data.shoppingLists.find(x=>x.id===lid);if(!l)return;const photos=l.items.map((it,j)=>({src:it.image,caption:it.name,originalIdx:j})).filter(x=>x.src);openImageViewer(photos,Math.max(0,photos.findIndex(x=>x.originalIdx===+idx)),l.name)});
-$$('[data-shopnote]').forEach(b=>b.onclick=()=>{const [lid,idx]=b.dataset.shopnote.split(':');editShoppingNote(lid,+idx)});
+
 $$('[data-remove-shop]').forEach(b=>b.onclick=()=>{const [lid,idx]=b.dataset.removeShop.split(':');const l=data.shoppingLists.find(x=>x.id===lid);if(l&&confirm('刪除這個購物品項？')){l.items.splice(+idx,1);save();render()}});
 $$('[data-edit-shop]').forEach(b=>b.onclick=()=>{const [lid,idx]=b.dataset.editShop.split(':');editShoppingProduct(lid,+idx)});
+$$('[data-rename-list]').forEach(b=>b.onclick=()=>renameShoppingList(b.dataset.renameList));
 
 if($('#sortSelect'))$('#sortSelect').onchange=e=>{sortMode=e.target.value;data.preferences.sortMode=sortMode;save();render()};$$('[data-delete-list]').forEach(b=>b.onclick=()=>{if(confirm('刪除這份購物清單？')){data.shoppingLists=data.shoppingLists.filter(x=>x.id!==b.dataset.deleteList);save();render()}});$$('[data-delete-trip]').forEach(b=>b.onclick=()=>{if(confirm('刪除這份旅遊行程？')){data.travelPlans=data.travelPlans.filter(x=>x.id!==b.dataset.deleteTrip);save();render()}});$$('[data-search-cat]').forEach(b=>b.onclick=()=>{categoryFilter=b.dataset.searchCat;countryFilter='全部';tagFilter='全部';render()});
 $$('[data-search-country]').forEach(b=>b.onclick=()=>{countryFilter=b.dataset.searchCountry;render()});
@@ -592,7 +617,7 @@ function renderBatch(){
  $('#batchCancel').onclick=()=>{selected.clear();render()}
 }
 function deleteOne(id){if(confirm('確定刪除這篇收藏？')){data.items=data.items.filter(x=>x.id!==id);selected.delete(id);save();render()}}
-function openTaxonomyManager(){
+function openTaxonomyManager(initialKind="category", initialValue="", directAdd=false){
  closeDrawer();
  const categories=uniq([...data.items.map(i=>i.category),...(data.customCategories||[])]);
  const tags=uniq([...data.items.flatMap(i=>i.tags||[]),...(data.customTags||[])]);
@@ -605,6 +630,7 @@ function openTaxonomyManager(){
  const kind=$('#taxKind'),select=$('#taxExisting'),name=$('#taxName');
  const values=()=>kind.value==='category'?uniq([...data.items.map(i=>i.category),...(data.customCategories||[])]):uniq([...data.items.flatMap(i=>i.tags||[]),...(data.customTags||[])]);
  const refresh=()=>{select.innerHTML=option(values());name.value=''};
+ kind.value=initialKind;refresh();if(initialValue){select.value=initialValue;name.value=initialValue;}if(directAdd){name.value='';setTimeout(()=>name.focus(),60)}
  kind.onchange=refresh;
  $('#closeModal').onclick=closeModal;
  $('#taxAdd').onclick=()=>{const v=name.value.trim();if(!v)return;const key=kind.value==='category'?'customCategories':'customTags';data[key]=uniq([...(data[key]||[]),v]);save();refresh();render()};
@@ -614,11 +640,11 @@ function openTaxonomyManager(){
 function drawerHTML(){
  const cats=['全部',...uniq([...data.items.map(i=>i.category),...(data.customCategories||[])])];
  const countries=['全部',...uniq(data.items.filter(i=>categoryFilter==='全部'||i.category===categoryFilter).map(i=>i.country))];
- const tags=['全部',...uniq(data.items.filter(i=>(categoryFilter==='全部'||i.category===categoryFilter)&&(countryFilter==='全部'||i.country===countryFilter)).flatMap(i=>i.tags||[]))];
+ const tags=['全部',...uniq([...data.items.filter(i=>(categoryFilter==='全部'||i.category===categoryFilter)&&(countryFilter==='全部'||i.country===countryFilter)).flatMap(i=>i.tags||[]),...(data.customTags||[])])];
  return `<div class="drawerBackdrop" id="drawerBackdrop"></div><aside class="drawer"><div class="drawerHead"><strong>選單</strong><button class="xBtn" id="closeDrawer" aria-label="關閉選單">${icon('close')}</button></div>
  <div class="drawerTitle">篩選收藏</div><div class="cascadeFilter"><details open><summary>分類 · ${esc(categoryFilter)} </summary><div class="chips">${cats.map(x=>`<button class="chip ${categoryFilter===x?'active':''}" data-cat="${esc(x)}">${esc(x)}</button>`).join('')}</div></details>
- ${categoryFilter!=='全部'?`<details open><summary>　↳ 國家 · ${esc(countryFilter)}</summary><div class="chips">${countries.map(x=>`<button class="chip ${countryFilter===x?'active':''}" data-country="${esc(x)}">${esc(x)}</button>`).join('')}</div></details>`:''}
- ${categoryFilter!=='全部'&&countryFilter!=='全部'?`<details open><summary>　　↳ 標籤 · ${esc(tagFilter)}</summary><div class="chips">${tags.map(x=>`<button class="chip ${tagFilter===x?'active':''}" data-tag="${esc(x)}">${x==='全部'?'全部':'# '+esc(x)}</button>`).join('')}</div></details>`:''}</div>
+ ${`<details><summary>　↳ 國家 · ${esc(countryFilter)}</summary><div class="chips">${countries.map(x=>`<button class="chip ${countryFilter===x?'active':''}" data-country="${esc(x)}">${esc(x)}</button>`).join('')}</div></details>`}
+ ${`<details><summary>　　↳ 標籤 · ${esc(tagFilter)}</summary><div class="chips">${tags.map(x=>`<button class="chip ${tagFilter===x?'active':''}" data-tag="${esc(x)}">${x==='全部'?'全部':'# '+esc(x)}</button>`).join('')}</div></details>`}</div>
  <div class="drawerSection"><div class="drawerTitle">分類與標籤管理</div><button class="smallBtn" id="manageTaxonomy">新增／重新命名／刪除</button></div><div class="drawerSection"><div class="drawerTitle">資料工具</div><div class="toolRow"><button class="smallBtn" id="exportBtn">匯出備份</button><button class="smallBtn" id="importBtn">匯入備份</button><button class="smallBtn" id="resetFilter">清除篩選</button></div></div><div class="drawerSection"><div id="storageWarning" class="storageWarning ${storageError?'':'hidden'}">${esc(storageError||'')}</div><div class="storageFoot">資料保存在此裝置瀏覽器，尚未雲端同步；請定期匯出備份。</div><div class="filterLabel">目前版本</div><strong>v${VERSION}</strong></div></aside>`
 }
 function openDrawer(){$('#drawerHost').innerHTML=drawerHTML();$('#closeDrawer').onclick=$('#drawerBackdrop').onclick=closeDrawer;$$('[data-cat]').forEach(b=>b.onclick=()=>{categoryFilter=b.dataset.cat;countryFilter='全部';tagFilter='全部';openDrawer();render()});$$('[data-country]').forEach(b=>b.onclick=()=>{countryFilter=b.dataset.country;tagFilter='全部';openDrawer();render()});$$('[data-tag]').forEach(b=>b.onclick=()=>{tagFilter=b.dataset.tag;openDrawer();render()});$('#manageTaxonomy').onclick=openTaxonomyManager;$('#exportBtn').onclick=exportData;$('#importBtn').onclick=()=>$('#importFile').click();$('#resetFilter').onclick=()=>{categoryFilter=countryFilter=tagFilter='全部';openDrawer();render()}}
@@ -710,10 +736,16 @@ function openImageViewer(photos,startIndex=0,title='圖片預覽'){
  imageViewerKeyHandler=e=>{if(e.key==='Escape')closeImageViewer();if(e.key==='ArrowLeft'){index=(index-1+valid.length)%valid.length;paint()}if(e.key==='ArrowRight'){index=(index+1)%valid.length;paint()}};
  document.addEventListener('keydown',imageViewerKeyHandler);
 }
+function renameShoppingList(id){
+ const list=data.shoppingLists.find(l=>l.id===id);if(!list)return;
+ openModal(`<div class="sheetHead"><strong>編輯購物清單名稱</strong><button class="iconBtn uiBtn" id="closeModal" aria-label="關閉">${icon('close')}</button></div><form class="form" id="renameListForm"><label>清單名稱<input id="renameListInput" required maxlength="80" value="${esc(list.name)}"></label><div class="formActions"><button type="button" class="ghost uiBtn" id="cancelRenameList">取消</button><button class="primary uiBtn">儲存</button></div></form>`);
+ $('#closeModal').onclick=$('#cancelRenameList').onclick=closeModal;
+ $('#renameListForm').onsubmit=e=>{e.preventDefault();const name=$('#renameListInput').value.trim();if(!name)return;list.name=name;save();closeModal();render()};
+}
 function editShoppingProduct(lid,idx){const l=data.shoppingLists.find(x=>x.id===lid),it=l?.items?.[idx];if(!it)return;
- openModal(`<div class="sheetHead"><strong>編輯購物品項</strong><button class="iconBtn uiBtn" id="closeModal">${icon('close')}</button></div><form class="form" id="editShop162"><label>商品名稱<input id="shop162Name" value="${esc(it.name)}" required></label><label style="margin-top:10px">圖片網址<input id="shop162Image" value="${esc(it.image||'')}"></label><label style="margin-top:10px">備註<textarea id="shop162Note" rows="3">${esc(it.note||'')}</textarea></label><div class="formActions"><button type="button" class="ghost uiBtn" id="cancelShop162">取消</button><button class="primary uiBtn">儲存</button></div></form>`);
+ openModal(`<div class="sheetHead"><strong>編輯購物品項</strong><button class="iconBtn uiBtn" id="closeModal">${icon('close')}</button></div><form class="form" id="editShop162"><label>商品名稱<input id="shop162Name" value="${esc(it.name)}" required></label><label style="margin-top:10px">圖片網址<input id="shop162Image" value="${esc(it.image||'')}"></label><label style="margin-top:10px">其他名稱（選填）<input id="shop162Alias" value="${esc(it.alias||it.altName||'')}"></label><label style="margin-top:10px">備註<textarea id="shop162Note" rows="3">${esc(it.note||'')}</textarea></label><div class="formActions"><button type="button" class="ghost uiBtn" id="cancelShop162">取消</button><button class="primary uiBtn">儲存</button></div></form>`);
  $('#closeModal').onclick=$('#cancelShop162').onclick=closeModal;
- $('#editShop162').onsubmit=e=>{e.preventDefault();it.name=$('#shop162Name').value.trim();it.image=$('#shop162Image').value.trim();it.note=$('#shop162Note').value.trim();save();closeModal();render()}
+ $('#editShop162').onsubmit=e=>{e.preventDefault();it.name=$('#shop162Name').value.trim();it.image=$('#shop162Image').value.trim();it.note=$('#shop162Note').value.trim();it.alias=$('#shop162Alias').value.trim();save();closeModal();render()}
 }
 function editShoppingNote(listId,idx){
  const list=data.shoppingLists.find(x=>x.id===listId);const item=list?.items?.[idx];if(!item)return;
