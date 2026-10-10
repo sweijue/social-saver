@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="拾集">
-<title>拾集 v1.7.0</title>
+<title>拾集 v1.8.0</title>
 <style>
 :root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#6e6e68;--line:#e4e4de;--soft:#efefe9;--shadow:0 10px 28px rgba(0,0,0,.07);--r:20px;--navh:74px}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif;font-size:17px}body{min-height:100vh;padding-bottom:calc(var(--navh) + env(safe-area-inset-bottom) + 18px)}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
@@ -323,6 +323,13 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 .locationNote{font-size:12px;color:#777;margin-top:6px}
 .quickMediaTip{background:#f7f7f3;padding:10px;border-radius:10px;font-size:12px;line-height:1.55;color:#555}
 
+
+/* 拾集 v1.8.0：cloud setup, minimal status in drawer */
+.persistBanner{pointer-events:none}
+.cloudHelp{font-size:12px;line-height:1.65;color:#555;margin:10px 0}
+.cloudActions{justify-content:flex-end}
+#cloudDrawerStatus{background:#f4f4f1;border:1px solid #e4e4de;padding:8px;border-radius:9px}
+
 </style>
 <style>
 .cascadeFilter{border:1px solid var(--line);border-radius:13px;background:#fff;overflow:hidden;margin:8px 0 14px}
@@ -354,7 +361,7 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 
 <script>
 
-const VERSION="1.7.0", STORE="socialSaver_data";
+const VERSION="1.8.0", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -460,6 +467,7 @@ async function initStorage(){
  bootReady=true;
  await writeStore(data);
  render();
+ setTimeout(()=>cloudBoot(),100);
 }
 function inferCountry(text){if(/[가-힣]/.test(text)||/서울|부산|제주|올리브영|韓國|首爾|弘大|聖水|Seoul|Korea|Hongdae/i.test(text))return'韓國';if(/[ぁ-んァ-ン]/.test(text)||/東京|大阪|京都|日本/.test(text))return'日本';if(/台灣|臺灣|台北|新竹|台中|高雄/.test(text))return'台灣';if(/Thailand|泰國|Bangkok|曼谷/i.test(text))return'泰國';if(/Vietnam|越南|Hanoi|河內/i.test(text))return'越南';return'其他'}
 function inferCategory(text){const rules=[['購物',/購物|必買|藥妝|美妝|百貨|商品|品牌|olive young|올리브영|大創|다이소|shopping|shop/i],['美食',/餐廳|咖啡|美食|烤肉|甜點|맛집|카페|restaurant|food/i],['旅遊',/景點|飯店|機場|地鐵|行程|旅遊|hotel|airport|station/i],['設計',/設計|排版|字體|海報|design|font|poster/i],['產品',/產品|規格|型號|model|spec/i],['娛樂',/演唱會|歌手|藝人|concert|콘서트/i]];for(const [c,r] of rules)if(r.test(text))return c;return'其他'}
@@ -538,7 +546,7 @@ function loadData(snapshot=readStore()){
  d.version=VERSION;return d
 }
 let data=loadData();
-function save(){data.version=VERSION;return writeStore(data)}
+function save(){data.version=VERSION;const pending=writeStore(data);scheduleCloudWrite();return pending}
 let view='library',listMode='shopping',categoryFilter='全部',countryFilter='全部',tagFilter='全部',selected=new Set(),detailIds=[],detailIndex=0;
 let cardMode=['two','three','list'].includes(data.preferences.cardMode)?data.preferences.cardMode:'two';
 let sortMode=['newest','oldest','title','country','category'].includes(data.preferences.sortMode)?data.preferences.sortMode:'newest';
@@ -761,9 +769,9 @@ function drawerHTML(){
  <div class="drawerTitle">篩選收藏</div><div class="cascadeFilter"><details open><summary>分類 · ${esc(categoryFilter)} </summary><div class="chips">${cats.map(x=>`<button class="chip ${categoryFilter===x?'active':''}" data-cat="${esc(x)}">${esc(x)}</button>`).join('')}</div></details>
  ${`<details><summary>　↳ 國家 · ${esc(countryFilter)}</summary><div class="chips">${countries.map(x=>`<button class="chip ${countryFilter===x?'active':''}" data-country="${esc(x)}">${esc(x)}</button>`).join('')}</div></details>`}
  ${`<details><summary>　　↳ 標籤 · ${esc(tagFilter)}</summary><div class="chips">${tags.map(x=>`<button class="chip ${tagFilter===x?'active':''}" data-tag="${esc(x)}">${x==='全部'?'全部':'# '+esc(x)}</button>`).join('')}</div></details>`}</div>
- <div class="drawerSection"><div class="drawerTitle">分類與標籤管理</div><button class="smallBtn" id="manageTaxonomy">新增／重新命名／刪除</button></div><div class="drawerSection"><div class="drawerTitle">資料工具</div><div class="toolRow"><button class="smallBtn" id="exportBtn">匯出備份</button><button class="smallBtn" id="importBtn">匯入備份</button><button class="smallBtn" id="resetFilter">清除篩選</button></div></div><div class="drawerSection"><div id="storageWarning" class="storageWarning ${storageError?'':'hidden'}">${esc(storageError||'')}</div><div class="storageFoot">資料保存在此裝置瀏覽器，尚未雲端同步；請定期匯出備份。</div><div class="filterLabel">目前版本</div><strong>v${VERSION}</strong></div></aside>`
+ <div class="drawerSection"><div class="drawerTitle">分類與標籤管理</div><button class="smallBtn" id="manageTaxonomy">新增／重新命名／刪除</button></div><div class="drawerSection"><div class="drawerTitle">雲端同步</div><div class="toolRow"><button class="smallBtn" id="cloudSetupBtn">設定／管理同步</button><button class="smallBtn" id="cloudSyncBtn">立即同步</button></div><p class="cloudHelp" id="cloudDrawerStatus">${esc(cloudMessage)}</p></div><div class="drawerSection"><div class="drawerTitle">資料工具</div><div class="toolRow"><button class="smallBtn" id="exportBtn">匯出備份</button><button class="smallBtn" id="importBtn">匯入備份</button><button class="smallBtn" id="resetFilter">清除篩選</button></div></div><div class="drawerSection"><div id="storageWarning" class="storageWarning ${storageError?'':'hidden'}">${esc(storageError||'')}</div><div class="storageFoot">本機保留備份。雲端同步需完成設定，建議定期匯出備份。</div><div class="filterLabel">目前版本</div><strong>v${VERSION}</strong></div></aside>`
 }
-function openDrawer(){$('#drawerHost').innerHTML=drawerHTML();$('#closeDrawer').onclick=$('#drawerBackdrop').onclick=closeDrawer;$$('[data-cat]').forEach(b=>b.onclick=()=>{categoryFilter=b.dataset.cat;countryFilter='全部';tagFilter='全部';openDrawer();render()});$$('[data-country]').forEach(b=>b.onclick=()=>{countryFilter=b.dataset.country;tagFilter='全部';openDrawer();render()});$$('[data-tag]').forEach(b=>b.onclick=()=>{tagFilter=b.dataset.tag;openDrawer();render()});$('#manageTaxonomy').onclick=openTaxonomyManager;$('#exportBtn').onclick=exportData;$('#importBtn').onclick=()=>$('#importFile').click();$('#resetFilter').onclick=()=>{categoryFilter=countryFilter=tagFilter='全部';openDrawer();render()}}
+function openDrawer(){$('#drawerHost').innerHTML=drawerHTML();$('#closeDrawer').onclick=$('#drawerBackdrop').onclick=closeDrawer;$$('[data-cat]').forEach(b=>b.onclick=()=>{categoryFilter=b.dataset.cat;countryFilter='全部';tagFilter='全部';openDrawer();render()});$$('[data-country]').forEach(b=>b.onclick=()=>{countryFilter=b.dataset.country;tagFilter='全部';openDrawer();render()});$$('[data-tag]').forEach(b=>b.onclick=()=>{tagFilter=b.dataset.tag;openDrawer();render()});$('#manageTaxonomy').onclick=openTaxonomyManager;$('#cloudSetupBtn').onclick=()=>{closeDrawer();openCloudSettings()};$('#cloudSyncBtn').onclick=async()=>{closeDrawer();await cloudRun()};$('#exportBtn').onclick=exportData;$('#importBtn').onclick=()=>$('#importFile').click();$('#resetFilter').onclick=()=>{categoryFilter=countryFilter=tagFilter='全部';openDrawer();render()}}
 function closeDrawer(){$('#drawerHost').innerHTML=''}
 function openModal(html){
  $('#modalHost').innerHTML=`<div class="modalBackdrop" id="modalBackdrop"><section class="sheet" id="sheet">${html}</section></div>`;
@@ -1144,6 +1152,174 @@ try{const shared=new URL(location.href).searchParams.get('url');if(shared&&clean
 // iOS browser gesture scaling can distort this app layout; keep native vertical scrolling.
 document.addEventListener('gesturestart',e=>e.preventDefault(),{passive:false});
 document.addEventListener('gesturechange',e=>e.preventDefault(),{passive:false});
+// ----- 拾集雲端同步 v1.8.0 (Cloudflare Worker + D1) -----
+// Keys, including the private token, are written only to the user's own browser storage.
+// Never hardcode the token into a public GitHub Pages HTML file.
+const CLOUD_CONFIG_KEY = 'shiji_cloud_config_v1';
+const CLOUD_META_KEY = 'shiji_cloud_meta_v1';
+function readCloudJson(key, fallback){try{return JSON.parse(localStorage.getItem(key)||'null')||fallback}catch{return fallback}}
+let cloudConfig=readCloudJson(CLOUD_CONFIG_KEY,null);
+let cloudMeta=readCloudJson(CLOUD_META_KEY,{revision:null,dirty:false,wasConnected:false});
+let cloudBusy=false,cloudConflict=false,cloudMessage='尚未設定雲端',cloudTimer=null,cloudSaveTimer=null;
+function persistCloud(){try{localStorage.setItem(CLOUD_META_KEY,JSON.stringify(cloudMeta))}catch{}}
+function scheduleCloudWrite(){
+ if(!cloudConfig||!cloudMeta.wasConnected)return;
+ cloudMeta.dirty=true;persistCloud();
+ if(cloudSaveTimer)clearTimeout(cloudSaveTimer);
+ cloudSaveTimer=setTimeout(()=>{cloudRun().catch(()=>{})},1200);
+ cloudStatusUI();
+}
+function cloudStatusUI(){
+ const el=document.querySelector('#cloudStatusText');
+ if(el)el.textContent=cloudMessage+(cloudMeta.dirty?' · 有待同步變更':'');
+ const foot=document.querySelector('#cloudDrawerStatus');
+ if(foot)foot.textContent=cloudMessage+(cloudMeta.dirty?'（本機尚有未上傳的變更）':'');
+}
+function cloudServerURL(url){
+ const u=new URL(String(url||'').trim());
+ if(u.protocol!=='https:'||u.username||u.password||u.search||u.hash)throw new Error('請填 Cloudflare Worker 的 HTTPS 網址');
+ return u.origin;
+}
+async function cloudRequest(method,path,body,settings=cloudConfig){
+ if(!settings)throw new Error('雲端尚未設定');
+ const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),16000);
+ try{
+   const r=await fetch(cloudServerURL(settings.url)+path,{
+    method,headers:{'Authorization':'Bearer '+settings.token,'Content-Type':'application/json'},
+    ...(body===undefined?{}:{body:JSON.stringify(body)}),cache:'no-store',signal:ctl.signal
+   });
+   let json={};try{json=await r.json()}catch{}
+   if(!r.ok){const err=new Error(json.error==='unauthorized'?'密鑰不正確':json.error==='revision-conflict'?'雲端內容已被另一台裝置更新':json.error==='state-too-large'||r.status===413?'圖片或資料容量過大，無法上傳雲端。請先匯出備份並縮小圖片。':`雲端服務錯誤 ${r.status}：${json.error||'unknown'}`);err.status=r.status;throw err}
+   return json;
+ }finally{clearTimeout(timer)}
+}
+function cloudMerge(remote,local){
+ const merged={...remote};
+ for(const key of ['items','shoppingLists','travelPlans']){
+  const target=Array.isArray(remote?.[key])?remote[key].map(x=>({...x})):[];
+  const ids=new Set(target.map(x=>x.id));
+  for(const item of (local?.[key]||[])){
+   if(!ids.has(item.id)){target.push({...item});ids.add(item.id)}
+  }
+  merged[key]=target;
+ }
+ merged.preferences={...(remote.preferences||{}),...(local.preferences||{})};
+ merged.customCategories=uniq([...(remote.customCategories||[]),...(local.customCategories||[])]);
+ merged.customTags=uniq([...(remote.customTags||[]),...(local.customTags||[])]);
+ merged.customCountries=uniq([...(remote.customCountries||[]),...(local.customCountries||[])]);
+ return merged;
+}
+async function cloudCommit(){
+ const before=Number(cloudMeta.revision||0);
+ const stamp=Number(data._savedAt||0);
+ const result=await cloudRequest('PUT','/api/state',{expectedRevision:before,data:safeClone(data)});
+ cloudMeta.revision=result.revision;
+ // If a local edit happened mid-flight, keep it pending for the next cycle.
+ cloudMeta.dirty=Number(data._savedAt||0)!==stamp;
+ cloudMeta.wasConnected=true;persistCloud();
+ cloudMessage='雲端已同步';cloudStatusUI();
+}
+async function cloudRun(){
+ if(!cloudConfig||cloudBusy||cloudConflict)return;
+ cloudBusy=true;cloudMessage='同步中…';cloudStatusUI();
+ try{
+  const latest=await cloudRequest('GET','/api/state');
+  if(cloudMeta.revision===null){
+    cloudConflict=true;
+    throw new Error('尚未完成首次連線，請到選單設定雲端');
+  }
+  if(cloudMeta.dirty){
+   if(latest.revision!==cloudMeta.revision){cloudConflict=true;throw new Error('本機與雲端都已修改。請先匯出本機備份，再到雲端設定決定保留哪一份。')}
+   await cloudCommit();
+  }else if(latest.revision!==cloudMeta.revision){
+   if(latest.data){data=loadData(latest.data);await writeStore(data);render()}
+   cloudMeta.revision=latest.revision;persistCloud();
+  }
+  const inbox=await cloudRequest('GET','/api/inbox');
+  const rows=Array.isArray(inbox.items)?inbox.items:[];
+  const already=new Set(data.items.map(i=>i.url).filter(Boolean));
+  let added=0;
+  for(const msg of rows){
+   const url=cleanExternalURL(msg.url);if(!url||already.has(url))continue;
+   let meta=null;
+   try{meta=await fetchPublicMetadata(url)}catch{} // blocked social links remain URL-only
+   const sharedText=String(msg.shared_text||'').replace(url,'').trim();
+   const item=quickItem(url,meta,(!meta&&sharedText.length>8)?{body:sharedText}:{});
+   item.inboxId=msg.id;data.items.unshift(item);already.add(url);added++;
+  }
+  if(added){await writeStore(data);cloudMeta.dirty=true;persistCloud();await cloudCommit();render()}
+  if(rows.length)await cloudRequest('POST','/api/inbox/ack',{ids:rows.map(x=>x.id)});
+  cloudMessage=added?`已同步，新增 ${added} 篇分享`:'雲端已同步';cloudStatusUI();
+ }catch(e){cloudMessage=`同步失敗：${e.message}`;cloudStatusUI();}
+ finally{cloudBusy=false}
+}
+async function cloudBoot(){
+ if(!cloudConfig)return;
+ if(!cloudConfig.url||!cloudConfig.token){cloudConfig=null;return}
+ await cloudRun();
+ if(!cloudTimer)cloudTimer=setInterval(()=>{if(document.visibilityState==='visible')cloudRun()},35000);
+}
+async function cloudConnect(url,token){
+ const config={url:cloudServerURL(url),token:String(token||'').trim()};
+ if(config.token.length<32)throw new Error('請填至少 32 字元的 Worker 密鑰');
+ const remote=await cloudRequest('GET','/api/state',undefined,config);
+ // Explicit initial merge keeps previously saved local favorites and lists.
+ if(remote.data?.items?.length||remote.data?.shoppingLists?.length||remote.data?.travelPlans?.length){
+  if(!confirm('雲端已有資料。要將這台裝置的收藏和清單加入雲端嗎？相同 ID 將以雲端為準。'))return false;
+  data=loadData(cloudMerge(remote.data,data));
+ }
+ cloudConfig=config;
+ cloudMeta={revision:remote.revision,dirty:true,wasConnected:true};persistCloud();
+ try{localStorage.setItem(CLOUD_CONFIG_KEY,JSON.stringify(cloudConfig))}
+ catch{throw new Error('此瀏覽器無法保存連線設定')}
+ await writeStore(data);
+ await cloudCommit();cloudConflict=false;render();
+ if(!cloudTimer)cloudTimer=setInterval(()=>{if(document.visibilityState==='visible')cloudRun()},35000);
+ await cloudRun();return true;
+}
+function openCloudSettings(){
+ const active=!!cloudConfig;
+ openModal(`<div class="sheetHead"><strong>雲端同步</strong><button class="iconBtn uiBtn" id="closeCloud" aria-label="關閉">${icon('close')}</button></div>
+ <div class="form">
+  <p class="cloudHelp">手機分享捷徑直接送到 Worker；拾集開啟時自動讀取。密鑰只保存在你這台裝置，不寫入 GitHub。</p>
+  <label>Cloudflare Worker 網址<input type="url" id="cloudUrl" autocomplete="off" placeholder="https://shiji-sync.你的帳號.workers.dev" value="${esc(cloudConfig?.url||'')}"></label>
+  <label>私密同步密鑰<input type="password" id="cloudToken" autocomplete="off" placeholder="Worker Secret：SJ_TOKEN" value="${esc(cloudConfig?.token||'')}"></label>
+  <p class="cloudHelp" id="cloudDialogStatus">${esc(cloudMessage)}</p>
+  <div class="formActions cloudActions"><button type="button" class="ghost uiBtn" id="cancelCloud">取消</button><button type="button" class="primary uiBtn" id="connectCloud">${active?'重新連線':'開始連線'}</button></div>
+  ${active?`<div class="formActions"><button type="button" class="ghost uiBtn" id="syncCloudNow">立即同步</button><button type="button" class="ghost uiBtn" id="cloudPullForce">改用雲端資料</button><button type="button" class="ghost uiBtn" id="cloudPushForce">以本機覆蓋雲端</button><button type="button" class="ghost uiBtn" id="disconnectCloud">斷開</button></div>`:''}
+ </div>`);
+ $('#closeCloud').onclick=$('#cancelCloud').onclick=closeModal;
+ $('#connectCloud').onclick=async()=>{
+  const btn=$('#connectCloud');btn.disabled=true;
+  $('#cloudDialogStatus').textContent='檢查連線中…';
+  try{const ok=await cloudConnect($('#cloudUrl').value,$('#cloudToken').value);if(ok)closeModal();else $('#cloudDialogStatus').textContent='已取消合併'}
+  catch(e){$('#cloudDialogStatus').textContent=`連線失敗：${e.message}`}
+  finally{btn.disabled=false}
+ };
+ if(!active)return;
+ $('#syncCloudNow').onclick=async()=>{cloudConflict=false;closeModal();await cloudRun();if(cloudMessage.startsWith('同步失敗'))alert(cloudMessage)};
+ $('#cloudPullForce').onclick=async()=>{
+  if(!confirm('將這台裝置目前的資料改為雲端版本。請先匯出本機備份，確定嗎？'))return;
+  try{const r=await cloudRequest('GET','/api/state');if(r.data){exportData();data=loadData(r.data);await writeStore(data);render()}
+   cloudMeta={revision:r.revision,dirty:false,wasConnected:true};persistCloud();cloudConflict=false;cloudMessage='已從雲端取回';closeModal();cloudStatusUI()}
+  catch(e){alert(e.message)}
+ };
+ $('#cloudPushForce').onclick=async()=>{
+  if(!confirm('這會用本機資料覆蓋其他裝置的雲端變更。建議先匯出備份。確定嗎？'))return;
+  try{const r=await cloudRequest('GET','/api/state');cloudMeta.revision=r.revision;cloudMeta.dirty=true;persistCloud();cloudConflict=false;await cloudCommit();closeModal()}
+  catch(e){alert(e.message)}
+ };
+ $('#disconnectCloud').onclick=()=>{
+  if(!confirm('斷開雲端？本機資料會保留，但不再同步。'))return;
+  try{localStorage.removeItem(CLOUD_CONFIG_KEY);localStorage.removeItem(CLOUD_META_KEY)}catch{}
+  cloudConfig=null;cloudMeta={revision:null,dirty:false,wasConnected:false};cloudConflict=false;
+  if(cloudTimer){clearInterval(cloudTimer);cloudTimer=null}
+  cloudMessage='尚未設定雲端';closeModal();cloudStatusUI()
+ };
+}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&cloudConfig)cloudRun()});
+window.addEventListener('online',()=>{if(cloudConfig)cloudRun()});
+
 </script>
 </body>
 </html>
