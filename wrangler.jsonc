@@ -1,0 +1,12 @@
+{
+  "name": "shiji-sync",
+  "main": "worker.js",
+  "compatibility_date": "2026-10-09",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "shiji-db",
+      "database_id": "d39f773f-a550-479f-ac48-6584893b6c9e"
+    }
+  ]
+}
