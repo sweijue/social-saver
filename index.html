@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="拾集">
-<title>拾集 v1.8.5</title>
+<title>拾集 v1.8.6</title>
 <style>
 :root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#6e6e68;--line:#e4e4de;--soft:#efefe9;--shadow:0 10px 28px rgba(0,0,0,.07);--r:20px;--navh:74px}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif;font-size:17px}body{min-height:100vh;padding-bottom:calc(var(--navh) + env(safe-area-inset-bottom) + 18px)}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
@@ -338,7 +338,7 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 .quickRetryBtn{display:inline-flex;align-items:center;gap:7px;margin:4px 0 0;justify-self:start;border:1px solid var(--line);background:#fff;font-size:13px;padding:8px 11px}
 .quickRetryBtn:disabled,#retryArticle:disabled{opacity:.55;cursor:wait}
 
-/* 拾集 v1.8.5：清晰的分類／標籤管理段落與旅遊清單編輯 */
+/* 拾集 v1.8.6：清晰的分類／標籤管理段落與旅遊清單編輯 */
 .taxGroup{background:#fff;border:1px solid #e0e1dc;border-radius:16px;padding:14px 13px 10px;margin:16px 0 22px;box-shadow:0 3px 12px rgba(0,0,0,.028)}
 .taxHeading{margin:0 0 13px;padding:0 0 11px;border-bottom:2px solid #d9ded6;gap:8px;min-height:38px}
 .taxHeading strong{font-size:18px!important;color:#202522;font-weight:950;letter-spacing:.03em}
@@ -368,7 +368,7 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 .travelPickItem input{width:16px;height:16px;margin:0}
 
 
-/* v1.8.5: actionable, reviewable photo findings */
+/* v1.8.6: actionable, reviewable photo findings */
 .visionSection{border:1px solid var(--line);border-radius:16px;padding:13px;background:#fbfbf9}
 .visionHead{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .visionHead h4{margin:0!important;border:0!important;padding:0!important;background:transparent!important}
@@ -439,7 +439,7 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 </style>
 
 <style>
-/* 拾集 v1.8.5: aligned controls, notes on previews, editing taxonomy */
+/* 拾集 v1.8.6: aligned controls, notes on previews, editing taxonomy */
 .fetchActionRow{display:grid!important;grid-template-columns:repeat(2,minmax(0,148px));gap:8px!important;align-items:stretch!important;margin:10px 0 6px}
 .fetchActionRow>.linkPill{box-sizing:border-box;display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px;min-width:0!important;min-height:42px;width:100%;margin:0!important;padding:8px 10px!important;line-height:1.3;white-space:nowrap;font-size:14px}
 .cardNote{margin-top:8px;padding:7px 8px;border-radius:9px;background:#eef5fa;border-left:3px solid #507e9a;display:flex;gap:6px;align-items:flex-start;color:#24516b;min-width:0}
@@ -471,7 +471,7 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 
 <script>
 
-const VERSION="1.8.5", STORE="socialSaver_data";
+const VERSION="1.8.6", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -1719,7 +1719,36 @@ async function cloudRequest(method,path,body,settings=cloudConfig){
     ...(body===undefined?{}:{body:JSON.stringify(body)}),cache:'no-store',signal:ctl.signal
    });
    let json={};try{json=await r.json()}catch{}
-   if(!r.ok){if(path==='/api/vision'){const names={'vision-ai-binding-missing':'尚未啟用 Cloudflare AI 綁定，請在 Worker 的設定加入 AI。','image-unavailable':'無法讀取來源圖片。請從文章儲存圖片，再用「編輯」上傳後重試。','unsupported-image-type':'圖片格式不支援。請改用 JPG、PNG 或 WebP。','image-too-large':'圖片太大，請先縮小後重新加入。','vision-inference-failed':'AI 模型辨識失敗；請確認 Workers AI 可用、模型授權和每日使用額度。','server-not-configured':'Worker 尚未完成資料庫與密鑰設定。'};throw new Error(names[json.error]||`圖片辨識錯誤：${json.error||r.status}`)}const err=new Error(json.error==='unauthorized'?'密鑰不正確':json.error==='revision-conflict'?'雲端內容已被另一台裝置更新':json.error==='state-too-large'||r.status===413?'圖片或資料容量過大，無法上傳雲端。請先匯出備份並縮小圖片。':`雲端服務錯誤 ${r.status}：${json.error||'unknown'}`);err.status=r.status;throw err}
+   if(!r.ok){
+    if(path==='/api/vision'){
+      const names={
+        'vision-ai-binding-missing':'Cloudflare Worker 尚未綁定 Workers AI。',
+        'image-unavailable':'圖片來源無法讀取。可儲存圖片後在編輯頁上傳。',
+        'unsupported-image-type':'圖片格式不支援，請使用 JPG、PNG 或 WebP。',
+        'image-too-large':'圖片尺寸或檔案太大，請縮小再試。',
+        'image-fetch-timeout':'取得圖片逾時，可稍後重試或手動上傳圖片。',
+        'image-host-not-allowed':'圖片來源無法由伺服器安全讀取，請改為上傳圖片。',
+        'invalid-image-data':'圖片資料無效，請改用 JPG、PNG 或 WebP 上傳。',
+        'unauthorized':'同步密鑰不正確，請檢查雲端設定。',
+        'server-not-configured':'Worker 尚未完成資料庫與密鑰設定。'
+      };
+      const modelReason={
+        'daily-quota':'Workers AI 今日免費額度已用完，請待重置後再試。',
+        'model-busy':'Cloudflare 模型目前忙碌，稍後再試。',
+        'paid-plan':'Cloudflare 此模型需要付費方案，目前先不要升級，請回報錯誤。',
+        'model-license':'模型授權尚未接受，請回報錯誤。',
+        'bad-image-input':'圖片傳給 AI 的格式不正確，請回報錯誤。',
+        'image-too-large':'傳入 AI 的圖片太大，請縮小圖片。',
+        'model-unavailable':'Worker 使用的 AI 模型無法存取，請回報錯誤。',
+        'model-error':'Cloudflare 模型執行失敗。'
+      };
+      const description=json.error==='vision-inference-failed'?(modelReason[json.reason]||modelReason['model-error']):(names[json.error]||`圖片辨識錯誤：${json.error||r.status}`);
+      const suffix=json.detail?`（伺服器回報：${String(json.detail).slice(0,220)}）`:'';
+      throw new Error(`${description}${suffix}`);
+    }
+    const err=new Error(json.error==='unauthorized'?'密鑰不正確':json.error==='revision-conflict'?'雲端內容已被另一台裝置更新':json.error==='state-too-large'||r.status===413?'圖片或資料容量過大，無法上傳雲端。請先匯出備份並縮小圖片。':`雲端服務錯誤 ${r.status}：${json.error||'unknown'}`);
+    err.status=r.status;throw err;
+   }
    return json;
  }finally{clearTimeout(timer)}
 }

@@ -1,11 +1,13 @@
 /**
- * 拾集 Cloud API v1.8.0 — deploy as a Cloudflare Worker.
+ * 拾集 Cloud API v1.8.6 — deploy as a Cloudflare Worker.
  * Bind Cloudflare D1 database as DB; add Worker Secret SJ_TOKEN (min 32 chars).
  * Allowed browser origin is fixed to the user's GitHub Pages domain.
  * The secret must NOT be committed to GitHub or embedded in index.html.
  */
 const ALLOWED_ORIGIN = 'https://sweijue.github.io';
 const MAX_STATE_BYTES = 1_500_000;
+// Gemma 4 supports multilingual OCR and image input; no Meta Llama 3.2 agreement step.
+const VISION_MODEL = '@cf/google/gemma-4-26b-a4b-it';
 const encoder = new TextEncoder();
 const headersFor = origin => ({
   'Content-Type':'application/json; charset=utf-8',
@@ -92,14 +94,17 @@ async function imagePayload(body){
 }
 function safeArray(value,max=8){return Array.isArray(value)?value.filter(x=>typeof x==='string').map(s=>s.trim().slice(0,140)).filter(Boolean).slice(0,max):[]}
 function parseVisionModel(out){
- const value=typeof out==='string'?out:typeof out?.response==='string'?out.response:typeof out?.result==='string'?out.result:JSON.stringify(out);
+ const candidate=out?.choices?.[0]?.message?.content ?? out?.response ?? out?.result ?? out;
+ const value=typeof candidate==='string'?candidate:Array.isArray(candidate)?candidate.map(part=>part.text||'').join('\n'):JSON.stringify(candidate||'');
+ const stripped=value.replace(/<think>[\s\S]*?<\/think>/g,'').trim();
  let raw={};
- try{raw=JSON.parse(value)}catch{
-  const start=value.indexOf('{'),end=value.lastIndexOf('}');
-  if(start>=0&&end>start){try{raw=JSON.parse(value.slice(start,end+1))}catch{}}
+ try{raw=JSON.parse(stripped)}catch{
+  const start=stripped.indexOf('{'),end=stripped.lastIndexOf('}');
+  if(start>=0&&end>start){try{raw=JSON.parse(stripped.slice(start,end+1))}catch{}}
  }
+ const structured=raw&&typeof raw==='object'&&!Array.isArray(raw);
  return {
-  summary:String(raw.summary||(!Object.keys(raw).length?value:'')).slice(0,240),
+  summary:String(structured&&raw.summary||(!Object.keys(raw||{}).length?stripped:'')).slice(0,240),
   visibleText:safeArray(raw.visibleText,12),
   products:safeArray(raw.products,8),
   places:safeArray(raw.places,6),
@@ -107,6 +112,19 @@ function parseVisionModel(out){
   tags:safeArray(raw.tags,8),
   uncertain:String(raw.uncertain||'').slice(0,180)
  };
+}
+function modelFailure(e){
+ const original=String(e?.message||e||'Unknown model failure');
+ const detail=original.replace(/Bearer\s+\S+/gi,'Bearer [REDACTED]').replace(/https?:\/\/\S+/g,'[URL]').slice(0,240);
+ let reason='model-error';
+ if(/\b3036\b|neuron|daily.+(limit|quota)|allocation|quota.exceed/i.test(original))reason='daily-quota';
+ else if(/\b3040\b|capacity|too.busy|overload/i.test(original))reason='model-busy';
+ else if(/\b5035\b|paid.plan|requires.+paid/i.test(original))reason='paid-plan';
+ else if(/\b5016\b|model.agreement|accept.+(terms|license)/i.test(original))reason='model-license';
+ else if(/\b5004\b|invalid.*(data|image|base64)|image.*invalid/i.test(original))reason='bad-image-input';
+ else if(/\b3006\b|request.too.large|payload.too.large/i.test(original))reason='image-too-large';
+ else if(/\b5007\b|\b3042\b|no.such.model|model.not.found/i.test(original))reason='model-unavailable';
+ return {error:'vision-inference-failed',reason,detail};
 }
 
 export default {
@@ -118,7 +136,7 @@ export default {
       return new Response(null,{status:204,headers:headersFor(origin)});
     }
     const pathname=new URL(request.url).pathname.replace(/\/+$/,'')||'/';
-    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.5',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI},200,origin);
+    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.6',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL},200,origin);
     if(!env.DB||!env.SJ_TOKEN||String(env.SJ_TOKEN).length<32)return reply({error:'server-not-configured'},503,origin);
     try{
       let body=null;
@@ -134,12 +152,20 @@ export default {
         const image=await imagePayload(body);
         const prompt=`You inspect ONE photo shared in a social post. Read visible product labels, store signs, menus and location clues in any language (Chinese, Japanese, Korean, English). Return only valid JSON without markdown with these keys: summary (short Traditional Chinese description, not a guess), visibleText (exact readable text only, array), products (specific product names ONLY when readable on packaging, array), places (specific store/place names ONLY with clear evidence, array), addresses (only readable full addresses, array), tags (short Traditional Chinese topics grounded in photo, array), uncertain (things that are not readable or might be wrong, string). Never infer an exact shop, product, price or country just from generic objects; leave arrays empty when unsure.`;
         try{
-          const output=await env.AI.run('@cf/meta/llama-3.2-11b-vision-instruct',{
-            messages:[{role:'system',content:'You are a careful multilingual photo reader. Never invent unreadable words.'},{role:'user',content:prompt}],
-            image,max_tokens:480,temperature:0.1
+          const output=await env.AI.run(VISION_MODEL,{
+            messages:[
+              {role:'system',content:'You read social media images in Chinese, Japanese, Korean, and English. Only return facts clearly supported by the image.'},
+              {role:'user',content:[
+                {type:'text',text:prompt},
+                {type:'image_url',image_url:{url:image}}
+              ]}
+            ],
+            chat_template_kwargs:{enable_thinking:false},
+            max_completion_tokens:650,
+            temperature:0.1
           });
-          return reply({ok:true,analysis:parseVisionModel(output)},200,origin);
-        }catch(e){return reply({error:'vision-inference-failed',detail:String(e?.message||e).slice(0,180)},502,origin)}
+          return reply({ok:true,model:VISION_MODEL,analysis:parseVisionModel(output)},200,origin);
+        }catch(e){return reply(modelFailure(e),502,origin)}
       }
       if(pathname==='/api/state'&&request.method==='GET'){
         const r=await env.DB.prepare('SELECT revision,content,updated_at FROM app_state WHERE id=1').first();
