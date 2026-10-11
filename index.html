@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="拾集">
-<title>拾集 v1.8.2</title>
+<title>拾集 v1.8.3</title>
 <style>
 :root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#6e6e68;--line:#e4e4de;--soft:#efefe9;--shadow:0 10px 28px rgba(0,0,0,.07);--r:20px;--navh:74px}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif;font-size:17px}body{min-height:100vh;padding-bottom:calc(var(--navh) + env(safe-area-inset-bottom) + 18px)}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
@@ -331,12 +331,42 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 #cloudDrawerStatus{background:#f4f4f1;border:1px solid #e4e4de;padding:8px;border-radius:9px}
 
 
-\n/* v1.8.2: rescan action is visually aligned with the existing soft outlined controls */
+\n/* v1.8.3: rescan action is visually aligned with the existing soft outlined controls */
 .fetchActionRow{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .fetchActionRow .linkPill{margin-right:0}
 .fetchFeedback{font-size:12px;line-height:1.55;color:#73736e;margin-top:6px}
 .quickRetryBtn{display:inline-flex;align-items:center;gap:7px;margin:4px 0 0;justify-self:start;border:1px solid var(--line);background:#fff;font-size:13px;padding:8px 11px}
 .quickRetryBtn:disabled,#retryArticle:disabled{opacity:.55;cursor:wait}
+
+/* 拾集 v1.8.3：清晰的分類／標籤管理段落與旅遊清單編輯 */
+.taxGroup{background:#fff;border:1px solid #e0e1dc;border-radius:16px;padding:14px 13px 10px;margin:16px 0 22px;box-shadow:0 3px 12px rgba(0,0,0,.028)}
+.taxHeading{margin:0 0 13px;padding:0 0 11px;border-bottom:2px solid #d9ded6;gap:8px;min-height:38px}
+.taxHeading strong{font-size:18px!important;color:#202522;font-weight:950;letter-spacing:.03em}
+.taxHeading .uiBtn{width:33px;height:33px;min-width:33px;border-radius:10px!important}
+.taxEntry{padding:10px 2px;border-bottom:1px solid #eeeeea;gap:6px}
+.taxEntry:last-child{border-bottom:0}
+.taxEntryName{font-size:14px;font-weight:750;color:#41443f}
+.autoTagHead{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.autoTagHead h4{margin:0!important}.autoTagHead .smallBtn{font-size:12px;padding:6px 9px;white-space:nowrap}
+.autoTagNote{font-size:12px;color:#737a70;line-height:1.5;margin:8px 0 10px}
+.travelItems{display:grid;gap:6px;margin-top:9px}
+.travelEntry{display:grid;grid-template-columns:50px minmax(0,1fr) 24px;gap:8px;align-items:start;border:1px solid var(--line);border-radius:12px;padding:9px;background:#fff}
+.travelPreview{border:0;background:transparent;padding:0;display:block;width:50px;height:50px;cursor:pointer}
+.travelPreview .tripThumb{width:50px;height:50px;display:block;object-fit:cover;border-radius:9px}
+.travelInfo{min-width:0}
+.travelName{display:block;font-size:13px;line-height:1.4;font-weight:900;color:#171a16;text-align:left;border:0;padding:0;background:none;overflow-wrap:anywhere}
+.travelNote{background:#f2f5ff;border-left:3px solid #8094c6;border-radius:6px;padding:5px 7px;font-size:12px;line-height:1.5;color:#31537f;margin:5px 0;white-space:pre-wrap}
+.travelDate{display:block;margin-top:4px;font-size:11px;color:#68736f}
+.travelActions{display:flex;gap:7px;align-items:center;margin-top:6px}
+.travelActions .shopIcon{width:28px;height:28px;min-width:28px;padding:0}
+.travelVisited{display:flex;justify-content:flex-end;padding-top:7px}
+.travelVisited input,.travelEditorDone input{width:16px;height:16px;margin:0}
+.travelEditorDone{display:flex;flex-direction:row;align-items:center;gap:8px;padding:5px 0}
+.travelEntry.visited .travelName{text-decoration:line-through;color:#919790}
+.travelPickItems{display:grid;gap:6px}.travelPickItem{display:grid;grid-template-columns:42px minmax(0,1fr) 18px;gap:9px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:7px;font-size:12px;font-weight:800}
+.travelPickItem img,.travelPickItem .tripThumb{width:42px;height:42px;object-fit:cover;border-radius:8px}
+.travelPickItem input{width:16px;height:16px;margin:0}
+
 </style>
 <style>
 .cascadeFilter{border:1px solid var(--line);border-radius:13px;background:#fff;overflow:hidden;margin:8px 0 14px}
@@ -410,7 +440,7 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 
 <script>
 
-const VERSION="1.8.2", STORE="socialSaver_data";
+const VERSION="1.8.3", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -519,7 +549,7 @@ async function initStorage(){
  setTimeout(()=>cloudBoot(),100);
 }
 function inferCountry(text){if(/[가-힣]/.test(text)||/서울|부산|제주|올리브영|韓國|首爾|弘大|聖水|Seoul|Korea|Hongdae/i.test(text))return'韓國';if(/[ぁ-んァ-ン]/.test(text)||/東京|大阪|京都|日本/.test(text))return'日本';if(/台灣|臺灣|台北|新竹|台中|高雄/.test(text))return'台灣';if(/Thailand|泰國|Bangkok|曼谷/i.test(text))return'泰國';if(/Vietnam|越南|Hanoi|河內/i.test(text))return'越南';return'其他'}
-function inferCategory(text){const rules=[['購物',/購物|必買|藥妝|美妝|百貨|商品|品牌|olive young|올리브영|大創|다이소|shopping|shop/i],['美食',/餐廳|咖啡|美食|烤肉|甜點|맛집|카페|restaurant|food/i],['旅遊',/景點|飯店|機場|地鐵|行程|旅遊|hotel|airport|station/i],['設計',/設計|排版|字體|海報|design|font|poster/i],['產品',/產品|規格|型號|model|spec/i],['娛樂',/演唱會|歌手|藝人|concert|콘서트/i]];for(const [c,r] of rules)if(r.test(text))return c;return'其他'}
+function inferCategory(text){const rules=[['購物',/購物|必買|藥妝|美妝|百貨|商品|品牌|olive young|올리브영|大創|다이소|shopping|shop/i],['美食',/餐廳|咖啡|美食|烤肉|甜點|私廚|蔬食|純植物|米其林|無菜單|味蕾|맛집|카페|restaurant|food|dining/i],['旅遊',/景點|飯店|機場|地鐵|行程|旅遊|hotel|airport|station/i],['設計',/設計|排版|字體|海報|design|font|poster/i],['產品',/產品|規格|型號|model|spec/i],['娛樂',/演唱會|歌手|藝人|concert|콘서트/i]];for(const [c,r] of rules)if(r.test(text))return c;return'其他'}
 function extractAddress(text){const p=String(text||'').split(/[。；;\n]/).map(x=>x.trim()).filter(Boolean);return p.find(x=>/(서울|부산|제주).*(구|로|길)\s*\d*/.test(x))||p.find(x=>/(市|縣).*(區|鄉|鎮|市).*(路|街|巷|號)/.test(x))||p.find(x=>/(東京都|大阪府|京都府|北海道|[一-龯]{2,4}県).{2,50}(?:区|市|町|丁目).{0,60}/.test(x))||''}
 const demos=[
 {id:'example-v140-kor-multi',isExample:true,title:'Olive Young 弘大｜3 樣美妝＋多圖對應',platform:'Instagram',url:'https://www.instagram.com/',body:'首爾弘大 Olive Young 推薦三樣：JUNGSAEMMOOL Essential Skin Nuder Cushion、Round Lab Birch Juice Moisturizing Sun Cream、Torriden Dive-In Serum。서울 마포구 홍익로 10。這篇範例有三張圖片，會依商品順序一對一配對。',category:'購物',country:'韓國',city:'首爾・弘大',shoppingType:'美妝',address:'서울 마포구 홍익로 10',products:['JUNGSAEMMOOL Essential Skin Nuder Cushion','Round Lab Birch Juice Moisturizing Sun Cream','Torriden Dive-In Serum'],tags:['韓國','首爾','弘大','Olive Young','美妝','必買'],terms:['올리브영 홍대','정샘물 에센셜 스킨 누더 쿠션','라운드랩 자작나무 선크림','토리든 다이브인 세럼'],images:['https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=900&q=80','https://images.unsplash.com/photo-1571781926291-c477ebfd024b?auto=format&fit=crop&w=900&q=80','https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=900&q=80'],summary:'多圖範例：三張圖會依順序對應三個商品，加入購物清單時也會帶入各自圖片。',note:'示範多圖與商品圖片配對。',createdAt:Date.now()-30000,status:'想買'},
@@ -549,15 +579,33 @@ function cleanSearchTerm(term){
  return s;
 }
 function findPlaceName(body,title=''){
- const content=String(body||'');
- // Name accompanied by a recognisable venue indicator. Generic food or dish names are not treated as places.
- const explicit=content.match(/(?:店名|餐廳名稱|咖啡廳名稱|地點|店家)\s*[：:]\s*([^\n。；，,]{2,50})/);
+ const content=String(body||'').trim();
+ // The first sentence may name a venue in lowercase and include an aside:
+ // e.g. "monsoon (reservations only) 位於新竹縣竹北市".
+ const linkedToRegion=content.match(/(?:^|[\n。！!？?；;])\s*([A-Za-z][A-Za-z0-9&.'’_+-]*(?:\s+(?:\([^()\n]{1,45}\)|[A-Za-z][A-Za-z0-9&.'’_+-]*)){0,6})\s*(?:位於|位在|坐落於|坐落在|設於|位于)\s*(?=(?:台灣|臺灣)?(?:[\u4e00-\u9fff]{1,6}(?:縣|市|區|鄉|鎮))|(?:서울|부산|제주)|(?:東京|大阪|京都|日本))/i);
+ if(linkedToRegion){
+  const candidate=linkedToRegion[1].trim();
+  if(candidate.length<=70&&!/^(?:我|我們|大家|這|他|她|有|I|We|The city)$/i.test(candidate))return candidate;
+ }
+ const explicit=content.match(/(?:店名|餐廳名稱|咖啡廳名稱|店家名稱|地點|店家)\s*[：:]\s*([^\n。；，,]{2,50})/);
  if(explicit)return explicit[1].trim();
  const labeled=content.match(/(?:去了|推薦|在|位於|造訪)\s*[「『]([^」』]{2,28}(?:咖啡|餐廳|食堂|茶屋|Cafe|Coffee|카페|식당)[^」』]{0,12})[」』]/i);
  if(labeled)return labeled[1].trim();
- const named=content.match(/\b([A-Z][A-Za-z'-]{2,}(?:\s+[A-Z][A-Za-z'-]{2,}){0,3}\s+(?:Cafe|Coffee|Bakery|Restaurant))\b/);
+ const named=content.match(/\b([A-Z][A-Za-z'-]{2,}(?:\s+[A-Z][A-Za-z'-]{2,}){0,3}\s+(?:Cafe|Café|Coffee|Bakery|Restaurant))\b/i);
  if(named)return named[1].trim();
+ const namedCjk=content.match(/(?:^|[。\n])\s*([\u4e00-\u9fff]{2,16}(?:餐廳|咖啡廳|食堂|咖啡館|甜點店))\s*(?:位於|位在|在|坐落)/);
+ if(namedCjk)return namedCjk[1].trim();
  if(title&&!/@/.test(title)&&!/(on threads|on instagram)/i.test(title)&&/(cafe|coffee|카페|餐廳|咖啡廳|食堂|茶屋)/i.test(title))return title.trim();
+ return '';
+}
+function findRegion(text){
+ const raw=String(text||'');
+ const tw=raw.match(/(?:台灣|臺灣)?(新竹縣|新竹市|臺北市|台北市|新北市|桃園市|台中市|臺中市|台南市|臺南市|高雄市|基隆市|嘉義市|嘉義縣|屏東縣|花蓮縣|宜蘭縣|苗栗縣|彰化縣|南投縣|雲林縣|台東縣|臺東縣|澎湖縣|金門縣|連江縣)([^，。；;\n\s]{1,7}(?:區|鄉|鎮|市))?/);
+ if(tw)return (tw[1]+(tw[2]||'')).slice(0,22);
+ const kr=raw.match(/(?:서울|부산|제주|인천|대구|광주|경기)(?:\s*[가-힣]{1,10}(?:구|시|군))?/);
+ if(kr)return kr[0];
+ const jp=raw.match(/(?:東京都|大阪府|京都府|北海道|(?:東京|大阪|京都|札幌|福岡))(?:[^\s，。；;\n]{0,12}(?:区|市))?/);
+ if(jp)return jp[0];
  return '';
 }
 function makeSearchTerms({placeName='',address='',products=[],body='',country=''}={}){
@@ -600,15 +648,16 @@ function hasDistinctSummary(item){
 function locationCandidates(item){
  const raw=String(item.body||'');
  const names=[];
- const add=x=>{x=String(x||'').trim().replace(/[。。，,;；].*$/,'');if(x.length>=2&&x.length<=75&&!names.some(n=>n===x))names.push(x)};
+ const add=x=>{x=String(x||'').trim().replace(/[。。，,;；].*$/,'');if(x.length>=2&&x.length<=75&&!names.includes(x))names.push(x)};
  if(item.placeName)add(item.placeName);
+ const discovered=findPlaceName(raw,item.title||'');
+ if(discovered)add(discovered);
  const explicit=/(?:店名|店家名稱|餐廳名稱|咖啡廳名稱|店家|地點)\s*[：:]\s*([^\n。；，,]{2,65})/g;
  for(const m of raw.matchAll(explicit))add(m[1]);
- // Only clearly marked venue names are accepted; dish names are not map locations.
  const english=/\b([A-Z][A-Za-z'-]{2,}(?:\s+[A-Z][A-Za-z'-]{2,}){0,3}\s+(?:Cafe|Café|Coffee|Bakery|Restaurant))\b/g;
  for(const m of raw.matchAll(english))add(m[1]);
- const venueQuotes=/(?:咖啡廳|咖啡店|餐廳|造訪|店家|位於|推薦)\s*[「『]([^」』]{2,36})[」』]/g;
- for(const m of raw.matchAll(venueQuotes)){if(/(?:店|館|咖啡|cafe|café|coffee|餐廳|食堂|茶屋|烘焙)/i.test(m[1]))add(m[1])}
+ const quotes=/(?:咖啡廳|咖啡店|餐廳|造訪|店家|位於|推薦)\s*[「『]([^」』]{2,36})[」』]/g;
+ for(const m of raw.matchAll(quotes)){if(/(?:店|館|咖啡|cafe|café|coffee|餐廳|食堂|茶屋|烘焙)/i.test(m[1]))add(m[1])}
  return names.slice(0,8);
 }
 function normalizeItem(i){
@@ -620,7 +669,7 @@ function normalizeItem(i){
  return {
   id:i.id||uid(),isExample:!!i.isExample,title:(!i.isExample&&i.url&&isWeakSavedTitle(i.title,i.platform||platformFromURL(i.url),i.url)?readableTitle(i.url,i.body||'',i.summary||''):i.title||'未命名收藏'),platform:i.platform||'其他',url:i.url||'',body:i.body||'',
   category:i.category||inferCategory(`${i.title||''} ${i.body||''}`),country:i.country||inferCountry(`${i.title||''} ${i.body||''} ${i.city||''}`),
-  city:i.city||'',shoppingType:i.shoppingType||'',address:i.address||extractAddress(i.body||''),placeName:i.placeName||findPlaceName(i.body||'',i.title||''),products,
+  city:i.city||findRegion(i.body||''),shoppingType:i.shoppingType||'',address:i.address||extractAddress(i.body||''),placeName:i.placeName||findPlaceName(i.body||'',i.title||''),products,
   tags:Array.isArray(i.tags)?i.tags:[],terms:makeSearchTerms({placeName:i.placeName||findPlaceName(i.body||'',i.title||''),address:i.address||extractAddress(i.body||''),products,body:i.body,country:i.country}),images,productImages,
   summary:typeof i.summary==='string'?i.summary:'',note:i.note||'',
   sourceQuality:i.sourceQuality||'manual',sourceCapturedAt:i.sourceCapturedAt||null,
@@ -634,6 +683,20 @@ function loadData(snapshot=readStore()){
  d.shoppingLists=Array.isArray(d.shoppingLists)?d.shoppingLists:[];
  d.travelPlans=Array.isArray(d.travelPlans)?d.travelPlans:[];
  d.preferences=d.preferences||{};
+ // Run once for v1.8.3; preserve manually assigned categories and any user-added tags.
+ if(!d.metadataRefresh183){
+  d.items.forEach(i=>{
+   if(i.isExample||!i.body)return;
+   const content=[i.title,i.body].join(' ');
+   if(i.category==='其他')i.category=inferCategory(content);
+   if(i.country==='其他')i.country=inferCountry(content);
+   if(!i.city)i.city=findRegion(content);
+   if(!i.placeName)i.placeName=findPlaceName(i.body,i.title);
+   i.tags=uniq([...(i.tags||[]),...guessTags(content,i.country,i.category,d.customTags||[])]);
+   i.terms=uniq([...makeSearchTerms({placeName:i.placeName,address:i.address,products:i.products,body:i.body,country:i.country}),...(i.terms||[])]).slice(0,18);
+  });
+  d.metadataRefresh183=true;
+ }
  // Every new version includes three working examples; deleting an example stays deleted within the same version.
  if(d.exampleVersion!==VERSION){d.items=d.items.filter(i=>!i.isExample);d.items.unshift(...demos.map(normalizeItem));d.exampleVersion=VERSION}
  d.version=VERSION;return d
@@ -721,7 +784,31 @@ function renderShoppingLists(){
   </div></div>`).join('')}</div>
  </section>`).join('')}</div>`
 }
-function renderTravelPlans(){if(!data.travelPlans.length)return'<div class="empty">尚未建立旅遊行程。<br>回拾集勾選卡片後，選「建立旅遊行程」。</div>';return`<div class="listGrid">${data.travelPlans.map(p=>`<section class="listCard"><div class="listHead"><div><div class="listName">${esc(p.name)}</div><div class="listMeta">${new Date(p.createdAt).toLocaleDateString('zh-TW')} · ${p.items.length} 個收藏</div></div><button class="iconBtn uiBtn" data-delete-trip="${p.id}" aria-label="刪除行程">${icon('trash')}</button></div>${p.items.map(id=>{const i=data.items.find(x=>x.id===id);if(!i)return'';return`<button class="miniCard tripItem" data-open="${i.id}" style="width:100%">${i.images?.[0]?`<img class="tripThumb" src="${esc(i.images[0])}" alt="">`:'<span class="tripThumb"></span>'}<span><div class="tripTitle">${esc(i.title)}</div><div class="tripMeta">${esc(i.country)}${i.city?` · ${esc(i.city)}`:''}</div></span></button>`}).join('')}</section>`).join('')}</div>`}
+function renderTravelPlans(){
+ if(!data.travelPlans.length)return '<div class="empty">尚未建立旅遊行程。<br>回拾集勾選文章後，選「旅遊行程」。</div>';
+ return `<div class="listGrid">${data.travelPlans.map(p=>{
+  const entries=Array.isArray(p.items)?p.items:[];
+  return `<section class="listCard travelPlanCard">
+    <div class="listHead"><div><div class="listName">${esc(p.name)}</div><div class="listMeta">${entries.length} 個地點 · ${new Date(p.createdAt||Date.now()).toLocaleDateString('zh-TW')}</div></div>
+      <div class="listActions"><button type="button" class="iconBtn uiBtn" data-rename-trip="${p.id}" title="編輯行程名稱" aria-label="編輯行程名稱">${icon('edit')}</button><button type="button" class="iconBtn uiBtn" data-delete-trip="${p.id}" title="刪除行程" aria-label="刪除行程">${icon('trash')}</button></div>
+    </div>
+    <div class="travelItems">${entries.map(id=>{
+      const a=data.items.find(x=>x.id===id),extra=p.itemMeta?.[id]||{};
+      if(!a)return'';
+      return `<div class="travelEntry ${extra.done?'visited':''}">
+        <button type="button" data-open="${a.id}" class="travelPreview" title="開啟原收藏">${a.images?.[0]?`<img class="tripThumb" src="${esc(a.images[0])}" alt="">`:'<span class="tripThumb"></span>'}</button>
+        <div class="travelInfo">
+          <button type="button" data-open="${a.id}" class="travelName">${esc(extra.name||a.title)}</button>
+          ${extra.date?`<span class="travelDate">${esc(extra.date)}</span>`:''}
+          ${extra.note?`<div class="travelNote">${esc(extra.note)}</div>`:''}
+          <div class="travelActions"><button type="button" class="uiBtn shopIcon" data-edit-trip-item="${p.id}:${id}" title="編輯地點和備註" aria-label="編輯地點和備註">${icon('edit',15)}</button><button type="button" class="uiBtn shopIcon" data-remove-trip-item="${p.id}:${id}" title="移除行程地點" aria-label="移除行程地點">${icon('trash',15)}</button></div>
+        </div>
+        <label class="travelVisited" title="標記已去過"><input type="checkbox" data-visited-trip-item="${p.id}:${id}" ${extra.done?'checked':''} aria-label="${esc(extra.name||a.title)} 已去過"></label>
+      </div>`;
+    }).join('')}</div>
+  </section>`;
+ }).join('')}</div>`;
+}
 function renderSearch(){
  const q=window.searchQuery||'',results=q?filteredItems(q):filteredItems(''),countries=uniq(data.items.map(i=>i.country)).length,clusters=similarClusters().length;
  const cats=['全部',...uniq([...data.items.map(i=>i.category),...(data.customCategories||[])])];
@@ -768,6 +855,11 @@ $$('[data-view-shop-image]').forEach(b=>b.onclick=()=>{const [lid,idx]=b.dataset
 $$('[data-remove-shop]').forEach(b=>b.onclick=()=>{const [lid,idx]=b.dataset.removeShop.split(':');const l=data.shoppingLists.find(x=>x.id===lid);if(l&&confirm('刪除這個購物品項？')){l.items.splice(+idx,1);save();render()}});
 $$('[data-edit-shop]').forEach(b=>b.onclick=()=>{const [lid,idx]=b.dataset.editShop.split(':');editShoppingProduct(lid,+idx)});
 $$('[data-rename-list]').forEach(b=>b.onclick=()=>renameShoppingList(b.dataset.renameList));
+$$('[data-rename-trip]').forEach(b=>b.onclick=()=>renameTravelPlan(b.dataset.renameTrip));
+$$('[data-edit-trip-item]').forEach(b=>b.onclick=()=>{const [p,id]=b.dataset.editTripItem.split(':');editTravelItem(p,id)});
+$$('[data-remove-trip-item]').forEach(b=>b.onclick=()=>{const [p,id]=b.dataset.removeTripItem.split(':');const plan=data.travelPlans.find(x=>x.id===p);if(plan&&confirm('從這份行程移除地點？原收藏不會刪除。')){plan.items=plan.items.filter(x=>x!==id);if(plan.itemMeta)delete plan.itemMeta[id];save();render()}});
+$$('[data-visited-trip-item]').forEach(b=>b.onchange=()=>{const [p,id]=b.dataset.visitedTripItem.split(':');const plan=data.travelPlans.find(x=>x.id===p);if(plan){plan.itemMeta=plan.itemMeta||{};plan.itemMeta[id]={...(plan.itemMeta[id]||{}),done:b.checked};save();render()}});
+
 
 if($('#sortSelect'))$('#sortSelect').onchange=e=>{sortMode=e.target.value;data.preferences.sortMode=sortMode;save();render()};$$('[data-delete-list]').forEach(b=>b.onclick=()=>{if(confirm('刪除這份購物清單？')){data.shoppingLists=data.shoppingLists.filter(x=>x.id!==b.dataset.deleteList);save();render()}});$$('[data-delete-trip]').forEach(b=>b.onclick=()=>{if(confirm('刪除這份旅遊行程？')){data.travelPlans=data.travelPlans.filter(x=>x.id!==b.dataset.deleteTrip);save();render()}});$$('[data-search-cat]').forEach(b=>b.onclick=()=>{categoryFilter=b.dataset.searchCat;countryFilter='全部';tagFilter='全部';render()});
 $$('[data-search-country]').forEach(b=>b.onclick=()=>{countryFilter=b.dataset.searchCountry;render()});
@@ -876,7 +968,7 @@ function openDetail(id){detailIds=detailOrder().map(i=>i.id);if(!detailIds.inclu
 function renderDetail(){
  const i=data.items.find(x=>x.id===detailIds[detailIndex]);
  if(!i)return closeModal();
- const places=locationCandidates(i),place=places[0]||'',address=i.address||extractAddress(i.body),insights=keyInsights(i),showSummary=hasDistinctSummary(i);
+ const places=locationCandidates(i),place=places[0]||'',address=i.address||extractAddress(i.body),mapRegion=i.city||findRegion(i.body||''),insights=keyInsights(i),showSummary=hasDistinctSummary(i),detailTerms=uniq([...makeSearchTerms({placeName:place,address,products:i.products,body:i.body,country:i.country}),...(i.terms||[])]).slice(0,18);
  openModal(`<div class="sheetHead">
    <strong>${detailIndex+1} / ${detailIds.length}</strong>
    <div class="headActions"><button class="iconBtn uiBtn" id="editDetail" aria-label="編輯文章">${icon('edit')}</button><button class="iconBtn uiBtn" id="deleteDetail" aria-label="刪除文章">${icon('trash')}</button><button class="iconBtn uiBtn" id="closeModal" aria-label="關閉">${icon('close')}</button></div>
@@ -894,12 +986,13 @@ function renderDetail(){
       <div class="productGrid">${i.products.map((p,idx)=>{const im=productImage(i,p,idx);return`<div class="productCard">${im?`<button type="button" class="productZoom" data-product-zoom="${idx}" aria-label="放大 ${esc(p)} 的商品圖"><img src="${esc(im)}" alt="${esc(p)}"><span class="zoomHint">${icon('expand',14)}</span></button>`:'<div class="productImgPh">沒有圖片</div>'}<label class="productCardText"><input type="checkbox" class="detailProductCheck" data-product="${esc(p)}" checked><span class="productName">${esc(p)}</span></label></div>`}).join('')}</div>
       <button class="primary uiBtn productAddBtn" id="detailAddShop">加入所選商品到購物清單</button>
    </div>`:''}
-   ${(address||places.length)?`<div class="detailSection"><h4>地點與地圖</h4><div class="placesFound">${(places.length?places:[address]).map(name=>{const query=encodeURIComponent([name,address&&name!==address?address:'',i.city||''].filter(Boolean).join(' '));const nq=encodeURIComponent([name,address&&name!==address?address:''].filter(Boolean).join(' '));return`<div class="foundPlace"><strong>${esc(name)}</strong>${address&&name!==address?`<small>${esc(address)}</small>`:''}<div class="placeSearchPills"><a class="linkPill uiBtn" href="https://www.google.com/maps/search/?api=1&query=${query}" target="_blank" rel="noopener noreferrer">Google Maps</a>${i.country==='韓國'?`<a class="linkPill uiBtn" href="https://map.naver.com/p/search/${nq}" target="_blank" rel="noopener noreferrer">NAVER Map</a>`:''}</div></div>`}).join('')}</div><div class="locationNote">地點來自文章文字，地圖為搜尋結果，非已驗證店址；請確認分店與地址。</div></div>`:`<div class="detailSection"><h4>地點與地圖</h4><div class="locationNote">目前公開文字中沒有可靠的店名或地址，不能只憑「東京甜點」之類的主題指定地圖。若名稱寫在圖片內，可在編輯補上後建立地圖搜尋。</div></div>`}
-   <div class="detailSection"><h4>可搜尋文字</h4><div class="tagRow">${(i.terms||[]).length?(i.terms||[]).map(t=>`<button class="termBtn uiBtn" data-copy="${esc(t)}">${esc(t)} ⧉</button>`).join(''):'<div class="locationNote">尚無可確認的店名、地址或商品名稱；可編輯補上。</div>'}</div></div>
-   <div class="detailSection"><h4>標籤</h4><div class="tagRow">${(i.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div></div>
+   ${(address||places.length)?`<div class="detailSection"><h4>地點與地圖</h4><div class="placesFound">${(places.length?places:[address]).map(name=>{const query=encodeURIComponent([name,address&&name!==address?address:'',mapRegion].filter(Boolean).join(' '));const nq=encodeURIComponent([name,address&&name!==address?address:'',mapRegion].filter(Boolean).join(' '));return`<div class="foundPlace"><strong>${esc(name)}</strong>${address&&name!==address?`<small>${esc(address)}</small>`:''}<div class="placeSearchPills"><a class="linkPill uiBtn" href="https://www.google.com/maps/search/?api=1&query=${query}" target="_blank" rel="noopener noreferrer">Google Maps</a>${i.country==='韓國'?`<a class="linkPill uiBtn" href="https://map.naver.com/p/search/${nq}" target="_blank" rel="noopener noreferrer">NAVER Map</a>`:''}</div></div>`}).join('')}</div><div class="locationNote">根據文章中的店名與地區建立地圖搜尋（不是已驗證地址）；請在地圖確認店家與分店。</div></div>`:`<div class="detailSection"><h4>地點與地圖</h4><div class="locationNote">目前公開文字中沒有可靠的店名或地址，不能只憑「東京甜點」之類的主題指定地圖。若名稱寫在圖片內，可在編輯補上後建立地圖搜尋。</div></div>`}
+   <div class="detailSection"><h4>可搜尋文字</h4><div class="tagRow">${detailTerms.length?detailTerms.map(t=>`<button class="termBtn uiBtn" data-copy="${esc(t)}">${esc(t)} ⧉</button>`).join(''):'<div class="locationNote">尚無可確認的店名、地址或商品名稱；可編輯補上。</div>'}</div></div>
+   <div class="detailSection"><div class="autoTagHead"><h4>分類與標籤</h4><button type="button" id="refreshArticleTags" class="uiBtn smallBtn" aria-label="重新判斷分類與標籤">↻ 重新判斷</button></div><p class="autoTagNote">依目前取得的內文自動建議；可用右上鉛筆自行調整。</p><div class="tagRow">${(i.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div></div>
    <div class="detailSection noteBox"><h4>我的備註</h4><textarea id="noteInput" placeholder="自己的想法、是否值得去、下次要買什麼…">${esc(i.note||'')}</textarea><div class="formActions"><button class="ghost uiBtn" id="saveNote">儲存備註</button></div></div>
  </div>`);
  $('#closeModal').onclick=closeModal;
+ if($('#refreshArticleTags'))$('#refreshArticleTags').onclick=async()=>{const current=data.items.find(x=>x.id===i.id);if(!current)return;const raw=[current.title,current.body].join(' ');if(current.category==='其他')current.category=inferCategory(raw);if(current.country==='其他')current.country=inferCountry(raw);if(!current.city)current.city=findRegion(raw);if(!current.placeName)current.placeName=findPlaceName(current.body,current.title);current.tags=uniq([...(current.tags||[]),...guessTags(raw,current.country,current.category,data.customTags||[])]);current.terms=uniq([...(current.terms||[]),...makeSearchTerms({placeName:current.placeName,address:current.address,products:current.products,body:current.body,country:current.country})]);await save();render();renderDetail();};
  if($('#retryArticle'))$('#retryArticle').onclick=()=>retryItemMetadata(i.id);
  $('#editDetail').onclick=()=>openEditor(i.id);
  $('#deleteDetail').onclick=()=>{if(confirm('確定刪除這篇收藏？')){data.items=data.items.filter(x=>x.id!==i.id);selected.delete(i.id);save();detailIds=detailIds.filter(x=>x!==i.id);if(!detailIds.length){closeModal();render()}else{detailIndex=Math.min(detailIndex,detailIds.length-1);renderDetail();render()}}};
@@ -1058,6 +1151,7 @@ function mergePublicPreview(item,meta){
  item.images=uniq([...(item.images||[]),...(meta.images||[])]);
  if(!item.placeName)item.placeName=findPlaceName(item.body,item.title);
  if(!item.address)item.address=extractAddress(item.body);
+  if(!item.city)item.city=findRegion(item.body);
  if(item.category==='其他')item.category=inferCategory(`${item.title} ${item.body}`);
  if(item.country==='其他')item.country=inferCountry(`${item.title} ${item.body}`);
  item.tags=uniq([...(item.tags||[]),...guessTags(`${item.title} ${item.body}`,item.country,item.category)]);
@@ -1097,10 +1191,23 @@ function detectProductCandidates(text){
  const parts=m[1].split(/[、，,；;]/).map(x=>x.trim().replace(/[。.!?]+$/,'')).filter(x=>x.length>2&&x.length<90);
  return uniq(parts).slice(0,8)
 }
-function guessTags(text,country,category){
- const tags=[country,category].filter(x=>x!=='其他');
- const rules=[['Olive Young',/Olive Young|올리브영/i],['弘大',/弘大|홍대|Hongdae/i],['聖水',/聖水|성수/i],['美妝',/美妝|氣墊|防曬|cushion|serum/i],['咖啡',/咖啡|카페|cafe/i]];
- rules.forEach(([tag,rx])=>{if(rx.test(text))tags.push(tag)});return uniq(tags)
+function guessTags(text,country,category,customTags=[]){
+ const raw=String(text||'');
+ const tags=[country,category].filter(x=>x&&x!=='其他');
+ const rules=[
+  ['Olive Young',/Olive Young|올리브영/i],['弘大',/弘大|홍대|Hongdae/i],['聖水',/聖水|성수/i],
+  ['新竹',/新竹/],['竹北',/竹北/],['台北',/台北|臺北/],['台中',/台中|臺中/],['台南',/台南|臺南/],['中壢',/中壢/],['東京',/東京/],['大阪',/大阪/],['首爾',/首爾|서울/],
+  ['美妝',/美妝|氣墊|防曬|cushion|serum/i],['購物',/購物|折扣|必買|藥妝|shopping/i],
+  ['咖啡',/咖啡|카페|cafe|café/i],['餐廳',/餐廳|餐馆|restaurant|私廚|食堂/i],
+  ['蔬食',/蔬食|純植物|全植物|植物性餐飲|素食|vegan|plant.based/i],['私廚',/私廚|private\s*(?:dining|chef)/i],
+  ['米其林',/米其林|michelin/i],['預約制',/預約制|預約限定|reservations?\s+only|需要預約/i],
+  ['甜點',/甜點|蛋糕|布丁|可麗露|芭菲|patisserie|dessert/i],['宵夜',/宵夜|凌晨|深夜|심야|야식/],
+  ['住宿',/住宿|飯店|旅館|hotel|guesthouse/i],['展覽',/展覽|快閃|popup|pop-up|전시/i],
+  ['藥妝',/藥妝|drugstore|ドラッグストア/i]
+ ];
+ for(const [tag,pattern] of rules)if(pattern.test(raw))tags.push(tag);
+ for(const tag of customTags||[]){if(tag.length>=2&&raw.toLocaleLowerCase().includes(tag.toLocaleLowerCase()))tags.push(tag)}
+ return uniq(tags).slice(0,18);
 }
 function quickItem(url,meta,fields={}){
  const platform=platformFromURL(url);
@@ -1113,8 +1220,8 @@ function quickItem(url,meta,fields={}){
  const productImages={};
  // Only user supplied one-to-one images qualify as mapped product images.
  if(fields.images?.length && fields.images.length===products.length)products.forEach((p,idx)=>productImages[p]=fields.images[idx]);
- const quality=fields.body?'manual':meta?'preview':'linkOnly';const placeName=fields.placeName||findPlaceName(body,title);const address=fields.address||extractAddress(body);
- return normalizeItem({id:uid(),title,platform,url,body,category,country,products,images:articleImages,productImages,
+ const quality=fields.body?'manual':meta?'preview':'linkOnly';const placeName=fields.placeName||findPlaceName(body,title);const address=fields.address||extractAddress(body);const city=findRegion(body);
+ return normalizeItem({id:uid(),title,platform,url,body,category,country,city,products,images:articleImages,productImages,
   tags:uniq([...guessTags(content,country,category),...(fields.tags||[])]),address,placeName,
   terms:makeSearchTerms({placeName,address,products,body,country}),
   summary:'',titleSource:fields.title?'manual':'auto',previewAttempts:meta?1:0,previewError:'',previewCheckedAt:meta?Date.now():null,
@@ -1280,7 +1387,44 @@ function openShoppingListModal(ids,presetProducts=null){
    selected.clear();await save();closeModal();view='lists';listMode='shopping';render()
  }
 }
-function openTravelPlanModal(ids){const arts=ids.map(id=>data.items.find(x=>x.id===id)).filter(Boolean);openModal(`<div class="sheetHead"><strong>建立旅遊行程</strong><button class="iconBtn uiBtn" id="closeModal" aria-label="關閉">${icon('close')}</button></div><form class="form" id="tripForm"><label>行程名稱<input id="tripName" required value="${esc((arts[0]?.country||'')+' 旅遊行程')}"></label><div class="detailSection"><h4>已選收藏</h4>${arts.map(i=>`<div class="tripItem">${i.images?.[0]?`<img class="tripThumb" src="${esc(i.images[0])}">`:'<span class="tripThumb"></span>'}<div><div class="tripTitle">${esc(i.title)}</div><div class="tripMeta">${esc(i.country)}${i.city?` · ${esc(i.city)}`:''}</div></div></div>`).join('')}</div><div class="formActions"><button type="button" class="ghost" id="cancelTrip">取消</button><button class="primary">建立</button></div></form>`);$('#closeModal').onclick=$('#cancelTrip').onclick=closeModal;$('#tripForm').onsubmit=e=>{e.preventDefault();data.travelPlans.unshift({id:uid(),name:$('#tripName').value.trim(),createdAt:Date.now(),items:arts.map(i=>i.id)});selected.clear();save();closeModal();view='lists';listMode='travel';render()}}
+function renameTravelPlan(id){
+ const plan=data.travelPlans.find(x=>x.id===id);if(!plan)return;
+ openModal(`<div class="sheetHead"><strong>編輯旅遊行程</strong><button class="iconBtn uiBtn" id="closeModal" aria-label="關閉">${icon('close')}</button></div><form class="form" id="renameTripForm"><label>行程名稱<input id="renameTripInput" maxlength="85" required value="${esc(plan.name)}"></label><div class="formActions"><button type="button" class="ghost uiBtn" id="cancelTripEdit">取消</button><button type="submit" class="primary uiBtn">儲存</button></div></form>`);
+ $('#closeModal').onclick=$('#cancelTripEdit').onclick=closeModal;
+ $('#renameTripForm').onsubmit=async e=>{e.preventDefault();const val=$('#renameTripInput').value.trim();if(!val)return;plan.name=val;await save();closeModal();render()};
+}
+function editTravelItem(planId,articleId){
+ const plan=data.travelPlans.find(x=>x.id===planId),article=data.items.find(x=>x.id===articleId);if(!plan||!article)return;
+ const meta=plan.itemMeta?.[articleId]||{};
+ openModal(`<div class="sheetHead"><strong>編輯行程地點</strong><button type="button" class="iconBtn uiBtn" id="closeModal" aria-label="關閉">${icon('close')}</button></div><form class="form" id="tripEntryForm">
+ <label>地點顯示名稱<input id="travelEntryName" required maxlength="120" value="${esc(meta.name||article.title)}"></label>
+ <label>預計日期（選填）<input id="travelEntryDate" type="date" value="${esc(meta.date||'')}"></label>
+ <label>我的備註（選填）<textarea id="travelEntryNote" rows="4" placeholder="交通、訂位時間、想點的餐點…">${esc(meta.note||'')}</textarea></label>
+ <label class="travelEditorDone"><input type="checkbox" id="travelEntryDone" ${meta.done?'checked':''}> 已去過</label>
+ <div class="formActions"><button type="button" class="ghost uiBtn" id="cancelTripEdit">取消</button><button type="submit" class="primary uiBtn">儲存修改</button></div></form>`);
+ $('#closeModal').onclick=$('#cancelTripEdit').onclick=closeModal;
+ $('#tripEntryForm').onsubmit=async e=>{e.preventDefault();plan.itemMeta=plan.itemMeta||{};plan.itemMeta[articleId]={...meta,name:$('#travelEntryName').value.trim(),note:$('#travelEntryNote').value.trim(),date:$('#travelEntryDate').value,done:$('#travelEntryDone').checked};await save();closeModal();render()};
+}
+function openTravelPlanModal(ids){
+ const arts=ids.map(id=>data.items.find(x=>x.id===id)).filter(Boolean),hasExisting=data.travelPlans.length>0;
+ if(!arts.length)return;
+ openModal(`<div class="sheetHead"><strong>加入旅遊行程</strong><button type="button" class="iconBtn uiBtn" id="closeModal" aria-label="關閉">${icon('close')}</button></div>
+ <form class="form" id="tripForm"><div class="listChoice"><button type="button" class="choiceBtn uiBtn active" data-tripmode="new">建立新行程</button><button type="button" class="choiceBtn uiBtn" data-tripmode="existing" ${hasExisting?'':'disabled'}>加入既有行程</button></div>
+ <div id="newTravelFields"><label>行程名稱<input id="tripName" maxlength="85" required value="${esc((arts[0]?.country||'')+' 旅遊行程')}"></label></div>
+ <div id="existingTravelFields" class="hidden"><label>選擇行程<select id="existingTrip">${data.travelPlans.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></label></div>
+ <div class="detailSection"><h4>選擇要加入的地點</h4><div class="travelPickItems">${arts.map(i=>`<label class="travelPickItem">${i.images?.[0]?`<img src="${esc(i.images[0])}" alt="">`:'<span class="tripThumb"></span>'}<span>${esc(i.title)}</span><input type="checkbox" class="tripPick" value="${i.id}" checked></label>`).join('')}</div></div>
+ <div class="formActions"><button type="button" class="ghost uiBtn" id="cancelTrip">取消</button><button type="submit" class="primary uiBtn">確認加入</button></div></form>`);
+ let mode='new';$('#closeModal').onclick=$('#cancelTrip').onclick=closeModal;
+ $$('[data-tripmode]').forEach(b=>b.onclick=()=>{mode=b.dataset.tripmode;$$('[data-tripmode]').forEach(x=>x.classList.toggle('active',x===b));$('#newTravelFields').classList.toggle('hidden',mode!=='new');$('#existingTravelFields').classList.toggle('hidden',mode!=='existing');$('#tripName').required=mode==='new'});
+ $('#tripForm').onsubmit=async e=>{e.preventDefault();const chosen=$$('.tripPick').filter(x=>x.checked).map(x=>x.value);if(!chosen.length){alert('請至少選一個地點');return}
+ if(mode==='existing'){
+  const p=data.travelPlans.find(x=>x.id===$('#existingTrip').value);if(!p)return;p.items=uniq([...(p.items||[]),...chosen]);
+ }else{
+  const name=$('#tripName').value.trim();if(!name)return;
+  data.travelPlans.unshift({id:uid(),name,createdAt:Date.now(),items:uniq(chosen),itemMeta:{}});
+ }
+ selected.clear();await save();closeModal();view='lists';listMode='travel';render()};
+}
 function editShoppingImage(listId,idx){const l=data.shoppingLists.find(x=>x.id===listId);if(!l)return;const it=l.items[idx];openModal(`<div class="sheetHead"><strong>商品圖片</strong><button class="iconBtn uiBtn" id="closeModal" aria-label="關閉">${icon('close')}</button></div><form class="form" id="imgForm"><label>圖片網址<input id="imgUrl" value="${esc(it.image||'')}" placeholder="https://…"></label><label style="margin-top:10px">或選擇照片<input id="imgFile" type="file" accept="image/*"></label><div class="formActions"><button type="button" class="ghost" id="cancelImg">取消</button><button class="primary">儲存</button></div></form>`);$('#closeModal').onclick=$('#cancelImg').onclick=closeModal;$('#imgForm').onsubmit=e=>{e.preventDefault();const f=$('#imgFile').files?.[0];if(f){const r=new FileReader();r.onload=()=>{it.image=r.result;save();closeModal();render()};r.readAsDataURL(f)}else{it.image=$('#imgUrl').value.trim();save();closeModal();render()}}}
 function exportData(){const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`social-saver-v${VERSION}-backup.json`;a.click();URL.revokeObjectURL(a.href)}
 $('#importFile').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const p=JSON.parse(await f.text()),items=Array.isArray(p)?p:(p.items||[]),lists=p.shoppingLists||[],trips=p.travelPlans||[],ids=new Set(data.items.map(x=>x.id));items.map(normalizeItem).filter(i=>!i.isExample).forEach(i=>{if(!ids.has(i.id)){data.items.push(i);ids.add(i.id)}});const li=new Set(data.shoppingLists.map(x=>x.id));lists.forEach(l=>{if(!li.has(l.id)){data.shoppingLists.push(l);li.add(l.id)}});const ti=new Set(data.travelPlans.map(x=>x.id));trips.forEach(t=>{if(!ti.has(t.id)){data.travelPlans.push(t);ti.add(t.id)}});await save();alert('匯入完成');render()}catch(err){alert('匯入失敗：'+err.message)}e.target.value=''};
