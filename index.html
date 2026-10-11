@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="拾集">
-<title>拾集 v1.8.1</title>
+<title>拾集 v1.8.2</title>
 <style>
 :root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#6e6e68;--line:#e4e4de;--soft:#efefe9;--shadow:0 10px 28px rgba(0,0,0,.07);--r:20px;--navh:74px}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif;font-size:17px}body{min-height:100vh;padding-bottom:calc(var(--navh) + env(safe-area-inset-bottom) + 18px)}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
@@ -330,6 +330,13 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 .cloudActions{justify-content:flex-end}
 #cloudDrawerStatus{background:#f4f4f1;border:1px solid #e4e4de;padding:8px;border-radius:9px}
 
+
+\n/* v1.8.2: rescan action is visually aligned with the existing soft outlined controls */
+.fetchActionRow{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.fetchActionRow .linkPill{margin-right:0}
+.fetchFeedback{font-size:12px;line-height:1.55;color:#73736e;margin-top:6px}
+.quickRetryBtn{display:inline-flex;align-items:center;gap:7px;margin:4px 0 0;justify-self:start;border:1px solid var(--line);background:#fff;font-size:13px;padding:8px 11px}
+.quickRetryBtn:disabled,#retryArticle:disabled{opacity:.55;cursor:wait}
 </style>
 <style>
 .cascadeFilter{border:1px solid var(--line);border-radius:13px;background:#fff;overflow:hidden;margin:8px 0 14px}
@@ -403,7 +410,7 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 
 <script>
 
-const VERSION="1.8.1", STORE="socialSaver_data";
+const VERSION="1.8.2", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -611,12 +618,13 @@ function normalizeItem(i){
  // Sequential mapping is only defensible if the source provides equal numbers of photos and products.
  if(images.length===products.length && products.length){products.forEach((p,idx)=>{if(!productImages[p])productImages[p]=images[idx]})}
  return {
-  id:i.id||uid(),isExample:!!i.isExample,title:i.title||'未命名收藏',platform:i.platform||'其他',url:i.url||'',body:i.body||'',
+  id:i.id||uid(),isExample:!!i.isExample,title:(!i.isExample&&i.url&&isWeakSavedTitle(i.title,i.platform||platformFromURL(i.url),i.url)?readableTitle(i.url,i.body||'',i.summary||''):i.title||'未命名收藏'),platform:i.platform||'其他',url:i.url||'',body:i.body||'',
   category:i.category||inferCategory(`${i.title||''} ${i.body||''}`),country:i.country||inferCountry(`${i.title||''} ${i.body||''} ${i.city||''}`),
   city:i.city||'',shoppingType:i.shoppingType||'',address:i.address||extractAddress(i.body||''),placeName:i.placeName||findPlaceName(i.body||'',i.title||''),products,
   tags:Array.isArray(i.tags)?i.tags:[],terms:makeSearchTerms({placeName:i.placeName||findPlaceName(i.body||'',i.title||''),address:i.address||extractAddress(i.body||''),products,body:i.body,country:i.country}),images,productImages,
   summary:typeof i.summary==='string'?i.summary:'',note:i.note||'',
   sourceQuality:i.sourceQuality||'manual',sourceCapturedAt:i.sourceCapturedAt||null,
+  titleSource:i.titleSource||'auto',previewAttempts:i.previewAttempts||0,previewError:i.previewError||'',previewCheckedAt:i.previewCheckedAt||null,
   createdAt:i.createdAt||Date.now(),status:i.status||((i.category||'')==='購物'?'想買':'剛收藏')
  }
 }
@@ -878,7 +886,7 @@ function renderDetail(){
  <div class="detailBody">
    <h2 class="detailTitle">${esc(i.title)}</h2>
    <div class="detailMeta">${esc(i.platform)} · ${esc(i.category)} · ${esc(i.country)}${i.city?` · ${esc(i.city)}`:''}</div><div class="detailSaved">收藏於 ${formatSavedAt(i.createdAt)}</div>
-   ${i.url?`<div class="detailSection"><a class="linkPill uiBtn" href="${esc(i.url)}" target="_blank" rel="noopener">↗ 原文章</a></div>`:''}${i.url&&['preview','shared','linkOnly'].includes(i.sourceQuality)?`<div class="photoLimit">目前僅取得 ${i.images?.length||0} 張公開預覽圖片；社群相簿的其餘圖片若未開放讀取，可用「編輯」補入多張。</div>`:''}
+   ${i.url?`<div class="detailSection"><div class="fetchActionRow"><a class="linkPill uiBtn" href="${esc(i.url)}" target="_blank" rel="noopener noreferrer">↗ 原文章</a><button type="button" class="linkPill uiBtn" id="retryArticle">${icon('expand',14)} 再次擷取</button></div><div class="fetchFeedback" id="retryArticleStatus" role="status">${i.previewError?`上次擷取未成功：${esc(i.previewError)}；可以稍後重試。`:i.sourceQuality==='linkOnly'?'只有文章連結，點「再次擷取」可重新嘗試取得標題、內文與圖片。':'公開資料依來源限制取得，若缺內容可以再次擷取。'}</div></div>`:''}${i.url&&['preview','shared','linkOnly'].includes(i.sourceQuality)?`<div class="photoLimit">目前僅取得 ${i.images?.length||0} 張公開預覽圖片；社群相簿的其餘圖片若未開放讀取，可用「編輯」補入多張。</div>`:''}
    <div class="detailSection"><h4>${i.sourceQuality==='preview'?'文章預覽（非全文）':i.sourceQuality==='linkOnly'?'文章內容未擷取':'原始文章內容'}</h4><div class="bodyText originalBody">${esc(i.body||'此平台未提供可讀取的內文，可透過「原文章」查看，或編輯卡片補充。')}</div></div>
    ${insights.length?`<div class="detailSection"><h4>文章重點</h4><div class="insightList">${insights.map(x=>`<div class="insightRow"><strong>${esc(x.label)}</strong><span>${esc(x.value)}</span></div>`).join('')}</div></div>`:showSummary?`<div class="detailSection"><h4>整理重點</h4><div class="bodyText">${esc(i.summary)}</div></div>`:''}
    ${i.products?.length?`<div class="detailSection">
@@ -892,6 +900,7 @@ function renderDetail(){
    <div class="detailSection noteBox"><h4>我的備註</h4><textarea id="noteInput" placeholder="自己的想法、是否值得去、下次要買什麼…">${esc(i.note||'')}</textarea><div class="formActions"><button class="ghost uiBtn" id="saveNote">儲存備註</button></div></div>
  </div>`);
  $('#closeModal').onclick=closeModal;
+ if($('#retryArticle'))$('#retryArticle').onclick=()=>retryItemMetadata(i.id);
  $('#editDetail').onclick=()=>openEditor(i.id);
  $('#deleteDetail').onclick=()=>{if(confirm('確定刪除這篇收藏？')){data.items=data.items.filter(x=>x.id!==i.id);selected.delete(i.id);save();detailIds=detailIds.filter(x=>x!==i.id);if(!detailIds.length){closeModal();render()}else{detailIndex=Math.min(detailIndex,detailIds.length-1);renderDetail();render()}}};
  $$('[data-product-zoom]').forEach(b=>b.onclick=()=>{
@@ -996,9 +1005,91 @@ async function fetchPublicMetadata(url){
   return {title:!isGenericPreview(title,platform)?title:'',body:description,images:previewImages,author:String(d.author||'').trim(),date:d.date||null};
  }finally{clearTimeout(timer)}
 }
-function quickFallbackTitle(url){
- const platform=platformFromURL(url);return `${platform} 收藏連結`;
+function isWeakSavedTitle(value,platform,url=''){
+ const t=String(value||'').trim(),p=String(platform||platformFromURL(url)||'').trim();
+ if(!t||/^(?:未命名收藏|收藏連結|文章連結)$/i.test(t))return true;
+ if(t===`${p} 收藏連結`||/^(?:Threads|Instagram|Facebook|小紅書|YouTube|TikTok|X|網頁) 收藏連結$/i.test(t))return true;
+ if(/^www\.(?:threads\.(?:com|net)|instagram\.com)/i.test(t)||/^https?:\/\//i.test(t))return true;
+ if(isGenericPreview(t,p))return true;
+ return false;
 }
+function firstArticleSentence(text){
+ let raw=String(text||'').replace(/https?:\/\/[^\s<>"'，。]+/gi,' ').replace(/\r/g,'\n').trim();
+ if(!raw)return '';
+ const noise=/^(?:(?:Threads|Instagram|Facebook|小紅書)\s*(?:收藏連結|貼文|分享)|(?:查看|瀏覽|更多)(?:完整)?(?:內容|貼文)|(?:分享|貼文)連結|https?:\/\/)/i;
+ // Avoid choosing the sharer's handle / generic platform metadata as the first sentence.
+ const lines=raw.split(/\n+/).map(t=>t.trim()).filter(Boolean);
+ let candidate=lines.find(t=>!noise.test(t)&&!/^@[^\s]+$/.test(t)&&!/^.{0,95}\bon\s+(?:Threads|Instagram|Facebook)\s*$/i.test(t)&&t.length>=5)||'';
+ if(!candidate)return '';
+ candidate=candidate.replace(/^[\s#@]+/,'').replace(/^[•·\-–—|｜]+\s*/,'');
+ // First complete thought, not the same long preview pasted into a heading.
+ const pieces=candidate.split(/(?<=[。！？!?])|(?=\s[｜|]\s)/);
+ const first=(pieces[0]||candidate).trim();
+ candidate=first.length>=6?first:candidate;
+ if(candidate.length>58)candidate=candidate.slice(0,55).replace(/[\s、，,；;：:|｜\-—]+$/,'')+'…';
+ return candidate.length>=5?candidate:'';
+}
+function readableTitle(url,body='',metaTitle=''){
+ const platform=platformFromURL(url);
+ const fromBody=firstArticleSentence(body);
+ if(fromBody)return fromBody;
+ const fromPreview=String(metaTitle||'').trim();
+ if(!isWeakSavedTitle(fromPreview,platform,url))return fromPreview.slice(0,58);
+ return quickFallbackTitle(url);
+}
+function quickFallbackTitle(url){
+ const platform=platformFromURL(url);
+ // A recognizable short post ID is better than showing identical "Threads 收藏連結" for every item.
+ try{
+  const path=new URL(url).pathname.split('/').filter(Boolean);
+  const id=path[path.length-1]||'';
+  if(id&&id.length>=5&&id.length<=80&&!['post','reel','p','video'].includes(id.toLowerCase()))return `${platform} · ${id.slice(0,18)}`;
+ }catch{}
+ return `${platform} 收藏連結`;
+}
+function mergePublicPreview(item,meta){
+ if(!item||!meta)return false;
+ const old=JSON.stringify([item.title,item.body,item.images,item.category,item.country,item.placeName,item.address]);
+ const autoTitle=readableTitle(item.url,item.body||meta.body,meta.title);
+ if(item.titleSource!=='manual'&&(isWeakSavedTitle(item.title,item.platform,item.url)||item.title===quickFallbackTitle(item.url))){
+   if(autoTitle)item.title=autoTitle;
+ }
+ if(!item.body&&meta.body)item.body=meta.body;
+ item.images=uniq([...(item.images||[]),...(meta.images||[])]);
+ if(!item.placeName)item.placeName=findPlaceName(item.body,item.title);
+ if(!item.address)item.address=extractAddress(item.body);
+ if(item.category==='其他')item.category=inferCategory(`${item.title} ${item.body}`);
+ if(item.country==='其他')item.country=inferCountry(`${item.title} ${item.body}`);
+ item.tags=uniq([...(item.tags||[]),...guessTags(`${item.title} ${item.body}`,item.country,item.category)]);
+ item.terms=makeSearchTerms({placeName:item.placeName,address:item.address,products:item.products,body:item.body,country:item.country});
+ item.sourceQuality=item.body?(item.sourceQuality==='manual'?'manual':item.sourceQuality==='shared'?'shared':'preview'):'linkOnly';
+ item.previewError='';item.previewCheckedAt=Date.now();item.previewAttempts=(item.previewAttempts||0)+1;
+ item.sourceCapturedAt=Date.now();
+ return old!==JSON.stringify([item.title,item.body,item.images,item.category,item.country,item.placeName,item.address]);
+}
+async function retryItemMetadata(id){
+ const target=data.items.find(i=>i.id===id);
+ if(!target||!target.url)return;
+ const btn=$('#retryArticle');const status=$('#retryArticleStatus');
+ if(btn){btn.disabled=true;btn.textContent='擷取中…'}
+ if(status)status.textContent='正在重新取得這篇文章的公開資訊…';
+ try{
+  const meta=await fetchPublicMetadata(target.url);
+  const latest=data.items.find(i=>i.id===id);
+  if(!latest)return; // User may have deleted the post while the request was running.
+  mergePublicPreview(latest,meta);
+  await save();
+  render();
+  if(detailIds[detailIndex]===id)renderDetail();
+  const note=$('#retryArticleStatus');
+  if(note)note.textContent=`重新擷取完成：取得 ${meta.images.length} 張公開圖片${meta.body?'與文章預覽':''}。`;
+ }catch(e){
+  const latest=data.items.find(i=>i.id===id);
+  if(latest){latest.previewError=String(e?.message||'來源暫無公開資訊');latest.previewCheckedAt=Date.now();latest.previewAttempts=(latest.previewAttempts||0)+1;await save()}
+  if(status)status.textContent=`仍無法取得公開內容：${String(e?.message||'來源限制')}。可以稍後再試或編輯補充。`;
+ }finally{const b=$('#retryArticle');if(b){b.disabled=false;b.innerHTML=icon('expand',14)+' 再次擷取'}}
+}
+
 function detectProductCandidates(text){
  // Only a tiny explicit list after "推薦：" etc.; no claim to full AI extraction.
  const m=String(text||'').match(/(?:推薦(?:清單|商品|三樣|幾樣)?|必買(?:清單)?|商品(?:包含|包括)?)[^：:\n]{0,16}[：:]\s*([^。.!?\n]{6,220})/i);
@@ -1013,7 +1104,7 @@ function guessTags(text,country,category){
 }
 function quickItem(url,meta,fields={}){
  const platform=platformFromURL(url);
- const title=fields.title||(!isGenericPreview(meta?.title||'',platform)?meta?.title:'')||(meta?.body?meta.body.replace(/\s+/g,' ').slice(0,42):'')||quickFallbackTitle(url);
+ const title=fields.title||readableTitle(url,fields.body||meta?.body||'',meta?.title||'');
  const body=fields.body||meta?.body||'';
  const content=[title,body].join(' ');
  const country=inferCountry(content),category=inferCategory(content);
@@ -1026,7 +1117,7 @@ function quickItem(url,meta,fields={}){
  return normalizeItem({id:uid(),title,platform,url,body,category,country,products,images:articleImages,productImages,
   tags:uniq([...guessTags(content,country,category),...(fields.tags||[])]),address,placeName,
   terms:makeSearchTerms({placeName,address,products,body,country}),
-  summary:'',
+  summary:'',titleSource:fields.title?'manual':'auto',previewAttempts:meta?1:0,previewError:'',previewCheckedAt:meta?Date.now():null,
   sourceQuality:quality,sourceCapturedAt:Date.now(),createdAt:Date.now(),status:category==='購物'?'想買':'剛收藏'
  })
 }
@@ -1035,6 +1126,7 @@ function openQuickAdd(prefill=''){
  <form class="form quickForm" id="quickForm">
   <label class="quickUrlLabel">貼入社群文章網址<input id="quickUrl" type="url" inputmode="url" autocomplete="url" placeholder="https://www.instagram.com/p/…" required value="${esc(prefill)}"></label>
   <div id="quickStatus" class="quickStatus">貼入連結後會嘗試抓取公開標題、摘要與封面。</div>
+  <button type="button" id="quickRetry" class="ghost uiBtn quickRetryBtn">${icon('expand',15)} 重新擷取公開資訊</button>
   <div id="quickPreview" class="quickPreview hidden"></div>
   <details id="quickAdvanced" class="quickAdvanced"><summary>手動補充或修改（選填）</summary>
    <div class="formGrid">
@@ -1058,7 +1150,7 @@ function openQuickAdd(prefill=''){
  async function runLookup(){
   const url=cleanExternalURL(inp.value);
   if(!url){status.textContent='請貼上有效的 http / https 網址';preview.classList.add('hidden');cached=null;return}
-  const thisJob=++job;loadedURL=url;cached=null;status.textContent='正在取得公開預覽資訊…';status.dataset.state='loading';
+  const thisJob=++job;loadedURL=url;cached=null;status.textContent='正在取得公開預覽資訊…';status.dataset.state='loading';if($('#quickRetry'))$('#quickRetry').disabled=true;
   try{
    const found=await fetchPublicMetadata(url);
    if(thisJob!==job)return;
@@ -1070,8 +1162,9 @@ function openQuickAdd(prefill=''){
   }catch(err){if(thisJob!==job)return;cached=null;status.dataset.state='fail';
    status.textContent=`無法讀取文章內容：${err.message||'來源限制'}。可以先儲存連結，或展開下方補充文字。`;
    preview.classList.add('hidden');if($('#quickAdvanced'))$('#quickAdvanced').open=true;
-  }
+  }finally{if(thisJob===job&&$('#quickRetry'))$('#quickRetry').disabled=false}
  }
+ $('#quickRetry').onclick=()=>{clearTimeout(delay);lookupPromise=runLookup()};
  inp.addEventListener('input',()=>{clearTimeout(delay);delay=setTimeout(()=>{if(cleanExternalURL(inp.value))lookupPromise=runLookup()},500)});
  $('#quickForm').onsubmit=async e=>{
    e.preventDefault();clearTimeout(delay);
@@ -1140,7 +1233,7 @@ function openEditor(id=null){
    const productImages={...(item.productImages||{})};
    if(images.length===products.length)products.forEach((p,idx)=>{if(!productImages[p])productImages[p]=images[idx]});
    const placeName=$('#fPlace').value.trim()||findPlaceName(body,title),address=$('#fAddress').value.trim()||extractAddress(body);
-   const obj=normalizeItem({...item,title,body,city,country,category,placeName,address,products,images,productImages,tags,platform:$('#fPlatform').value,url:$('#fUrl').value.trim(),shoppingType:$('#fShoppingType').value.trim(),note:$('#fNote').value,summary:body.replace(/\s+/g,' ').slice(0,150),createdAt:item.createdAt});
+   const obj=normalizeItem({...item,title,titleSource:'manual',body,city,country,category,placeName,address,products,images,productImages,tags,platform:$('#fPlatform').value,url:$('#fUrl').value.trim(),shoppingType:$('#fShoppingType').value.trim(),note:$('#fNote').value,summary:body.replace(/\s+/g,' ').slice(0,150),createdAt:item.createdAt});
    Object.assign(item,obj);await save();closeModal();render()
   }catch(err){alert('儲存失敗：'+err.message)}finally{if(submit)submit.disabled=false}
  }
@@ -1349,22 +1442,13 @@ async function hydrateSharedArticles(queue){
    const meta=await fetchPublicMetadata(entry.url);
    const target=data.items.find(x=>x.id===entry.id);
    if(!target||target.url!==entry.url||target.sourceQuality==='manual')continue;
-   // Avoid overwriting any edits made while the remote preview was loading.
-   const fallback=quickFallbackTitle(entry.url);
-   if((target.title===fallback||target.title===`${target.platform} 收藏連結`)&&meta.title)target.title=meta.title;
-   if(!target.body&&meta.body)target.body=meta.body;
-   const imgs=uniq([...(target.images||[]),...(meta.images||[])]);
-   target.images=imgs;
-   target.sourceQuality=target.body?(target.sourceQuality==='shared'?'shared':'preview'):'linkOnly';
-   target.sourceCapturedAt=Date.now();
-   const inferred=target.placeName||findPlaceName(target.body,target.title);
-   if(inferred&&!target.placeName)target.placeName=inferred;
-   if(!target.address)target.address=extractAddress(target.body);
-   target.category=target.category==='其他'?inferCategory(`${target.title} ${target.body}`):target.category;
-   target.country=target.country==='其他'?inferCountry(`${target.title} ${target.body}`):target.country;
-   target.terms=makeSearchTerms({placeName:target.placeName,address:target.address,products:target.products,body:target.body,country:target.country});
+   // Merge into the same existing post ID; do not create a second card.
+   mergePublicPreview(target,meta);
    await save();render();
-  }catch{ /* Some platforms offer a cover only, or block previews altogether. Keep the saved link. */ }
+  }catch(err){
+   const target=data.items.find(x=>x.id===entry.id);
+   if(target){target.previewError=String(err?.message||'公開內容無法擷取');target.previewCheckedAt=Date.now();target.previewAttempts=(target.previewAttempts||0)+1;await save()}
+  }
  }
 }
 async function cloudBoot(){
