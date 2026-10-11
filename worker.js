@@ -53,6 +53,62 @@ function extractUrl(v){
   if(!match)return '';
   try{const u=new URL(match[0]);return ['https:','http:'].includes(u.protocol)&&u.href.length<=2500?u.href:''}catch{return ''}
 }
+
+// Fetch only public HTTPS image hosts, without redirects, to reduce SSRF risk.
+function checkExternalImageURL(input){
+ const u=new URL(String(input||''));
+ if(u.protocol!=='https:'||u.username||u.password||u.port&&u.port!=='443')throw Object.assign(new Error('image-https-required'),{status:400});
+ const h=u.hostname.toLowerCase();
+ if(h==='localhost'||h==='metadata.google.internal'||h.endsWith('.local')||h.endsWith('.internal')||h.endsWith('.localhost')||h.endsWith('.test')||h.endsWith('.example')||h.endsWith('.invalid')||h.includes(':')||/^\d+\.\d+\.\d+\.\d+$/.test(h)||!h.includes('.'))throw Object.assign(new Error('image-host-not-allowed'),{status:400});
+ if(u.href.length>3000)throw Object.assign(new Error('image-url-too-long'),{status:400});
+ return u;
+}
+function bytesToBase64(bytes){
+ let raw='';
+ for(let p=0;p<bytes.length;p+=16384)raw+=String.fromCharCode(...bytes.subarray(p,p+16384));
+ return btoa(raw);
+}
+async function imagePayload(body){
+ const direct=String(body.imageData||'');
+ if(direct){
+  if(!/^data:image\/(png|jpeg|webp);base64,[a-zA-Z0-9+/=]+$/.test(direct)||direct.length>2_850_000)throw Object.assign(new Error('invalid-image-data'),{status:400});
+  return direct;
+ }
+ const u=checkExternalImageURL(body.imageUrl);
+ const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),6500);
+ try{
+  const resp=await fetch(u.href,{redirect:'manual',signal:ctrl.signal,headers:{'Accept':'image/jpeg,image/png,image/webp'}});
+  if(!resp.ok)throw Object.assign(new Error('image-unavailable'),{status:422});
+  const mime=String(resp.headers.get('content-type')||'').split(';')[0].trim().toLowerCase();
+  if(!['image/jpeg','image/png','image/webp'].includes(mime))throw Object.assign(new Error('unsupported-image-type'),{status:415});
+  const size=Number(resp.headers.get('content-length')||0);
+  if(size>2_050_000)throw Object.assign(new Error('image-too-large'),{status:413});
+  const binary=new Uint8Array(await resp.arrayBuffer());
+  if(binary.byteLength>2_050_000)throw Object.assign(new Error('image-too-large'),{status:413});
+  if(binary.byteLength<200)throw Object.assign(new Error('empty-image'),{status:422});
+  return `data:${mime};base64,${bytesToBase64(binary)}`;
+ }catch(e){if(e.name==='AbortError')throw Object.assign(new Error('image-fetch-timeout'),{status:504});throw e}
+ finally{clearTimeout(timer)}
+}
+function safeArray(value,max=8){return Array.isArray(value)?value.filter(x=>typeof x==='string').map(s=>s.trim().slice(0,140)).filter(Boolean).slice(0,max):[]}
+function parseVisionModel(out){
+ const value=typeof out==='string'?out:typeof out?.response==='string'?out.response:typeof out?.result==='string'?out.result:JSON.stringify(out);
+ let raw={};
+ try{raw=JSON.parse(value)}catch{
+  const start=value.indexOf('{'),end=value.lastIndexOf('}');
+  if(start>=0&&end>start){try{raw=JSON.parse(value.slice(start,end+1))}catch{}}
+ }
+ return {
+  summary:String(raw.summary||(!Object.keys(raw).length?value:'')).slice(0,240),
+  visibleText:safeArray(raw.visibleText,12),
+  products:safeArray(raw.products,8),
+  places:safeArray(raw.places,6),
+  addresses:safeArray(raw.addresses,4),
+  tags:safeArray(raw.tags,8),
+  uncertain:String(raw.uncertain||'').slice(0,180)
+ };
+}
+
 export default {
   async fetch(request,env){
     const origin=request.headers.get('Origin')||'';
@@ -62,16 +118,29 @@ export default {
       return new Response(null,{status:204,headers:headersFor(origin)});
     }
     const pathname=new URL(request.url).pathname.replace(/\/+$/,'')||'/';
-    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.0',configured:!!env.DB&&!!env.SJ_TOKEN},200,origin);
+    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.5',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI},200,origin);
     if(!env.DB||!env.SJ_TOKEN||String(env.SJ_TOKEN).length<32)return reply({error:'server-not-configured'},503,origin);
     try{
       let body=null;
-      if(['POST','PUT'].includes(request.method))body=await readJSON(request,pathname==='/api/state'?MAX_STATE_BYTES:25_000);
+      if(['POST','PUT'].includes(request.method))body=await readJSON(request,pathname==='/api/state'?MAX_STATE_BYTES:(pathname==='/api/vision'?2_900_000:25_000));
       const provided=request.headers.get('Authorization')?.replace(/^Bearer\s+/i,'')
         ||request.headers.get('X-Shiji-Token')
         ||(pathname==='/api/collect'?body?.token:null);
       if(!await safeEquals(String(provided||''),String(env.SJ_TOKEN)))return reply({error:'unauthorized'},401,origin);
       await schema(env.DB);
+      if(pathname==='/api/vision'&&request.method==='POST'){
+        if(!env.AI)return reply({error:'vision-ai-binding-missing'},503,origin);
+        if(!body||(!body.imageData&&!body.imageUrl))return reply({error:'image-required'},400,origin);
+        const image=await imagePayload(body);
+        const prompt=`You inspect ONE photo shared in a social post. Read visible product labels, store signs, menus and location clues in any language (Chinese, Japanese, Korean, English). Return only valid JSON without markdown with these keys: summary (short Traditional Chinese description, not a guess), visibleText (exact readable text only, array), products (specific product names ONLY when readable on packaging, array), places (specific store/place names ONLY with clear evidence, array), addresses (only readable full addresses, array), tags (short Traditional Chinese topics grounded in photo, array), uncertain (things that are not readable or might be wrong, string). Never infer an exact shop, product, price or country just from generic objects; leave arrays empty when unsure.`;
+        try{
+          const output=await env.AI.run('@cf/meta/llama-3.2-11b-vision-instruct',{
+            messages:[{role:'system',content:'You are a careful multilingual photo reader. Never invent unreadable words.'},{role:'user',content:prompt}],
+            image,max_tokens:480,temperature:0.1
+          });
+          return reply({ok:true,analysis:parseVisionModel(output)},200,origin);
+        }catch(e){return reply({error:'vision-inference-failed',detail:String(e?.message||e).slice(0,180)},502,origin)}
+      }
       if(pathname==='/api/state'&&request.method==='GET'){
         const r=await env.DB.prepare('SELECT revision,content,updated_at FROM app_state WHERE id=1').first();
         return reply({revision:r.revision,updatedAt:r.updated_at,data:r.revision?JSON.parse(r.content):null},200,origin);

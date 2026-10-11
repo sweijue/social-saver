@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="拾集">
-<title>拾集 v1.8.4</title>
+<title>拾集 v1.8.5</title>
 <style>
 :root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#6e6e68;--line:#e4e4de;--soft:#efefe9;--shadow:0 10px 28px rgba(0,0,0,.07);--r:20px;--navh:74px}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif;font-size:17px}body{min-height:100vh;padding-bottom:calc(var(--navh) + env(safe-area-inset-bottom) + 18px)}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
@@ -338,7 +338,7 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 .quickRetryBtn{display:inline-flex;align-items:center;gap:7px;margin:4px 0 0;justify-self:start;border:1px solid var(--line);background:#fff;font-size:13px;padding:8px 11px}
 .quickRetryBtn:disabled,#retryArticle:disabled{opacity:.55;cursor:wait}
 
-/* 拾集 v1.8.4：清晰的分類／標籤管理段落與旅遊清單編輯 */
+/* 拾集 v1.8.5：清晰的分類／標籤管理段落與旅遊清單編輯 */
 .taxGroup{background:#fff;border:1px solid #e0e1dc;border-radius:16px;padding:14px 13px 10px;margin:16px 0 22px;box-shadow:0 3px 12px rgba(0,0,0,.028)}
 .taxHeading{margin:0 0 13px;padding:0 0 11px;border-bottom:2px solid #d9ded6;gap:8px;min-height:38px}
 .taxHeading strong{font-size:18px!important;color:#202522;font-weight:950;letter-spacing:.03em}
@@ -366,6 +366,22 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 .travelPickItems{display:grid;gap:6px}.travelPickItem{display:grid;grid-template-columns:42px minmax(0,1fr) 18px;gap:9px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:7px;font-size:12px;font-weight:800}
 .travelPickItem img,.travelPickItem .tripThumb{width:42px;height:42px;object-fit:cover;border-radius:8px}
 .travelPickItem input{width:16px;height:16px;margin:0}
+
+
+/* v1.8.5: actionable, reviewable photo findings */
+.visionSection{border:1px solid var(--line);border-radius:16px;padding:13px;background:#fbfbf9}
+.visionHead{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.visionHead h4{margin:0!important;border:0!important;padding:0!important;background:transparent!important}
+.visionDesc{font-size:12px;color:#767970;line-height:1.6;margin:9px 0}
+.visionStatus{font-size:12px;color:#536276;line-height:1.55;margin:8px 0}
+.visionItem{display:grid;grid-template-columns:44px minmax(0,1fr);gap:9px;align-items:start;padding:10px 0;border-top:1px solid #e3e5df}
+.visionThumb{width:44px;height:44px;object-fit:cover;border-radius:8px;background:#e5e5e5}
+.visionText{font-size:13px;color:#333;line-height:1.65;overflow-wrap:anywhere}
+.visionLabel{display:inline-block;font-size:11px;color:#647484;font-weight:800;min-width:40px}
+.visionPills{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+.visionPill{border-radius:8px;background:#edf2ec;font-size:12px;padding:4px 7px;color:#345448}
+.visionActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.visionActions .uiBtn{min-height:36px}
 
 </style>
 <style>
@@ -423,7 +439,7 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 </style>
 
 <style>
-/* 拾集 v1.8.4: aligned controls, notes on previews, editing taxonomy */
+/* 拾集 v1.8.5: aligned controls, notes on previews, editing taxonomy */
 .fetchActionRow{display:grid!important;grid-template-columns:repeat(2,minmax(0,148px));gap:8px!important;align-items:stretch!important;margin:10px 0 6px}
 .fetchActionRow>.linkPill{box-sizing:border-box;display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px;min-width:0!important;min-height:42px;width:100%;margin:0!important;padding:8px 10px!important;line-height:1.3;white-space:nowrap;font-size:14px}
 .cardNote{margin-top:8px;padding:7px 8px;border-radius:9px;background:#eef5fa;border-left:3px solid #507e9a;display:flex;gap:6px;align-items:flex-start;color:#24516b;min-width:0}
@@ -455,7 +471,7 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 
 <script>
 
-const VERSION="1.8.4", STORE="socialSaver_data";
+const VERSION="1.8.5", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -726,6 +742,7 @@ function normalizeItem(i){
   category:i.category||inferCategory(`${i.title||''} ${i.body||''}`),country:i.country||inferCountry(`${i.title||''} ${i.body||''} ${i.city||''}`),categorySource:i.categorySource||'auto',countrySource:i.countrySource||'auto',
   city:i.city||findRegion(`${i.title||''} ${i.body||''}`),shoppingType:i.shoppingType||'',address:i.address||extractAddress(i.body||''),placeName:i.placeName||findPlaceName(i.body||'',i.title||''),products,
   tags:Array.isArray(i.tags)?i.tags:[],terms:makeSearchTerms({placeName:i.placeName||findPlaceName(i.body||'',i.title||''),address:i.address||extractAddress(i.body||''),products,body:i.body,country:i.country}),images,productImages,
+  vision:i.vision&&typeof i.vision==='object'?i.vision:{entries:[],updatedAt:0},
   summary:typeof i.summary==='string'?i.summary:'',note:i.note||'',
   sourceQuality:i.sourceQuality||'manual',sourceCapturedAt:i.sourceCapturedAt||null,
   titleSource:i.titleSource||'auto',previewAttempts:i.previewAttempts||0,previewError:i.previewError||'',previewCheckedAt:i.previewCheckedAt||null,
@@ -777,7 +794,7 @@ function allSorted(){return [...data.items].sort((a,b)=>{
  return b.createdAt-a.createdAt
 })}
 
-function filteredItems(q=''){return allSorted().filter(i=>{if(categoryFilter!=='全部'&&i.category!==categoryFilter)return false;if(countryFilter!=='全部'&&i.country!==countryFilter)return false;if(tagFilter!=='全部'&&!(i.tags||[]).includes(tagFilter))return false;if(!q)return true;const h=norm([i.title,i.body,i.category,i.country,i.city,i.shoppingType,i.address,i.note,...i.tags,...i.terms,...i.products].join(' '));return h.includes(norm(q))})}
+function filteredItems(q=''){return allSorted().filter(i=>{if(categoryFilter!=='全部'&&i.category!==categoryFilter)return false;if(countryFilter!=='全部'&&i.country!==countryFilter)return false;if(tagFilter!=='全部'&&!(i.tags||[]).includes(tagFilter))return false;if(!q)return true;const h=norm([i.title,i.body,i.category,i.country,i.city,i.shoppingType,i.address,i.note,...i.tags,...i.terms,...i.products,...(i.vision?.entries||[]).flatMap(x=>[x.summary,...(x.visibleText||[]),...(x.products||[]),...(x.places||[])])].join(' '));return h.includes(norm(q))})}
 
 function productImage(item,p,idx){
  const imgs=item.images||[],ps=item.products||[], mapped=item.productImages?.[p]||'';
@@ -1043,9 +1060,22 @@ function renderDetail(){
    <h2 class="detailTitle">${esc(i.title)}</h2>
    <div class="detailMeta">${esc(i.platform)} · ${esc(i.category)} · ${esc(i.country)}${i.city?` · ${esc(i.city)}`:''}</div><div class="detailSaved">收藏於 ${formatSavedAt(i.createdAt)}</div>
    ${i.url?`<div class="detailSection"><div class="fetchActionRow"><a class="linkPill uiBtn" href="${esc(i.url)}" target="_blank" rel="noopener noreferrer">↗ 原文章</a><button type="button" class="linkPill uiBtn" id="retryArticle">${icon('expand',14)} 再次擷取</button></div><div class="fetchFeedback" id="retryArticleStatus" role="status">${i.previewError?`上次擷取未成功：${esc(i.previewError)}；可以稍後重試。`:i.sourceQuality==='linkOnly'?'只有文章連結，點「再次擷取」可重新嘗試取得標題、內文與圖片。':'公開資料依來源限制取得，若缺內容可以再次擷取。'}</div></div>`:''}${i.url&&['preview','shared','linkOnly'].includes(i.sourceQuality)?`<div class="photoLimit">目前僅取得 ${i.images?.length||0} 張公開預覽圖片；社群相簿的其餘圖片若未開放讀取，可用「編輯」補入多張。</div>`:''}
+   ${i.images?.length?`<div class="detailSection visionSection">
+    <div class="visionHead"><h4>圖片內容辨識</h4><button type="button" class="smallBtn uiBtn" id="analyzePhotos">${icon('search',15)} ${((i.vision?.entries||[]).length?'辨識其餘圖片／重試':'開始辨識')}</button></div>
+    <p class="visionDesc">AI 讀取已收藏的圖片，提取可見文字、商品與地點線索。辨識結果可能有誤，確認後才套用到文章。</p>
+    <div id="visionStatus" class="visionStatus">${(i.vision?.entries||[]).length?`已分析 ${i.vision.entries.length} / ${i.images.length} 張圖片。`:'尚未辨識。新增圖片後也能再次分析。'}</div>
+    ${(i.vision?.entries||[]).map(x=>`<div class="visionItem">
+      ${i.images[x.index]?`<img class="visionThumb" src="${esc(i.images[x.index])}" alt="第 ${x.index+1} 張圖片">`:'<span></span>'}
+      <div class="visionText"><strong>圖片 ${x.index+1}</strong>${x.summary?`<div>${esc(x.summary)}</div>`:''}
+      ${x.visibleText?.length?`<div><span class="visionLabel">圖片文字</span>${esc(x.visibleText.join(' · '))}</div>`:''}
+      ${x.products?.length?`<div class="visionPills">${x.products.map(t=>`<span class="visionPill">商品：${esc(t)}</span>`).join('')}</div>`:''}
+      ${x.places?.length?`<div class="visionPills">${x.places.map(t=>`<span class="visionPill">地點：${esc(t)}</span>`).join('')}</div>`:''}
+      ${x.uncertain?`<small>不確定：${esc(x.uncertain)}</small>`:''}</div></div>`).join('')}
+    ${(i.vision?.entries||[]).length?`<div class="visionActions"><button type="button" class="ghost uiBtn" id="applyVision">確認並套用圖片線索</button></div>`:''}
+  </div>`:''}
    <div class="detailSection"><h4>${i.sourceQuality==='preview'?'文章預覽（非全文）':i.sourceQuality==='linkOnly'?'文章內容未擷取':'原始文章內容'}</h4><div class="bodyText originalBody">${esc(i.body||'此平台未提供可讀取的內文，可透過「原文章」查看，或編輯卡片補充。')}</div></div>
    ${insights.length?`<div class="detailSection"><h4>文章重點</h4><div class="insightList">${insights.map(x=>`<div class="insightRow"><strong>${esc(x.label)}</strong><span>${esc(x.value)}</span></div>`).join('')}</div></div>`:showSummary?`<div class="detailSection"><h4>整理重點</h4><div class="bodyText">${esc(i.summary)}</div></div>`:''}
-   ${i.category==='購物'&&!(i.products||[]).length&&i.images?.length?`<div class="detailSection"><h4>商品資訊</h4><div class="locationNote">目前公開文字沒有明確商品名稱。若品名只印在圖片包裝上，本版還不能自動辨識圖片文字；可用右上角編輯補上商品名稱，再建立購物清單。</div></div>`:''}
+   ${i.category==='購物'&&!(i.products||[]).length&&i.images?.length?`<div class="detailSection"><h4>商品資訊</h4><div class="locationNote">目前公開文字沒有明確商品名稱。若品名只在包裝上，請使用上方「圖片內容辨識」產生候選商品，再確認套用。</div></div>`:''}
    ${i.products?.length?`<div class="detailSection">
       <div class="productSectionHead"><h4>商品與圖片</h4><span>可逐項勾選加入購物清單</span></div>
       <div class="productGrid">${i.products.map((p,idx)=>{const im=productImage(i,p,idx);return`<div class="productCard">${im?`<button type="button" class="productZoom" data-product-zoom="${idx}" aria-label="放大 ${esc(p)} 的商品圖"><img src="${esc(im)}" alt="${esc(p)}"><span class="zoomHint">${icon('expand',14)}</span></button>`:'<div class="productImgPh">沒有圖片</div>'}<label class="productCardText"><input type="checkbox" class="detailProductCheck" data-product="${esc(p)}" checked><span class="productName">${esc(p)}</span></label></div>`}).join('')}</div>
@@ -1059,6 +1089,8 @@ function renderDetail(){
  $('#closeModal').onclick=closeModal;
  if($('#refreshArticleTags'))$('#refreshArticleTags').onclick=async()=>{const current=data.items.find(x=>x.id===i.id);if(!current)return;const raw=[current.title,current.body].join(' ');if(current.category==='其他'&&current.categorySource!=='manual')current.category=inferCategory(raw);if(current.country==='其他'&&current.countrySource!=='manual')current.country=inferCountry(raw);if(!current.city)current.city=findRegion(raw);if(!current.products?.length)current.products=detectProductCandidates(current.body);if(!current.placeName)current.placeName=findPlaceName(current.body,current.title);current.tags=uniq([...(current.tags||[]),...guessTags(raw,current.country,current.category,data.customTags||[])]);current.terms=uniq([...(current.terms||[]),...makeSearchTerms({placeName:current.placeName,address:current.address,products:current.products,body:current.body,country:current.country})]);await save();render();renderDetail();};
  if($('#retryArticle'))$('#retryArticle').onclick=()=>retryItemMetadata(i.id);
+ if($('#analyzePhotos'))$('#analyzePhotos').onclick=()=>analyzeArticlePhotos(i.id);
+ if($('#applyVision'))$('#applyVision').onclick=()=>applyVisionSuggestions(i.id);
  $('#editDetail').onclick=()=>openEditor(i.id);
  $('#deleteDetail').onclick=()=>{if(confirm('確定刪除這篇收藏？')){data.items=data.items.filter(x=>x.id!==i.id);selected.delete(i.id);save();detailIds=detailIds.filter(x=>x!==i.id);if(!detailIds.length){closeModal();render()}else{detailIndex=Math.min(detailIndex,detailIds.length-1);renderDetail();render()}}};
  $$('[data-product-zoom]').forEach(b=>b.onclick=()=>{
@@ -1373,6 +1405,7 @@ function openQuickAdd(prefill=''){
    const item=quickItem(url,cached,fields);
    if(!item.isExample){data.items=data.items.filter(x=>!x.isExample);data.examplesInitialized=true}
    data.items.unshift(item);await save();closeModal();view='library';render();
+   if(item.images?.length&&cloudConfig)setTimeout(()=>analyzeArticlePhotos(item.id,{silent:true}),650);
  };
  if(prefill){lookupPromise=runLookup()}else inp.focus();
 }
@@ -1404,6 +1437,69 @@ function editorHTML(item){
   <div class="formActions"><button type="button" class="ghost uiBtn" id="cancelEdit">取消</button><button class="primary uiBtn" type="submit">${item?'儲存修改':'儲存收藏'}</button></div>
   </form>`;
 }
+
+// Vision runs only when Cloudflare AI is bound; never put an AI key in public HTML.
+const visionInFlight=new Set();
+const photoSourceKey=(s)=>String(s||'').startsWith('data:')?'upload:'+String(s).length+':'+String(s).slice(-28):String(s);
+function availablePhotoIndexes(item,limit=3){
+ const entries=item.vision?.entries||[];
+ const seen=new Set(entries.map(x=>x.key));
+ return (item.images||[]).map((s,index)=>({s,index,key:photoSourceKey(s)}))
+  .filter(x=>x.s&&!seen.has(x.key)&&!x.s.startsWith('data:image/svg'))
+  .slice(0,limit);
+}
+async function analyzeArticlePhotos(id,opts={}){
+ const item=data.items.find(x=>x.id===id);
+ if(!item||!item.images?.length||visionInFlight.has(id))return;
+ if(!cloudConfig){if(!opts.silent)alert('請先在拾集右上角選單完成雲端同步設定。');return;}
+ const queue=availablePhotoIndexes(item,opts.silent?2:4);
+ if(!queue.length){if(!opts.silent){const s=$('#visionStatus');if(s)s.textContent='目前可用圖片已辨識完畢；新增照片後可再試。'}return;}
+ visionInFlight.add(id);
+ const btn=$('#analyzePhotos');if(btn){btn.disabled=true;btn.textContent='分析中…';}
+ let succeeded=0,failed=[];
+ for(const photo of queue){
+  const live=$('#visionStatus');if(live&&detailIds[detailIndex]===id)live.textContent=`正在辨識第 ${photo.index+1} 張圖片…`;
+  try{
+   const payload=photo.s.startsWith('data:image/')?{imageData:photo.s}:{imageUrl:photo.s};
+   const res=await cloudRequest('POST','/api/vision',payload);
+   const target=data.items.find(x=>x.id===id);if(!target)break;
+   target.vision=target.vision||{entries:[],updatedAt:0};
+   target.vision.entries=Array.isArray(target.vision.entries)?target.vision.entries:[];
+   target.vision.entries.push({...res.analysis,index:photo.index,key:photo.key});
+   target.vision.updatedAt=Date.now();
+   // Only derive obvious metadata from visible words, never auto-apply product/place identity.
+   const evidence=uniq([...(res.analysis.visibleText||[]),...(res.analysis.tags||[])]).join(' ');
+   if(target.categorySource!=='manual'&&target.category==='其他')target.category=inferCategory(`${target.body} ${evidence}`);
+   if(target.countrySource!=='manual'&&target.country==='其他')target.country=inferCountry(`${target.body} ${evidence}`);
+   target.tags=uniq([...(target.tags||[]),...guessTags(`${target.title} ${target.body} ${evidence}`,target.country,target.category)]);
+   await save();succeeded++;
+  }catch(e){failed.push(`第 ${photo.index+1} 張：${e?.message||'失敗'}`);}
+ }
+ visionInFlight.delete(id);
+ const text=`已完成 ${succeeded} 張圖片辨識。${failed.length?'其餘未完成：'+failed.join('；'):''}`;
+ if(detailIds[detailIndex]===id&&document.querySelector('#analyzePhotos')){
+   renderDetail();const status=$('#visionStatus');if(status)status.textContent=text;
+ }else if(!opts.silent)alert(text);
+ render();
+}
+function applyVisionSuggestions(id){
+ const item=data.items.find(x=>x.id===id);if(!item)return;
+ const entries=item.vision?.entries||[];
+ if(!entries.length)return;
+ const list=entries.flatMap(x=>[...(x.products||[]),...(x.places||[])]);
+ if(!list.length){alert('目前沒有足夠清楚的商品或地點名稱；可在編輯中手動補充。');return}
+ if(!confirm(`圖片辨識得到 ${list.length} 個商品／地點候選，確認後加入文章資料嗎？請核對名稱是否正確。`))return;
+ const productSet=new Set((item.products||[]).map(norm));
+ for(const row of entries){
+  for(const name of row.products||[]){const s=String(name).trim();if(!s||productSet.has(norm(s)))continue;item.products.push(s);productSet.add(norm(s));if(item.images[row.index])item.productImages[s]=item.images[row.index];}
+ }
+ if(!item.placeName)item.placeName=entries.flatMap(x=>x.places||[])[0]||'';
+ if(!item.address)item.address=entries.flatMap(x=>x.addresses||[])[0]||'';
+ item.terms=uniq([...(item.terms||[]),...item.products,item.placeName,item.address]);
+ item.tags=uniq([...(item.tags||[]),...entries.flatMap(x=>x.tags||[])]);
+ save();render();renderDetail();
+}
+
 function fileAsDataURL(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file)})}
 async function smallImageDataURL(file){
  const src=await fileAsDataURL(file);
@@ -1452,7 +1548,8 @@ function openEditor(id=null){
    data.customCountries=uniq([...(data.customCountries||[]),country]);
    data.customTags=uniq([...(data.customTags||[]),...tags]);
    const obj=normalizeItem({...item,title,titleSource:'manual',body,city,country,category,categorySource:'manual',countrySource:'manual',placeName,address,products,images,productImages,tags,platform:$('#fPlatform').value,url:$('#fUrl').value.trim(),shoppingType:$('#fShoppingType').value.trim(),note:$('#fNote').value,summary:body.replace(/\s+/g,' ').slice(0,150),createdAt:item.createdAt});
-   Object.assign(item,obj);await save();closeModal();render()
+   Object.assign(item,obj);await save();closeModal();render();
+   if(added.length&&cloudConfig)setTimeout(()=>analyzeArticlePhotos(item.id,{silent:true}),500)
   }catch(err){alert('儲存失敗：'+err.message)}finally{if(submit)submit.disabled=false}
  }
 }
@@ -1615,14 +1712,14 @@ function cloudServerURL(url){
 }
 async function cloudRequest(method,path,body,settings=cloudConfig){
  if(!settings)throw new Error('雲端尚未設定');
- const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),16000);
+ const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),path==='/api/vision'?60000:16000);
  try{
    const r=await fetch(cloudServerURL(settings.url)+path,{
     method,headers:{'Authorization':'Bearer '+settings.token,'Content-Type':'application/json'},
     ...(body===undefined?{}:{body:JSON.stringify(body)}),cache:'no-store',signal:ctl.signal
    });
    let json={};try{json=await r.json()}catch{}
-   if(!r.ok){const err=new Error(json.error==='unauthorized'?'密鑰不正確':json.error==='revision-conflict'?'雲端內容已被另一台裝置更新':json.error==='state-too-large'||r.status===413?'圖片或資料容量過大，無法上傳雲端。請先匯出備份並縮小圖片。':`雲端服務錯誤 ${r.status}：${json.error||'unknown'}`);err.status=r.status;throw err}
+   if(!r.ok){if(path==='/api/vision'){const names={'vision-ai-binding-missing':'尚未啟用 Cloudflare AI 綁定，請在 Worker 的設定加入 AI。','image-unavailable':'無法讀取來源圖片。請從文章儲存圖片，再用「編輯」上傳後重試。','unsupported-image-type':'圖片格式不支援。請改用 JPG、PNG 或 WebP。','image-too-large':'圖片太大，請先縮小後重新加入。','vision-inference-failed':'AI 模型辨識失敗；請確認 Workers AI 可用、模型授權和每日使用額度。','server-not-configured':'Worker 尚未完成資料庫與密鑰設定。'};throw new Error(names[json.error]||`圖片辨識錯誤：${json.error||r.status}`)}const err=new Error(json.error==='unauthorized'?'密鑰不正確':json.error==='revision-conflict'?'雲端內容已被另一台裝置更新':json.error==='state-too-large'||r.status===413?'圖片或資料容量過大，無法上傳雲端。請先匯出備份並縮小圖片。':`雲端服務錯誤 ${r.status}：${json.error||'unknown'}`);err.status=r.status;throw err}
    return json;
  }finally{clearTimeout(timer)}
 }
@@ -1701,6 +1798,7 @@ async function hydrateSharedArticles(queue){
    // Merge into the same existing post ID; do not create a second card.
    mergePublicPreview(target,meta);
    await save();render();
+   if(target.images?.length&&cloudConfig&&!target.isExample)setTimeout(()=>analyzeArticlePhotos(target.id,{silent:true}),650);
   }catch(err){
    const target=data.items.find(x=>x.id===entry.id);
    if(target){target.previewError=String(err?.message||'公開內容無法擷取');target.previewCheckedAt=Date.now();target.previewAttempts=(target.previewAttempts||0)+1;await save()}

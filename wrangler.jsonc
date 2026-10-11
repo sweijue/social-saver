@@ -8,5 +8,8 @@
       "database_name": "shiji-db",
       "database_id": "d39f773f-a550-479f-ac48-6584893b6c9e"
     }
-  ]
+  ],
+  "ai": {
+    "binding": "AI"
+  }
 }
