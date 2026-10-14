@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="拾集">
-<title>拾集 v1.8.8</title>
+<title>拾集 v1.8.9</title>
 <style>
 :root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#6e6e68;--line:#e4e4de;--soft:#efefe9;--shadow:0 10px 28px rgba(0,0,0,.07);--r:20px;--navh:74px}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif;font-size:17px}body{min-height:100vh;padding-bottom:calc(var(--navh) + env(safe-area-inset-bottom) + 18px)}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
@@ -473,14 +473,14 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 #contentRefetchProgress[aria-busy="true"] .refetchBannerTop strong{color:#274936}
 .cloudDiagRow{border:1px solid #dee6de;background:#f6faf6;padding:11px;border-radius:12px;margin:8px 0}.cloudDiagRow .cloudHelp{white-space:pre-line;overflow-wrap:anywhere}
 .fetchFeedback[data-kind="ok"]{color:#287150}.fetchFeedback[data-kind="warn"]{color:#955e24}
-/* v1.8.8: paste-in source content after restricted Threads previews */
+/* v1.8.9: paste-in source content after restricted Threads previews */
 .fetchActionRow .pasteContentBtn{grid-column:1/-1;max-width:304px;background:#f4f7f3!important;border-style:dashed!important;color:#285b42!important}
 .articlePasteHint{font-size:12px;color:#5b685d;line-height:1.6;margin:9px 0}
 .articlePasteArea{min-height:175px;font-size:15px;line-height:1.75;white-space:pre-wrap}
 .pasteProgress{white-space:pre-wrap;line-height:1.5;font-size:13px;color:#385b45;margin:7px 0}
 .pasteFormActions{display:flex;flex-wrap:wrap;gap:9px;margin-top:12px}
 .pasteFormActions button{min-height:41px}
-/* v1.8.8 - explicit diagnostic reports, without claiming an inaccurate quota remainder */
+/* v1.8.9 - explicit diagnostic reports, without claiming an inaccurate quota remainder */
 .usageWrap{padding:15px;display:grid;gap:12px;max-height:calc(100dvh - 170px);overflow:auto}
 .usageCard{border:1px solid var(--line);border-radius:13px;padding:13px;background:var(--surface,#fff);line-height:1.6}
 .usageCard strong{font-size:15px;display:block;margin-bottom:7px}
@@ -513,7 +513,7 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 
 <script>
 
-const VERSION="1.8.8", STORE="socialSaver_data";
+const VERSION="1.8.9", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -1080,7 +1080,7 @@ function drawerHTML(){
  <div class="drawerTitle">篩選收藏</div><div class="cascadeFilter"><details open><summary>分類 · ${esc(categoryFilter)} </summary><div class="chips">${cats.map(x=>`<button class="chip ${categoryFilter===x?'active':''}" data-cat="${esc(x)}">${esc(x)}</button>`).join('')}</div></details>
  ${`<details><summary>　↳ 國家 · ${esc(countryFilter)}</summary><div class="chips">${countries.map(x=>`<button class="chip ${countryFilter===x?'active':''}" data-country="${esc(x)}">${esc(x)}</button>`).join('')}</div></details>`}
  ${`<details><summary>　　↳ 標籤 · ${esc(tagFilter)}</summary><div class="chips">${tags.map(x=>`<button class="chip ${tagFilter===x?'active':''}" data-tag="${esc(x)}">${x==='全部'?'全部':'# '+esc(x)}</button>`).join('')}</div></details>`}</div>
- <div class="drawerSection"><div class="drawerTitle">分類與標籤管理</div><button class="smallBtn" id="manageTaxonomy">新增／重新命名／刪除</button></div><div class="drawerSection"><div class="drawerTitle">雲端同步</div><div class="toolRow"><button class="smallBtn" id="cloudSetupBtn">設定／管理同步</button><button class="smallBtn" id="cloudSyncBtn">立即同步</button></div><p class="cloudHelp" id="cloudDrawerStatus">${esc(cloudMessage)}</p></div><div class="drawerSection"><div class="drawerTitle">免費服務使用狀態</div><button type="button" class="smallBtn" id="usageDrawerBtn">查看 AI／預覽額度狀態</button><p class="cloudHelp usageLimitInline ${limitWarning().message?'':'hidden'}" id="usageLimitInline">${esc(limitWarning().message||'')}</p></div><div class="drawerSection"><div class="drawerTitle">內容補抓</div><button type="button" class="smallBtn refetchDrawerBtn" id="refetchDrawer" ${contentRefetchState.running?'disabled':''}>${contentRefetchState.running?fetchSpinnerHTML()+' 補抓進行中':icon('expand',15)+' 一鍵補抓缺漏文章（'+getMissingContentItems().length+' 篇）'}</button><p class="cloudHelp">只重新檢查缺少內文、封面或有效標題的收藏，不另建卡片。平台未開放的內容仍可能抓不到。</p></div><div class="drawerSection"><div class="drawerTitle">資料工具</div><div class="toolRow"><button class="smallBtn" id="exportBtn">匯出備份</button><button class="smallBtn" id="importBtn">匯入備份</button><button class="smallBtn" id="resetFilter">清除篩選</button></div></div><div class="drawerSection"><div id="storageWarning" class="storageWarning ${storageError?'':'hidden'}">${esc(storageError||'')}</div><div class="storageFoot">本機保留備份。雲端同步需完成設定，建議定期匯出備份。</div><div class="filterLabel">目前版本</div><strong>v${VERSION}</strong></div></aside>`
+ <div class="drawerSection"><div class="drawerTitle">分類與標籤管理</div><button class="smallBtn" id="manageTaxonomy">新增／重新命名／刪除</button></div><div class="drawerSection"><div class="drawerTitle">雲端同步</div><div class="toolRow"><button class="smallBtn" id="cloudSetupBtn">設定／管理同步</button><button class="smallBtn" id="cloudSyncBtn">立即同步</button></div><p class="cloudHelp" id="cloudDrawerStatus">${esc(cloudMessage)}</p></div><div class="drawerSection"><div class="drawerTitle">免費服務使用狀態</div><button type="button" class="smallBtn" id="usageDrawerBtn">查看 AI／預覽／瀏覽器用量</button><p class="cloudHelp usageLimitInline ${limitWarning().message?'':'hidden'}" id="usageLimitInline">${esc(limitWarning().message||'')}</p></div><div class="drawerSection"><div class="drawerTitle">內容補抓</div><button type="button" class="smallBtn refetchDrawerBtn" id="refetchDrawer" ${contentRefetchState.running?'disabled':''}>${contentRefetchState.running?fetchSpinnerHTML()+' 補抓進行中':icon('expand',15)+' 一鍵補抓缺漏文章（'+getMissingContentItems().length+' 篇）'}</button><p class="cloudHelp">批次不耗用瀏覽器時間；單篇按「再次擷取」才會在必要時嘗試 Browser Run。</p></div><div class="drawerSection"><div class="drawerTitle">資料工具</div><div class="toolRow"><button class="smallBtn" id="exportBtn">匯出備份</button><button class="smallBtn" id="importBtn">匯入備份</button><button class="smallBtn" id="resetFilter">清除篩選</button></div></div><div class="drawerSection"><div id="storageWarning" class="storageWarning ${storageError?'':'hidden'}">${esc(storageError||'')}</div><div class="storageFoot">本機保留備份。雲端同步需完成設定，建議定期匯出備份。</div><div class="filterLabel">目前版本</div><strong>v${VERSION}</strong></div></aside>`
 }
 function openDrawer(){$('#drawerHost').innerHTML=drawerHTML();$('#closeDrawer').onclick=$('#drawerBackdrop').onclick=closeDrawer;$$('[data-cat]').forEach(b=>b.onclick=()=>{categoryFilter=b.dataset.cat;countryFilter='全部';tagFilter='全部';openDrawer();render()});$$('[data-country]').forEach(b=>b.onclick=()=>{countryFilter=b.dataset.country;tagFilter='全部';openDrawer();render()});$$('[data-tag]').forEach(b=>b.onclick=()=>{tagFilter=b.dataset.tag;openDrawer();render()});$('#manageTaxonomy').onclick=openTaxonomyManager;$('#refetchDrawer').onclick=()=>{closeDrawer();startMissingContentRefetch()};$('#cloudSetupBtn').onclick=()=>{closeDrawer();openCloudSettings()};$('#cloudSyncBtn').onclick=async()=>{closeDrawer();await cloudRun()};$('#usageDrawerBtn').onclick=()=>{closeDrawer();openUsageReport()};$('#exportBtn').onclick=exportData;$('#importBtn').onclick=()=>$('#importFile').click();$('#resetFilter').onclick=()=>{categoryFilter=countryFilter=tagFilter='全部';openDrawer();render()}}
 function closeDrawer(){$('#drawerHost').innerHTML=''}
@@ -1105,7 +1105,7 @@ function renderDetail(){
  <div class="detailBody">
    <h2 class="detailTitle">${esc(i.title)}</h2>
    <div class="detailMeta">${esc(i.platform)} · ${esc(i.category)} · ${esc(i.country)}${i.city?` · ${esc(i.city)}`:''}</div><div class="detailSaved">收藏於 ${formatSavedAt(i.createdAt)}</div>
-   ${i.url?`<div class="detailSection"><div class="fetchActionRow"><a class="linkPill uiBtn" href="${esc(i.url)}" target="_blank" rel="noopener noreferrer">↗ 原文章</a><button type="button" class="linkPill uiBtn" id="retryArticle" ${refetchBusy?'disabled aria-busy="true"':''}>${refetchBusy?fetchSpinnerHTML()+' 擷取中…':icon('expand',14)+' 再次擷取'}</button><button type="button" class="linkPill uiBtn pasteContentBtn" id="pasteArticleText">${icon('edit',14)} 貼上內文並重新整理</button></div><div class="fetchFeedback" id="retryArticleStatus" role="status" data-kind="${refetchInfo?.kind||''}">${refetchInfo?esc(refetchInfo.text):i.previewError?`上次擷取未成功：${esc(i.previewError)}；可以稍後重試。`:i.sourceQuality==='linkOnly'?'只有文章連結，點「再次擷取」可重新嘗試取得標題、內文與圖片。':'公開資料依來源限制取得，若缺內容可以再次擷取。'}</div></div>`:''}${i.url&&['preview','shared','linkOnly'].includes(i.sourceQuality)?`<div class="photoLimit">目前僅取得 ${i.images?.length||0} 張公開預覽圖片；社群相簿的其餘圖片若未開放讀取，可用「編輯」補入多張。</div>`:''}
+   ${i.url?`<div class="detailSection"><div class="fetchActionRow"><a class="linkPill uiBtn" href="${esc(i.url)}" target="_blank" rel="noopener noreferrer">↗ 原文章</a><button type="button" class="linkPill uiBtn" id="retryArticle" ${refetchBusy?'disabled aria-busy="true"':''}>${refetchBusy?fetchSpinnerHTML()+' 擷取中…':icon('expand',14)+' 再次擷取'}</button><button type="button" class="linkPill uiBtn pasteContentBtn" id="pasteArticleText">${icon('edit',14)} 貼上內文並重新整理</button></div><div class="fetchFeedback" id="retryArticleStatus" role="status" data-kind="${refetchInfo?.kind||''}">${refetchInfo?esc(refetchInfo.text):i.previewError?`上次擷取未成功：${esc(i.previewError)}；可以稍後重試。`:i.sourceQuality==='linkOnly'?'只有文章連結，點「再次擷取」可重新嘗試取得標題、內文與圖片。':'公開資料依來源限制取得，若缺內容可以再次擷取。'}</div></div>`:''}${i.browserNotice?`<div class="fetchFeedback" role="status">${esc(i.browserNotice)}</div>`:''}${i.url&&['preview','shared','linkOnly'].includes(i.sourceQuality)?`<div class="photoLimit">目前僅取得 ${i.images?.length||0} 張公開預覽圖片；社群相簿的其餘圖片若未開放讀取，可用「編輯」補入多張。</div>`:''}
    ${i.images?.length?`<div class="detailSection visionSection">
     <div class="visionHead"><h4>圖片內容辨識</h4><button type="button" class="smallBtn uiBtn" id="analyzePhotos">${icon('search',15)} ${((i.vision?.entries||[]).length?'辨識其餘圖片／重試':'開始辨識')}</button></div>
     <p class="visionDesc">AI 讀取已收藏的圖片，提取可見文字、商品與地點線索。辨識結果可能有誤，確認後才套用到文章。</p>
@@ -1251,7 +1251,7 @@ function limitWarning(){
  let d={};try{d=JSON.parse(localStorage.getItem(QUOTA_WARNING_KEY)||'{}')}catch{}
  if(d.dayUTC!==utcDay())return {dayUTC:utcDay(),ai:null,preview:null,message:''};
  const ai=d.ai||null,preview=d.preview||null;
- return {...d,ai,preview,message:[ai?.message,preview?.message].filter(Boolean).join('\n')};
+ return {...d,ai,preview,browser:d.browser||null,message:[ai?.message,preview?.message,d.browser?.message].filter(Boolean).join('\n')};
 }
 let quotaToastTimer=null;
 function showQuotaNotice(message){
@@ -1303,38 +1303,80 @@ async function fetchMicrolinkMetadata(url){
   throw e;
  }finally{clearTimeout(timer)}
 }
-async function fetchPublicMetadata(url){
- // Independent public-page read first; no paid scraper, cookie, or login bypass.
- // GitHub Pages cannot cross-origin fetch Threads HTML directly, so the authenticated Worker reads it.
- let direct=null,reason='',canonical='';
- if(isThreadsURL(url)&&cloudConfig){
+async function fetchPublicMetadata(url,options={}){
+ // Public HTML + Microlink first. Browser Run is a limited last resort for Threads.
+ let direct=null,preview=null,canonical='',reason='',previewError='';
+ const threads=isThreadsURL(url),browserMode=options.browserMode||'auto';
+ if(threads&&cloudConfig){
   try{
    const result=await cloudRequest('POST','/api/extract',{url});
    if(result?.canonicalUrl)canonical=cleanExternalURL(result.canonicalUrl);
+   if(result?.found)direct={title:isGenericPreview(result.title||'','Threads')?'':String(result.title||''),
+     body:isPlatformUnavailableText(result.body)?'':String(result.body||''),
+     images:uniq((result.images||[]).map(cleanExternalURL).filter(Boolean)),
+     resolvedUrl:canonical,source:'Threads public HTML'};
+   if(!direct)reason=result?.reason==='threads-access-limited'?'Threads \u672a\u5411\u5916\u90e8\u670d\u52d9\u63d0\u4f9b\u8cbc\u6587\u5167\u5bb9':'Threads \u516c\u958b\u7db2\u9801\u672a\u63d0\u4f9b\u5b8c\u6574\u8cc7\u6599';
+  }catch(e){reason=e.status===404?'Worker \u5c1a\u672a\u5347\u7d1a\u64f7\u53d6\u529f\u80fd':e.message||''}
+ }
+ let merged=direct&&hasUsefulPreview(direct)?{...direct}:null;
+ // Skip a redundant public preview call if full text and multiple photos are already present.
+ if(!(merged?.body&&merged?.images?.length>=2)){
+  try{
+   preview=await fetchMicrolinkMetadata(canonical||url);
+   if(merged){merged={...preview,title:merged.title||preview.title,body:merged.body||preview.body,
+      images:uniq([...(merged.images||[]),...(preview.images||[])]),resolvedUrl:canonical||'',source:'Threads \u516c\u958b\u7db2\u9801\u8207\u9810\u89bd'};}
+   else merged={...preview,resolvedUrl:canonical||''};
+  }catch(e){previewError=e.message||'Preview unavailable'}
+ }
+ // Automatic browser fallback is deliberately limited on the server; manual retry
+ // is allowed more often. One-cover posts may be multi-photo carousels, so try once.
+ const incomplete=!!(threads&&(!merged?.body||!merged?.images?.length||merged.images.length===1));
+ if(threads&&cloudConfig&&browserMode!=='off'&&(browserMode==='manual'||incomplete)){
+  try{
+   const result=await cloudRequest('POST','/api/browser-extract',{url:canonical||url,mode:browserMode==='manual'?'manual':'auto'});
+   const note=browserReasonText(result?.reason||'');
    if(result?.found){
-    direct={title:isGenericPreview(result.title||'','Threads')?'':String(result.title||''),body:isPlatformUnavailableText(result.body)?'':String(result.body||''),images:uniq((result.images||[]).map(cleanExternalURL).filter(Boolean)),resolvedUrl:canonical,source:'Threads 公開網頁'};
-    // Cover-only previews can still be improved by a second independent source.
-    if(direct.body&&direct.images.length)return direct;
+    const fresh={title:isGenericPreview(result.title||'','Threads')?'':String(result.title||''),
+       body:isPlatformUnavailableText(result.body)?'':String(result.body||''),
+       images:uniq((result.images||[]).map(cleanExternalURL).filter(Boolean)),
+       resolvedUrl:cleanExternalURL(result.canonicalUrl)||canonical,source:'Cloudflare Browser Run'};
+    merged=merged?{...merged,title:merged.title||fresh.title,body:merged.body||fresh.body,
+       images:uniq([...(merged.images||[]),...(fresh.images||[])]),
+       resolvedUrl:fresh.resolvedUrl||merged.resolvedUrl,source:'\u516c\u958b\u7db2\u9801\u8207\u96f2\u7aef\u700f\u89bd\u5668',browserNotice:note}:
+       {...fresh,browserNotice:note};
+    clearLimitWarning('browser');
+   }else{
+    if(note){if(merged)merged.browserNotice=note;else reason=[reason,note].filter(Boolean).join('\uff1b')}
+    if(['browser-cloudflare-daily-limit','browser-local-daily-budget'].includes(result?.reason))
+      setLimitWarning('browser','Cloudflare Browser Run \u4eca\u65e5\u53ef\u7528\u6642\u9593\u6216\u62fe\u96c6\u4fdd\u8b77\u984d\u5ea6\u5df2\u9054\u4e0a\u9650\uff1b\u53ef\u660e\u5929\u518d\u8a66\u3002');
+    else if(result?.reason==='browser-rate-limit')
+      setLimitWarning('browser','Cloudflare Browser Run \u76ee\u524d\u8acb\u6c42\u904e\u65bc\u983b\u7e41\uff0c\u8acb\u7a0d\u5f8c\u518d\u8a66\u3002');
    }
-   reason=result?.reason==='threads-access-limited'?'Threads 公開網頁回傳存取限制':result?.reason==='no-public-metadata'?'Threads 公開網頁未提供文章資訊':'';
   }catch(e){
-   reason=e.status===404?'雲端 Worker 尚未更新擷取功能':e.message||'公開網頁無法讀取';
+    const note=e.status===404?'Worker \u5c1a\u672a\u66f4\u65b0 Browser Run \u529f\u80fd\u3002':e.message||'Browser unavailable';
+    if(merged)merged.browserNotice=note;else reason=[reason,note].filter(Boolean).join('\uff1b');
   }
  }
- try{
-  const result=await fetchMicrolinkMetadata(canonical||url);
-  if(direct&&hasUsefulPreview(direct))return {
-   ...result,title:direct.title||result.title,body:direct.body||result.body,
-   images:uniq([...(direct.images||[]),...(result.images||[])]),resolvedUrl:canonical||result.resolvedUrl||'',
-   source:'Threads 公開網頁＋公開預覽'
-  };
-  return {...result,resolvedUrl:canonical};
- }catch(e){
-  // Never discard good original content just because a secondary preview service is throttled.
-  if(direct&&hasUsefulPreview(direct))return direct;
-  if(reason)throw new Error(`${reason}；預覽服務也未取得內容（${e.message}）。可使用「貼上內文」補充。`);
-  throw e;
- }
+ if(merged&&hasUsefulPreview(merged))return merged;
+ throw new Error([reason,previewError].filter(Boolean).join('\uff1b')||'\u516c\u958b\u4f86\u6e90\u672a\u63d0\u4f9b\u5167\u6587\u6216\u5716\u7247\u3002\u53ef\u8cbc\u4e0a\u5167\u6587\u88dc\u5145\u3002');
+}
+function browserReasonText(reason){
+ const notes={
+  'browser-not-bound':'\u5c1a\u672a\u7d81\u5b9a Cloudflare BROWSER\uff0c\u8acb\u5230 Worker Settings \u65b0\u589e Browser Run \u7e6b\u7d50\u3002',
+  'browser-auto-budget':'\u4eca\u65e5\u81ea\u52d5\u700f\u89bd\u5668\u88dc\u6293\u4fdd\u8b77\u984d\u5ea6\u5df2\u6eff\uff1b\u53ef\u4e4b\u5f8c\u624b\u52d5\u91cd\u8a66\u3002',
+  'browser-local-daily-budget':'\u4eca\u65e5\u700f\u89bd\u5668\u88dc\u6293\u5df2\u9054\u62fe\u96c6\u8a2d\u5b9a\u7684\u4fdd\u8b77\u984d\u5ea6\uff1b\u660e\u5929\u518d\u8a66\u3002',
+  'browser-cloudflare-daily-limit':'Cloudflare Browser Run \u4eca\u65e5\u514d\u8cbb\u6642\u9593\u5df2\u7528\u5b8c\uff0c\u660e\u5929\u518d\u8a66\u3002',
+  'browser-rate-limit':'Cloudflare Browser Run \u8acb\u6c42\u592a\u983b\u7e41\uff0c\u8acb\u7a0d\u5f8c\u91cd\u8a66\u3002',
+  'browser-cooldown':'\u700f\u89bd\u5668\u8acb\u6c42\u51b7\u537b\u4e2d\uff08\u6bcf 10 \u79d2\u6700\u591a\u4e00\u6b21\uff09\u3002',
+  'browser-cooldown-or-budget':'\u700f\u89bd\u5668\u8acb\u6c42\u51b7\u537b\u4e2d\u6216\u4eca\u65e5\u4fdd\u8b77\u984d\u5ea6\u5df2\u9054\u4e0a\u9650\u3002',
+  'browser-post-cooldown':'\u9019\u7bc7\u8cbc\u6587\u5df2\u5617\u8a66\u904e\u700f\u89bd\u5668\u88dc\u6293\uff0c\u8acb\u7a0d\u5f8c\u518d\u8a66\u3002',
+  'browser-needs-original-url':'\u8acb\u5148\u5c07 Threads \u5206\u4eab\u77ed\u9023\u7d50\u8f49\u6210\u539f\u59cb\u8cbc\u6587\u7db2\u5740\u3002',
+  'browser-no-readable-post':'\u96f2\u7aef\u700f\u89bd\u5668\u4e5f\u672a\u53d6\u5f97\u53ef\u8b80\u5167\u5bb9\uff0c\u53ef\u80fd\u53d7 Threads \u5b58\u53d6\u9650\u5236\u3002',
+  'browser-page-blocked':'Threads \u963b\u64cb\u4e86\u96f2\u7aef\u700f\u89bd\u5668\u3002',
+  'browser-timeout':'\u96f2\u7aef\u700f\u89bd\u5668\u8b80\u53d6\u903e\u6642\uff0c\u7a0d\u5f8c\u518d\u8a66\u3002',
+  'browser-error':'\u96f2\u7aef\u700f\u89bd\u5668\u672a\u5b8c\u6210\u64f7\u53d6\uff0c\u8acb\u67e5\u770b Cloudflare \u57f7\u884c\u7d00\u9304\u3002'
+ };
+ return notes[reason]||'';
 }
 
 function isWeakSavedTitle(value,platform,url=''){
@@ -1381,13 +1423,14 @@ function quickFallbackTitle(url){
 }
 function mergePublicPreview(item,meta){
  if(!item||!meta)return false;
- const old=JSON.stringify([item.title,item.body,item.images,item.category,item.country,item.placeName,item.address]);
+ const old=JSON.stringify([item.title,item.body,item.images,item.category,item.country,item.placeName,item.address,item.browserNotice]);
  const autoTitle=readableTitle(item.url,item.body||meta.body,meta.title);
  if(item.titleSource!=='manual'&&(isWeakSavedTitle(item.title,item.platform,item.url)||item.title===quickFallbackTitle(item.url))){
    if(autoTitle)item.title=autoTitle;
  }
  if(!item.body&&meta.body&&!isPlatformUnavailableText(meta.body))item.body=meta.body;
  if(meta.resolvedUrl)item.resolvedUrl=meta.resolvedUrl;
+ if(meta.browserNotice!==undefined)item.browserNotice=meta.browserNotice;
  item.images=uniq([...(item.images||[]),...(meta.images||[])]);
  if(!item.placeName)item.placeName=findPlaceName(item.body,item.title);
  if(!item.address)item.address=extractAddress(item.body);
@@ -1399,7 +1442,7 @@ function mergePublicPreview(item,meta){
  item.sourceQuality=item.body?(item.sourceQuality==='manual'?'manual':item.sourceQuality==='shared'?'shared':'preview'):'linkOnly';
  item.previewError='';item.previewCheckedAt=Date.now();item.previewAttempts=(item.previewAttempts||0)+1;
  item.sourceCapturedAt=Date.now();
- return old!==JSON.stringify([item.title,item.body,item.images,item.category,item.country,item.placeName,item.address]);
+ return old!==JSON.stringify([item.title,item.body,item.images,item.category,item.country,item.placeName,item.address,item.browserNotice]);
 }
 // A paste fallback never discards the URL, pictures, notes, or hand-edited taxonomy.
 function applyPastedClassification(item,body){
@@ -1492,10 +1535,10 @@ async function retryItemMetadata(id){
  const target=data.items.find(i=>i.id===id);
  if(!target||!target.url||articleFetchInFlight.has(id))return;
  articleFetchInFlight.add(id);
- articleFetchFeedback.set(id,{kind:'',text:'正在讀取原始文章的公開資料，請稍候…'});
+ articleFetchFeedback.set(id,{kind:'',text:'正在檢查公開頁面與預覽資料，如有缺漏會再試雲端瀏覽器（約 10–30 秒）…'});
  if(detailIds[detailIndex]===id)renderDetail();
  try{
-  const meta=await fetchPublicMetadata(target.url);
+  const meta=await fetchPublicMetadata(target.url,{browserMode:'manual'});
   const latest=data.items.find(i=>i.id===id);
   if(!latest)return;
   const before={title:latest.title,body:latest.body,images:latest.images?.length||0};
@@ -1554,7 +1597,7 @@ async function startMissingContentRefetch(){
   contentRefetchState.current=i.title||i.url;
   updateContentRefetchProgress();
   try{
-   const meta=await fetchPublicMetadata(i.url);
+   const meta=await fetchPublicMetadata(i.url,{browserMode:'off'});
    const latest=data.items.find(x=>x.id===i.id);
    if(latest){
     const before={title:latest.title,body:latest.body,images:latest.images?.length||0};
@@ -2023,7 +2066,7 @@ function cloudServerURL(url){
 }
 async function cloudRequest(method,path,body,settings=cloudConfig){
  if(!settings)throw new Error('雲端尚未設定');
- const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),path==='/api/vision'?60000:16000);
+ const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),path==='/api/vision'?60000:path==='/api/browser-extract'?55000:16000);
  try{
    const r=await fetch(cloudServerURL(settings.url)+path,{
     method,headers:{'Authorization':'Bearer '+settings.token,'Content-Type':'application/json'},
@@ -2191,7 +2234,8 @@ function usageOverviewHtml(){
   <p class="usageSmall">這是本機請求紀錄，不是 Microlink 的帳戶剩餘免費額度；平台阻擋貼文內容也不代表達到限額。</p>
   ${warning.message?`<p class="usageWarning">${esc(warning.message)}</p>`:''}
  </div><div class="usageCard" id="aiUsageStats"><strong>Cloudflare Workers AI</strong><p>${cloudConfig?'正在確認使用狀態…':'尚未設定雲端，無法查看 AI 呼叫紀錄。'}</p></div>
- <p class="usageSmall">AI 每次圖片與文字分析的消耗不同，因此「請求次數」不等於免費額度。剩餘 neurons 無法由目前的 Worker 精確讀取。圖片 AI 額度和公開文章預覽服務額度互不相同；此版未啟用 Browser Run。</p>`;
+ <div class="usageCard" id="browserUsageStats"><strong>Cloudflare Browser Run</strong><p>\u6b63\u5728\u8b80\u53d6\u700f\u89bd\u5668\u4f7f\u7528\u8cc7\u6599\u2026</p></div>
+ <p class="usageSmall">AI 每次圖片與文字分析的消耗不同，因此「請求次數」不等於免費額度。剩餘 neurons 無法由目前的 Worker 精確讀取。圖片 AI 額度和公開文章預覽服務額度互不相同；Browser Run 已加入可選的少量自動補抓，目前優先支援 Threads。</p>`;
 }
 async function updateAIUsageStatus(){
  const panel=$('#aiUsageStats');if(!panel||!cloudConfig)return;
@@ -2200,7 +2244,23 @@ async function updateAIUsageStatus(){
   const used=(d.visionRequests||0)+(d.textRequests||0),recent=d.lastStatus||'none';
   const status=recent==='daily-quota'?'⚠️ 最近一次 AI 呼叫顯示：今日免費額度已達上限。':recent==='rate-limit'?'⚠️ 最近一次 AI 呼叫被限流，請稍後重試。':recent==='ok'?'最近一次 AI 呼叫成功，尚未收到額度用完訊息。':recent==='none'?'今天尚未呼叫 AI。':`最近一次 AI 呼叫失敗（${esc(recent)}），不一定是額度問題。`;
   panel.innerHTML=`<strong>Cloudflare Workers AI（UTC ${esc(d.dayUTC||utcDay())}）</strong><p>今日共呼叫 ${used} 次：圖片 ${d.visionRequests||0} 次、文字分析 ${d.textRequests||0} 次；成功 ${d.successfulRequests||0} 次。</p><p>${status}</p><p>最近紀錄：${esc(formatUsageTime(d.lastAt))}</p><p class="usageSmall">Cloudflare AI 免費額度按模型用量計費，無法只用呼叫次數算出剩餘量；可到 Cloudflare 控制台查看 Workers AI 用量。</p>`;
- }catch(e){if($('#aiUsageStats'))$('#aiUsageStats').innerHTML=`<strong>Cloudflare Workers AI</strong><p>${e.status===404?'Worker 尚未升級至 1.8.8，請先更新 worker.js 才能查詢。':'無法查詢使用狀態：'+esc(e.message)}</p>`}
+  const browserPanel=$('#browserUsageStats');
+  if(browserPanel){
+   const estimate=Math.round((d.browserEstimatedMs||0)/1000);
+   const minutes=Math.floor(estimate/60),seconds=estimate%60;
+   const cloudSeconds=Math.round((d.browserMeasuredMs||0)/1000);
+   const localReason=browserReasonText(d.browserLastStatus)||'';
+   const browserStatus=!d.browserConfigured?'\u5c1a\u672a\u5728 Worker \u7d81\u5b9a BROWSER\u3002':
+     d.browserLastStatus==='ok'?'\u6700\u8fd1\u4e00\u6b21\u700f\u89bd\u5668\u64f7\u53d6\u6210\u529f\u3002':
+     d.browserLastStatus==='none'?'\u4eca\u65e5\u5c1a\u672a\u555f\u52d5\u700f\u89bd\u5668\u3002':localReason||'\u6700\u8fd1\u4e00\u6b21\u672a\u6210\u529f\u3002';
+   browserPanel.innerHTML=`<strong>Cloudflare Browser Run\uff08UTC ${esc(d.dayUTC||utcDay())}\uff09</strong>
+    <p>${d.browserConfigured?'\u5df2\u7d81\u5b9a BROWSER':'\u672a\u7d81\u5b9a BROWSER'}\uff0c\u4eca\u65e5\u5df2\u5617\u8a66 ${d.browserAttempts||0} \u6b21\uff08\u81ea\u52d5 ${d.browserAutoAttempts||0} \u6b21\uff09\u3002</p>
+    <p>\u62fe\u96c6\u4f30\u7b97\u8acb\u6c42\u8017\u6642\uff1a${minutes}\u5206 ${seconds}\u79d2\uff1b\u700f\u89bd\u5668\u514d\u8cbb\u8a08\u756b\u70ba\u6bcf\u65e5 10 \u5206\u9418\u3002</p>
+    <p>${esc(browserStatus)}</p>
+    ${d.browserMeasuredCount?`<p>Cloudflare 回傳之瀏覽器時間：${Math.floor(cloudSeconds/60)}分 ${cloudSeconds%60}秒（已記錄 ${d.browserMeasuredCount} 次）。</p>`:''}
+    <p class="usageSmall">\u4f30\u7b97\u6642\u9593\u4e0d\u7b49\u65bc Cloudflare \u5be6\u969b\u8a08\u8cbb\u700f\u89bd\u5668\u6642\u9593\u6216\u5269\u9918\u984d\u5ea6\uff1b\u8acb\u4ee5 Cloudflare \u63a7\u5236\u53f0\u7684 Browser Run \u7528\u91cf\u70ba\u6e96\u3002\u62fe\u96c6\u6703\u63d0\u524d\u505c\u6b62\u81ea\u52d5\u88dc\u6293\u3002</p>`;
+  }
+ }catch(e){if($('#browserUsageStats'))$('#browserUsageStats').innerHTML='<strong>Cloudflare Browser Run</strong><p>Unable to read cloud usage. Check Worker v1.8.9.</p>';if($('#aiUsageStats'))$('#aiUsageStats').innerHTML=`<strong>Cloudflare Workers AI</strong><p>${e.status===404?'Worker 尚未升級至 1.8.9，請先更新 worker.js 才能查詢。':'無法查詢使用狀態：'+esc(e.message)}</p>`}
 }
 function openUsageReport(){
  openModal(`<div class="sheetHead"><strong>免費服務額度狀態</strong><button type="button" class="iconBtn uiBtn" id="closeUsageReport" aria-label="關閉">${icon('close')}</button></div><div class="usageWrap">${usageOverviewHtml()}<div class="formActions"><button class="ghost uiBtn" id="refreshUsageStatus" type="button">重新檢查</button><button class="ghost uiBtn" id="usageToCloudSettings" type="button">雲端設定</button></div></div>`);
@@ -2218,7 +2278,7 @@ function openCloudSettings(){
   <label>私密同步密鑰<input type="password" id="cloudToken" autocomplete="off" placeholder="Worker Secret：SJ_TOKEN" value="${esc(cloudConfig?.token||'')}"></label>
   <p class="cloudHelp" id="cloudDialogStatus">${esc(cloudMessage)}</p>
   <div class="formActions cloudActions"><button type="button" class="ghost uiBtn" id="cancelCloud">取消</button><button type="button" class="primary uiBtn" id="connectCloud">${active?'重新連線':'開始連線'}</button></div>
-  ${active?`<div class="cloudDiagRow"><button type="button" class="ghost uiBtn" id="cloudUsageCheck">查看 AI／預覽額度狀態</button></div><div class="cloudDiagRow"><button type="button" class="ghost uiBtn" id="cloudDiagnose">檢查同步原因</button><p class="cloudHelp" id="cloudDiagResult">只檢查資料量與連線版本，不更動收藏，也不會公開密鑰。</p></div><div class="formActions"><button type="button" class="ghost uiBtn" id="syncCloudNow">立即同步</button><button type="button" class="ghost uiBtn" id="cloudPullForce">改用雲端資料</button><button type="button" class="ghost uiBtn" id="cloudPushForce">以本機覆蓋雲端</button><button type="button" class="ghost uiBtn" id="disconnectCloud">斷開</button></div>`:''}
+  ${active?`<div class="cloudDiagRow"><button type="button" class="ghost uiBtn" id="cloudUsageCheck">查看 AI／預覽／瀏覽器用量</button></div><div class="cloudDiagRow"><button type="button" class="ghost uiBtn" id="cloudDiagnose">檢查同步原因</button><p class="cloudHelp" id="cloudDiagResult">只檢查資料量與連線版本，不更動收藏，也不會公開密鑰。</p></div><div class="formActions"><button type="button" class="ghost uiBtn" id="syncCloudNow">立即同步</button><button type="button" class="ghost uiBtn" id="cloudPullForce">改用雲端資料</button><button type="button" class="ghost uiBtn" id="cloudPushForce">以本機覆蓋雲端</button><button type="button" class="ghost uiBtn" id="disconnectCloud">斷開</button></div>`:''}
  </div>`);
  $('#closeCloud').onclick=$('#cancelCloud').onclick=closeModal;
  $('#connectCloud').onclick=async()=>{
