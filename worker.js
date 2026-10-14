@@ -1,5 +1,5 @@
 /**
- * 拾集 Cloud API v1.8.8 — deploy as a Cloudflare Worker.
+ * 拾集 Cloud API v1.8.9 — deploy as a Cloudflare Worker.
  * Bind Cloudflare D1 database as DB; add Worker Secret SJ_TOKEN (min 32 chars).
  * Allowed browser origin is fixed to the user's GitHub Pages domain.
  * The secret must NOT be committed to GitHub or embedded in index.html.
@@ -52,6 +52,26 @@ async function schema(db){
     rate_limit_errors INTEGER NOT NULL DEFAULT 0,
     last_status TEXT NOT NULL DEFAULT 'none',
     last_at INTEGER NOT NULL DEFAULT 0
+  )`).run();
+  // Browser Run usage limits are local protective estimates, not official browser-hours billing.
+  await db.prepare(`CREATE TABLE IF NOT EXISTS browser_usage_daily (
+    day_utc TEXT PRIMARY KEY,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    auto_attempts INTEGER NOT NULL DEFAULT 0,
+    estimated_ms INTEGER NOT NULL DEFAULT 0,
+    measured_ms INTEGER NOT NULL DEFAULT 0,
+    measured_count INTEGER NOT NULL DEFAULT 0,
+    quota_errors INTEGER NOT NULL DEFAULT 0,
+    throttle_errors INTEGER NOT NULL DEFAULT 0,
+    last_status TEXT NOT NULL DEFAULT 'none',
+    last_at INTEGER NOT NULL DEFAULT 0,
+    last_started_at INTEGER NOT NULL DEFAULT 0
+  )`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS browser_post_attempts (
+    canonical_url TEXT PRIMARY KEY,
+    last_at INTEGER NOT NULL DEFAULT 0,
+    found INTEGER NOT NULL DEFAULT 0,
+    image_count INTEGER NOT NULL DEFAULT 0
   )`).run();
 }
 async function readJSON(request,limit=MAX_STATE_BYTES){
@@ -222,6 +242,145 @@ async function extractPublicThreads(input){
  const html=await limitedPublicHTML(resp);
  return readPublicPostMetadata(html,target.href);
 }
+
+// Browser Run Quick Action: one sandboxed render, never authenticated or bypassed.
+// Free plan: 10 minutes/day (official account-wide usage); this app conservatively
+// stops earlier. The dashboard, not this counter, is the authoritative quota.
+const BROWSER_RESERVE_MS = 30000;
+const BROWSER_APP_DAILY_BUDGET_MS = 420000; // conservative 7m vs. plan's 10m
+const BROWSER_AUTO_DAILY_BUDGET_MS = 180000;
+function browserBound(env){return !!env.BROWSER && typeof env.BROWSER.quickAction==='function'}
+function browserQuotaReason(msg){
+ const str=String(msg||'');
+ if(/browser.time.limit.exceeded|browser.hours|limit.exceeded.for.today|daily.browser|time.limit.exceeded.for.today/i.test(str))return 'browser-cloudflare-daily-limit';
+ if(/\b429\b|too.many.requests|rate.limit|too.many.browsers|concurren|one.every.10|throttl/i.test(str))return 'browser-rate-limit';
+ if(/timeout|timed.out|navigation.timeout/i.test(str))return 'browser-timeout';
+ if(/403|forbidden|access.denied|blocked|captcha/i.test(str))return 'browser-page-blocked';
+ return 'browser-error';
+}
+async function browserToday(db){
+ const today=new Date().toISOString().slice(0,10);
+ await db.prepare('INSERT OR IGNORE INTO browser_usage_daily(day_utc) VALUES (?)').bind(today).run();
+ return {today,row:await db.prepare('SELECT * FROM browser_usage_daily WHERE day_utc=?').bind(today).first()};
+}
+async function reserveBrowser(db,url,mode){
+ const now=Date.now(),isAuto=mode!=='manual';
+ const {today,row}=await browserToday(db);
+ if((Number(row?.last_started_at)||0)>now-12000)return {allowed:false,reason:'browser-cooldown'};
+ if((Number(row?.attempts)||0)>=14)return {allowed:false,reason:'browser-local-daily-budget'};
+ if((Number(row?.estimated_ms)||0)+BROWSER_RESERVE_MS>BROWSER_APP_DAILY_BUDGET_MS)return {allowed:false,reason:'browser-local-daily-budget'};
+ if(isAuto&&((Number(row?.auto_attempts)||0)>=5||(Number(row?.estimated_ms)||0)+BROWSER_RESERVE_MS>BROWSER_AUTO_DAILY_BUDGET_MS))return {allowed:false,reason:'browser-auto-budget'};
+ const recent=await db.prepare('SELECT last_at FROM browser_post_attempts WHERE canonical_url=?').bind(url).first();
+ const wait=isAuto?6*60*60*1000:60*1000;
+ if(recent&&(Number(recent.last_at)||0)>now-wait)return {allowed:false,reason:'browser-post-cooldown'};
+ // Atomic reserve also prevents accidental simultaneous browser launches from devices.
+ const claim=await db.prepare(`UPDATE browser_usage_daily SET attempts=attempts+1,
+    auto_attempts=auto_attempts+?,estimated_ms=estimated_ms+?,last_started_at=?,last_at=?,last_status='running'
+    WHERE day_utc=? AND last_started_at<? AND attempts<14 AND estimated_ms+?<=?
+    AND (?=0 OR (auto_attempts<5 AND estimated_ms+?<=?))`)
+    .bind(isAuto?1:0,BROWSER_RESERVE_MS,now,now,today,now-12000,BROWSER_RESERVE_MS,BROWSER_APP_DAILY_BUDGET_MS,isAuto?1:0,BROWSER_RESERVE_MS,BROWSER_AUTO_DAILY_BUDGET_MS).run();
+ if(!claim.meta?.changes)return {allowed:false,reason:'browser-cooldown-or-budget'};
+ await db.prepare(`INSERT INTO browser_post_attempts(canonical_url,last_at,found,image_count)
+   VALUES (?,?,0,0) ON CONFLICT(canonical_url) DO UPDATE SET last_at=excluded.last_at`)
+   .bind(url,now).run();
+ return {allowed:true,today,started:now};
+}
+async function completeBrowser(db,ctx,reason,result,reportedMs){
+ const wall=Math.max(4000,Math.min(90000,Date.now()-ctx.started+3000));
+ const actual=Number.isFinite(reportedMs)&&reportedMs>0?Math.max(wall,reportedMs+3000):wall;
+ const adjustment=actual-BROWSER_RESERVE_MS;
+ try{
+  await db.prepare(`UPDATE browser_usage_daily SET estimated_ms=MAX(0,estimated_ms+?),last_status=?,last_at=?,
+    quota_errors=quota_errors+?,throttle_errors=throttle_errors+?,
+    measured_ms=measured_ms+?,measured_count=measured_count+? WHERE day_utc=?`)
+    .bind(adjustment,reason,Date.now(),reason==='browser-cloudflare-daily-limit'?1:0,reason==='browser-rate-limit'?1:0,Number.isFinite(reportedMs)&&reportedMs>0?Math.round(reportedMs):0,Number.isFinite(reportedMs)&&reportedMs>0?1:0,ctx.today).run();
+  if(result?.found)await db.prepare('UPDATE browser_post_attempts SET found=1,image_count=? WHERE canonical_url=?')
+    .bind(result.images?.length||0,result.canonicalUrl).run();
+ }catch(_e){/* Diagnostic logging must not discard extraction results. */}
+}
+function safeBrowserImage(input,base){
+ try{
+  if(!String(input||'').trim())return '';
+  const u=new URL(input,base);
+  const host=u.hostname.toLowerCase();
+  if(u.protocol!=='https:'||u.username||u.password||u.href.length>2900)return '';
+  if(!(/(^|\.)fbcdn\.net$|(^|\.)cdninstagram\.com$|(^|\.)threads\.com$|(^|\.)threads\.net$|(^|\.)instagram\.com$/i.test(host)))return '';
+  if(/\/t51\.2885-19\/|\/profile_pic|avatar|profile_picture/i.test(u.pathname))return '';
+  return u.href;
+ }catch{return ''}
+}
+function browserScrapeData(payload,canonicalUrl){
+ const groups=Array.isArray(payload?.result)?payload.result:Array.isArray(payload)?payload:[];
+ const bySelector=(part)=>groups.find(g=>g.selector===part)?.results||[];
+ const attr=(item,name)=>{const found=(item?.attributes||[]).find(a=>a.name?.toLowerCase()===name);return String(found?.value||'')};
+ const firstAttr=(sel,name)=>bySelector(sel).map(x=>attr(x,name)).find(Boolean)||'';
+ let title=firstAttr('meta[property="og:title"]','content')||firstAttr('meta[name="twitter:title"]','content');
+ let body=firstAttr('meta[property="og:description"]','content')||firstAttr('meta[name="twitter:description"]','content');
+ if(!body){
+  const nodes=bySelector('article').concat(bySelector('[role="article"]'));
+  body=nodes.map(x=>String(x.text||'').trim()).find(x=>x.length>=10)||'';
+ }
+ const blocked=/this content isn.t available to everyone|thread not available|content isn.t available|post is unavailable|log in to (?:see|view) this/i;
+ const blockedPage=blocked.test(body)||blocked.test(title);
+ if(blockedPage){body='';title=''}
+ if(/^(threads|log in|login)$/i.test(title.trim()))title='';
+ if(body.length>9000)body=body.slice(0,9000);
+ const imgs=[];
+ const push=s=>{const u=safeBrowserImage(s,canonicalUrl);if(u&&!imgs.includes(u))imgs.push(u)};
+ // Only choose substantial post photos, not user icons, navigation images, or advertisements.
+ for(const sel of ['article img','[role="article"] img','main article img']){
+  for(const item of bySelector(sel)){
+   if(Number(item.width)>0&&Number(item.width)<110)continue;
+   if(Number(item.height)>0&&Number(item.height)<85)continue;
+   if(/avatar|profile picture|profile photo|user icon/i.test(attr(item,'alt')))continue;
+   push(attr(item,'src')||attr(item,'data-src'));
+  }
+ }
+ // If no gallery DOM is visible, fall back to the standard page cover.
+ if(!imgs.length&&!blockedPage)push(firstAttr('meta[property="og:image"]','content'));
+ const found=!blockedPage&&!!(body.trim()||imgs.length);
+ return {ok:true,found,source:'browser-run',canonicalUrl,title:title.slice(0,250),body,images:imgs.slice(0,12),
+   reason:found?'ok':'browser-no-readable-post',imagesComplete:false};
+}
+async function extractBrowserThreads(env,body){
+ const canonical=safeThreadsURL(body.url);
+ if(!/^\/@[a-zA-Z0-9._]+\/post\/[a-zA-Z0-9_-]+\/?$/.test(canonical.pathname))return {ok:true,found:false,source:'browser-run',canonicalUrl:canonical.href,reason:'browser-needs-original-url'};
+ if(!browserBound(env))return {ok:true,found:false,source:'browser-run',canonicalUrl:canonical.href,reason:'browser-not-bound'};
+ const mode=body.mode==='manual'?'manual':'auto';
+ const slot=await reserveBrowser(env.DB,canonical.href,mode);
+ if(!slot.allowed)return {ok:true,found:false,source:'browser-run',canonicalUrl:canonical.href,reason:slot.reason};
+ let extracted=null,status='ok',reportedMs=null;
+ try{
+  const result=await env.BROWSER.quickAction('scrape',{
+   url:canonical.href,
+   elements:[{selector:'meta[property="og:title"]'},
+     {selector:'meta[property="og:description"]'},
+     {selector:'meta[property="og:image"]'},
+     {selector:'meta[name="twitter:title"]'},
+     {selector:'meta[name="twitter:description"]'},
+     {selector:'article img'},
+     {selector:'[role="article"] img'},
+     {selector:'main article img'},
+     {selector:'article'},
+     {selector:'[role="article"]'}],
+   gotoOptions:{waitUntil:'networkidle2',timeout:20000}
+  });
+  let payload;
+  if(result instanceof Response){
+   const value=Number(result.headers.get('X-Browser-Ms-Used'));
+   if(Number.isFinite(value)&&value>0)reportedMs=value;
+   if(!result.ok){const description=(await result.text()).slice(0,400);throw new Error(`HTTP ${result.status}: ${description}`)}
+   payload=await result.json();
+  }else payload=result;
+  if(payload?.success===false)throw new Error(JSON.stringify(payload?.errors||payload?.error||'browser action failed').slice(0,350));
+  extracted=browserScrapeData(payload,canonical.href);
+  status=extracted.found?'ok':'browser-no-readable-post';
+  return extracted;
+ }catch(e){
+  status=browserQuotaReason(e.message);
+  return {ok:true,found:false,source:'browser-run',canonicalUrl:canonical.href,reason:status};
+ }finally{await completeBrowser(env.DB,slot,status,extracted,reportedMs)}
+}
 function parseTextAIResponse(result){
  const content=result?.choices?.[0]?.message?.content??result?.response??result;
  const text=typeof content==='string'?content:Array.isArray(content)?content.map(x=>x.text||'').join(''):JSON.stringify(content||'');
@@ -241,7 +400,7 @@ export default {
       return new Response(null,{status:204,headers:headersFor(origin)});
     }
     const pathname=new URL(request.url).pathname.replace(/\/+$/,'')||'/';
-    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.8',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL},200,origin);
+    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.9',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env)},200,origin);
     if(!env.DB||!env.SJ_TOKEN||String(env.SJ_TOKEN).length<32)return reply({error:'server-not-configured'},503,origin);
     try{
       let body=null;
@@ -251,12 +410,23 @@ export default {
         ||(pathname==='/api/collect'?body?.token:null);
       if(!await safeEquals(String(provided||''),String(env.SJ_TOKEN)))return reply({error:'unauthorized'},401,origin);
       await schema(env.DB);
+      if(pathname==='/api/browser-extract'&&request.method==='POST'){
+        if(!body?.url)return reply({error:'url-required'},400,origin);
+        return reply(await extractBrowserThreads(env,body),200,origin);
+      }
       if(pathname==='/api/usage'&&request.method==='GET'){
         const today=new Date().toISOString().slice(0,10);
         const row=await env.DB.prepare('SELECT * FROM ai_usage_daily WHERE day_utc=?').bind(today).first();
+        const browser=await env.DB.prepare('SELECT * FROM browser_usage_daily WHERE day_utc=?').bind(today).first();
         return reply({ok:true,dayUTC:today,visionRequests:row?.vision_requests||0,textRequests:row?.text_requests||0,
           successfulRequests:row?.successes||0,quotaErrors:row?.quota_errors||0,rateLimitErrors:row?.rate_limit_errors||0,
           lastStatus:row?.last_status||'none',lastAt:row?.last_at||null,quotaRemaining:null,
+          browserConfigured:browserBound(env),browserAttempts:browser?.attempts||0,browserAutoAttempts:browser?.auto_attempts||0,
+          browserEstimatedMs:browser?.estimated_ms||0,browserMeasuredMs:browser?.measured_ms||0,
+          browserMeasuredCount:browser?.measured_count||0,browserLocalBudgetMs:BROWSER_APP_DAILY_BUDGET_MS,
+          browserLastStatus:browser?.last_status||'none',browserLastAt:browser?.last_at||null,
+          browserQuotaErrors:browser?.quota_errors||0,browserThrottleErrors:browser?.throttle_errors||0,
+          browserOfficialRemainingMs:null,
           note:'Requests are not neurons. Real remaining Workers AI free quota is not available through this Worker.'},200,origin);
       }
       if(pathname==='/api/extract'&&request.method==='POST'){
