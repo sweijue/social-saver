@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="拾集">
-<title>拾集 v1.8.7</title>
+<title>拾集 v1.8.8</title>
 <style>
 :root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#6e6e68;--line:#e4e4de;--soft:#efefe9;--shadow:0 10px 28px rgba(0,0,0,.07);--r:20px;--navh:74px}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif;font-size:17px}body{min-height:100vh;padding-bottom:calc(var(--navh) + env(safe-area-inset-bottom) + 18px)}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
@@ -473,6 +473,22 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 #contentRefetchProgress[aria-busy="true"] .refetchBannerTop strong{color:#274936}
 .cloudDiagRow{border:1px solid #dee6de;background:#f6faf6;padding:11px;border-radius:12px;margin:8px 0}.cloudDiagRow .cloudHelp{white-space:pre-line;overflow-wrap:anywhere}
 .fetchFeedback[data-kind="ok"]{color:#287150}.fetchFeedback[data-kind="warn"]{color:#955e24}
+/* v1.8.8: paste-in source content after restricted Threads previews */
+.fetchActionRow .pasteContentBtn{grid-column:1/-1;max-width:304px;background:#f4f7f3!important;border-style:dashed!important;color:#285b42!important}
+.articlePasteHint{font-size:12px;color:#5b685d;line-height:1.6;margin:9px 0}
+.articlePasteArea{min-height:175px;font-size:15px;line-height:1.75;white-space:pre-wrap}
+.pasteProgress{white-space:pre-wrap;line-height:1.5;font-size:13px;color:#385b45;margin:7px 0}
+.pasteFormActions{display:flex;flex-wrap:wrap;gap:9px;margin-top:12px}
+.pasteFormActions button{min-height:41px}
+/* v1.8.8 - explicit diagnostic reports, without claiming an inaccurate quota remainder */
+.usageWrap{padding:15px;display:grid;gap:12px;max-height:calc(100dvh - 170px);overflow:auto}
+.usageCard{border:1px solid var(--line);border-radius:13px;padding:13px;background:var(--surface,#fff);line-height:1.6}
+.usageCard strong{font-size:15px;display:block;margin-bottom:7px}
+.usageCard p{margin:5px 0;font-size:13px;overflow-wrap:anywhere}
+.usageSmall{color:var(--muted,#777);font-size:12px!important}
+.usageWarning,.usageLimitInline{padding:9px 10px;border-radius:9px;background:#fff7e7;color:#785422!important;border:1px solid #e9d4ac;white-space:pre-wrap}
+#quotaToast{position:fixed;z-index:500;left:15px;right:15px;bottom:calc(92px + env(safe-area-inset-bottom));padding:12px 14px;background:#fff8ea;border:1px solid #e4c58c;border-radius:13px;color:#654716;box-shadow:0 9px 22px rgba(0,0,0,.18);font-size:13px;line-height:1.6;pointer-events:none;opacity:0;transform:translateY(16px);transition:opacity .2s,transform .2s}
+#quotaToast.visible{opacity:1;transform:translateY(0)}
 </style>
 </head>
 <body>
@@ -497,7 +513,7 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 
 <script>
 
-const VERSION="1.8.7", STORE="socialSaver_data";
+const VERSION="1.8.8", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -758,20 +774,22 @@ function locationCandidates(item){
  return names.slice(0,8);
 }
 function normalizeItem(i){
+ const badPreviewBody=i.sourceQuality!=='manual'&&isPlatformUnavailableText(i.body);
+ const safeBody=badPreviewBody?'':(i.body||'');
  const products=Array.isArray(i.products)?i.products:[];
  const images=Array.isArray(i.images)?i.images:[];
  const productImages={...(i.productImages||{})};
  // Sequential mapping is only defensible if the source provides equal numbers of photos and products.
  if(images.length===products.length && products.length){products.forEach((p,idx)=>{if(!productImages[p])productImages[p]=images[idx]})}
  return {
-  id:i.id||uid(),isExample:!!i.isExample,title:(!i.isExample&&i.url&&isWeakSavedTitle(i.title,i.platform||platformFromURL(i.url),i.url)?readableTitle(i.url,i.body||'',i.summary||''):i.title||'未命名收藏'),platform:i.platform||'其他',url:i.url||'',body:i.body||'',
+  id:i.id||uid(),isExample:!!i.isExample,title:(!i.isExample&&i.url&&isWeakSavedTitle(i.title,i.platform||platformFromURL(i.url),i.url)?readableTitle(i.url,safeBody,isPlatformUnavailableText(i.summary)?'':(i.summary||'')):i.title||'未命名收藏'),platform:i.platform||'其他',url:i.url||'',resolvedUrl:i.resolvedUrl||'',body:safeBody,
   category:i.category||inferCategory(`${i.title||''} ${i.body||''}`),country:i.country||inferCountry(`${i.title||''} ${i.body||''} ${i.city||''}`),categorySource:i.categorySource||'auto',countrySource:i.countrySource||'auto',
-  city:i.city||findRegion(`${i.title||''} ${i.body||''}`),shoppingType:i.shoppingType||'',address:i.address||extractAddress(i.body||''),placeName:i.placeName||findPlaceName(i.body||'',i.title||''),products,
-  tags:Array.isArray(i.tags)?i.tags:[],terms:makeSearchTerms({placeName:i.placeName||findPlaceName(i.body||'',i.title||''),address:i.address||extractAddress(i.body||''),products,body:i.body,country:i.country}),images,productImages,
+  city:i.city||findRegion(`${i.title||''} ${safeBody}`),shoppingType:i.shoppingType||'',address:i.address||extractAddress(safeBody),placeName:i.placeName||findPlaceName(safeBody,i.title||''),products,
+  tags:Array.isArray(i.tags)?i.tags:[],terms:makeSearchTerms({placeName:i.placeName||findPlaceName(safeBody,i.title||''),address:i.address||extractAddress(safeBody),products,body:safeBody,country:i.country}),images,productImages,
   vision:i.vision&&typeof i.vision==='object'?i.vision:{entries:[],updatedAt:0},
-  summary:typeof i.summary==='string'?i.summary:'',note:i.note||'',
-  sourceQuality:i.sourceQuality||'manual',sourceCapturedAt:i.sourceCapturedAt||null,
-  titleSource:i.titleSource||'auto',previewAttempts:i.previewAttempts||0,previewError:i.previewError||'',previewCheckedAt:i.previewCheckedAt||null,
+  summary:(badPreviewBody||isPlatformUnavailableText(i.summary))?'':typeof i.summary==='string'?i.summary:'',note:i.note||'',
+  sourceQuality:badPreviewBody&&!images.length?'linkOnly':(i.sourceQuality||'manual'),sourceCapturedAt:i.sourceCapturedAt||null,
+  titleSource:i.titleSource||'auto',previewAttempts:i.previewAttempts||0,previewError:badPreviewBody?'來源僅回傳存取限制提示，請再次擷取或貼上內文':(i.previewError||''),previewCheckedAt:i.previewCheckedAt||null,
   createdAt:i.createdAt||Date.now(),status:i.status||((i.category||'')==='購物'?'想買':'剛收藏')
  }
 }
@@ -1062,9 +1080,9 @@ function drawerHTML(){
  <div class="drawerTitle">篩選收藏</div><div class="cascadeFilter"><details open><summary>分類 · ${esc(categoryFilter)} </summary><div class="chips">${cats.map(x=>`<button class="chip ${categoryFilter===x?'active':''}" data-cat="${esc(x)}">${esc(x)}</button>`).join('')}</div></details>
  ${`<details><summary>　↳ 國家 · ${esc(countryFilter)}</summary><div class="chips">${countries.map(x=>`<button class="chip ${countryFilter===x?'active':''}" data-country="${esc(x)}">${esc(x)}</button>`).join('')}</div></details>`}
  ${`<details><summary>　　↳ 標籤 · ${esc(tagFilter)}</summary><div class="chips">${tags.map(x=>`<button class="chip ${tagFilter===x?'active':''}" data-tag="${esc(x)}">${x==='全部'?'全部':'# '+esc(x)}</button>`).join('')}</div></details>`}</div>
- <div class="drawerSection"><div class="drawerTitle">分類與標籤管理</div><button class="smallBtn" id="manageTaxonomy">新增／重新命名／刪除</button></div><div class="drawerSection"><div class="drawerTitle">雲端同步</div><div class="toolRow"><button class="smallBtn" id="cloudSetupBtn">設定／管理同步</button><button class="smallBtn" id="cloudSyncBtn">立即同步</button></div><p class="cloudHelp" id="cloudDrawerStatus">${esc(cloudMessage)}</p></div><div class="drawerSection"><div class="drawerTitle">內容補抓</div><button type="button" class="smallBtn refetchDrawerBtn" id="refetchDrawer" ${contentRefetchState.running?'disabled':''}>${contentRefetchState.running?fetchSpinnerHTML()+' 補抓進行中':icon('expand',15)+' 一鍵補抓缺漏文章（'+getMissingContentItems().length+' 篇）'}</button><p class="cloudHelp">只重新檢查缺少內文、封面或有效標題的收藏，不另建卡片。平台未開放的內容仍可能抓不到。</p></div><div class="drawerSection"><div class="drawerTitle">資料工具</div><div class="toolRow"><button class="smallBtn" id="exportBtn">匯出備份</button><button class="smallBtn" id="importBtn">匯入備份</button><button class="smallBtn" id="resetFilter">清除篩選</button></div></div><div class="drawerSection"><div id="storageWarning" class="storageWarning ${storageError?'':'hidden'}">${esc(storageError||'')}</div><div class="storageFoot">本機保留備份。雲端同步需完成設定，建議定期匯出備份。</div><div class="filterLabel">目前版本</div><strong>v${VERSION}</strong></div></aside>`
+ <div class="drawerSection"><div class="drawerTitle">分類與標籤管理</div><button class="smallBtn" id="manageTaxonomy">新增／重新命名／刪除</button></div><div class="drawerSection"><div class="drawerTitle">雲端同步</div><div class="toolRow"><button class="smallBtn" id="cloudSetupBtn">設定／管理同步</button><button class="smallBtn" id="cloudSyncBtn">立即同步</button></div><p class="cloudHelp" id="cloudDrawerStatus">${esc(cloudMessage)}</p></div><div class="drawerSection"><div class="drawerTitle">免費服務使用狀態</div><button type="button" class="smallBtn" id="usageDrawerBtn">查看 AI／預覽額度狀態</button><p class="cloudHelp usageLimitInline ${limitWarning().message?'':'hidden'}" id="usageLimitInline">${esc(limitWarning().message||'')}</p></div><div class="drawerSection"><div class="drawerTitle">內容補抓</div><button type="button" class="smallBtn refetchDrawerBtn" id="refetchDrawer" ${contentRefetchState.running?'disabled':''}>${contentRefetchState.running?fetchSpinnerHTML()+' 補抓進行中':icon('expand',15)+' 一鍵補抓缺漏文章（'+getMissingContentItems().length+' 篇）'}</button><p class="cloudHelp">只重新檢查缺少內文、封面或有效標題的收藏，不另建卡片。平台未開放的內容仍可能抓不到。</p></div><div class="drawerSection"><div class="drawerTitle">資料工具</div><div class="toolRow"><button class="smallBtn" id="exportBtn">匯出備份</button><button class="smallBtn" id="importBtn">匯入備份</button><button class="smallBtn" id="resetFilter">清除篩選</button></div></div><div class="drawerSection"><div id="storageWarning" class="storageWarning ${storageError?'':'hidden'}">${esc(storageError||'')}</div><div class="storageFoot">本機保留備份。雲端同步需完成設定，建議定期匯出備份。</div><div class="filterLabel">目前版本</div><strong>v${VERSION}</strong></div></aside>`
 }
-function openDrawer(){$('#drawerHost').innerHTML=drawerHTML();$('#closeDrawer').onclick=$('#drawerBackdrop').onclick=closeDrawer;$$('[data-cat]').forEach(b=>b.onclick=()=>{categoryFilter=b.dataset.cat;countryFilter='全部';tagFilter='全部';openDrawer();render()});$$('[data-country]').forEach(b=>b.onclick=()=>{countryFilter=b.dataset.country;tagFilter='全部';openDrawer();render()});$$('[data-tag]').forEach(b=>b.onclick=()=>{tagFilter=b.dataset.tag;openDrawer();render()});$('#manageTaxonomy').onclick=openTaxonomyManager;$('#refetchDrawer').onclick=()=>{closeDrawer();startMissingContentRefetch()};$('#cloudSetupBtn').onclick=()=>{closeDrawer();openCloudSettings()};$('#cloudSyncBtn').onclick=async()=>{closeDrawer();await cloudRun()};$('#exportBtn').onclick=exportData;$('#importBtn').onclick=()=>$('#importFile').click();$('#resetFilter').onclick=()=>{categoryFilter=countryFilter=tagFilter='全部';openDrawer();render()}}
+function openDrawer(){$('#drawerHost').innerHTML=drawerHTML();$('#closeDrawer').onclick=$('#drawerBackdrop').onclick=closeDrawer;$$('[data-cat]').forEach(b=>b.onclick=()=>{categoryFilter=b.dataset.cat;countryFilter='全部';tagFilter='全部';openDrawer();render()});$$('[data-country]').forEach(b=>b.onclick=()=>{countryFilter=b.dataset.country;tagFilter='全部';openDrawer();render()});$$('[data-tag]').forEach(b=>b.onclick=()=>{tagFilter=b.dataset.tag;openDrawer();render()});$('#manageTaxonomy').onclick=openTaxonomyManager;$('#refetchDrawer').onclick=()=>{closeDrawer();startMissingContentRefetch()};$('#cloudSetupBtn').onclick=()=>{closeDrawer();openCloudSettings()};$('#cloudSyncBtn').onclick=async()=>{closeDrawer();await cloudRun()};$('#usageDrawerBtn').onclick=()=>{closeDrawer();openUsageReport()};$('#exportBtn').onclick=exportData;$('#importBtn').onclick=()=>$('#importFile').click();$('#resetFilter').onclick=()=>{categoryFilter=countryFilter=tagFilter='全部';openDrawer();render()}}
 function closeDrawer(){$('#drawerHost').innerHTML=''}
 function openModal(html){
  $('#modalHost').innerHTML=`<div class="modalBackdrop" id="modalBackdrop"><section class="sheet" id="sheet">${html}</section></div>`;
@@ -1087,7 +1105,7 @@ function renderDetail(){
  <div class="detailBody">
    <h2 class="detailTitle">${esc(i.title)}</h2>
    <div class="detailMeta">${esc(i.platform)} · ${esc(i.category)} · ${esc(i.country)}${i.city?` · ${esc(i.city)}`:''}</div><div class="detailSaved">收藏於 ${formatSavedAt(i.createdAt)}</div>
-   ${i.url?`<div class="detailSection"><div class="fetchActionRow"><a class="linkPill uiBtn" href="${esc(i.url)}" target="_blank" rel="noopener noreferrer">↗ 原文章</a><button type="button" class="linkPill uiBtn" id="retryArticle" ${refetchBusy?'disabled aria-busy="true"':''}>${refetchBusy?fetchSpinnerHTML()+' 擷取中…':icon('expand',14)+' 再次擷取'}</button></div><div class="fetchFeedback" id="retryArticleStatus" role="status" data-kind="${refetchInfo?.kind||''}">${refetchInfo?esc(refetchInfo.text):i.previewError?`上次擷取未成功：${esc(i.previewError)}；可以稍後重試。`:i.sourceQuality==='linkOnly'?'只有文章連結，點「再次擷取」可重新嘗試取得標題、內文與圖片。':'公開資料依來源限制取得，若缺內容可以再次擷取。'}</div></div>`:''}${i.url&&['preview','shared','linkOnly'].includes(i.sourceQuality)?`<div class="photoLimit">目前僅取得 ${i.images?.length||0} 張公開預覽圖片；社群相簿的其餘圖片若未開放讀取，可用「編輯」補入多張。</div>`:''}
+   ${i.url?`<div class="detailSection"><div class="fetchActionRow"><a class="linkPill uiBtn" href="${esc(i.url)}" target="_blank" rel="noopener noreferrer">↗ 原文章</a><button type="button" class="linkPill uiBtn" id="retryArticle" ${refetchBusy?'disabled aria-busy="true"':''}>${refetchBusy?fetchSpinnerHTML()+' 擷取中…':icon('expand',14)+' 再次擷取'}</button><button type="button" class="linkPill uiBtn pasteContentBtn" id="pasteArticleText">${icon('edit',14)} 貼上內文並重新整理</button></div><div class="fetchFeedback" id="retryArticleStatus" role="status" data-kind="${refetchInfo?.kind||''}">${refetchInfo?esc(refetchInfo.text):i.previewError?`上次擷取未成功：${esc(i.previewError)}；可以稍後重試。`:i.sourceQuality==='linkOnly'?'只有文章連結，點「再次擷取」可重新嘗試取得標題、內文與圖片。':'公開資料依來源限制取得，若缺內容可以再次擷取。'}</div></div>`:''}${i.url&&['preview','shared','linkOnly'].includes(i.sourceQuality)?`<div class="photoLimit">目前僅取得 ${i.images?.length||0} 張公開預覽圖片；社群相簿的其餘圖片若未開放讀取，可用「編輯」補入多張。</div>`:''}
    ${i.images?.length?`<div class="detailSection visionSection">
     <div class="visionHead"><h4>圖片內容辨識</h4><button type="button" class="smallBtn uiBtn" id="analyzePhotos">${icon('search',15)} ${((i.vision?.entries||[]).length?'辨識其餘圖片／重試':'開始辨識')}</button></div>
     <p class="visionDesc">AI 讀取已收藏的圖片，提取可見文字、商品與地點線索。辨識結果可能有誤，確認後才套用到文章。</p>
@@ -1117,6 +1135,7 @@ function renderDetail(){
  $('#closeModal').onclick=closeModal;
  if($('#refreshArticleTags'))$('#refreshArticleTags').onclick=async()=>{const current=data.items.find(x=>x.id===i.id);if(!current)return;const raw=[current.title,current.body].join(' ');if(current.category==='其他'&&current.categorySource!=='manual')current.category=inferCategory(raw);if(current.country==='其他'&&current.countrySource!=='manual')current.country=inferCountry(raw);if(!current.city)current.city=findRegion(raw);if(!current.products?.length)current.products=detectProductCandidates(current.body);if(!current.placeName)current.placeName=findPlaceName(current.body,current.title);current.tags=uniq([...(current.tags||[]),...guessTags(raw,current.country,current.category,data.customTags||[])]);current.terms=uniq([...(current.terms||[]),...makeSearchTerms({placeName:current.placeName,address:current.address,products:current.products,body:current.body,country:current.country})]);await save();render();renderDetail();};
  if($('#retryArticle'))$('#retryArticle').onclick=()=>retryItemMetadata(i.id);
+ if($('#pasteArticleText'))$('#pasteArticleText').onclick=()=>openPasteArticleBody(i.id);
  if($('#analyzePhotos'))$('#analyzePhotos').onclick=()=>analyzeArticlePhotos(i.id);
  if($('#applyVision'))$('#applyVision').onclick=()=>applyVisionSuggestions(i.id);
  $('#editDetail').onclick=()=>openEditor(i.id);
@@ -1205,24 +1224,119 @@ function platformFromURL(url){
 function cleanExternalURL(url){
  try{const u=new URL(String(url||'').trim());return ['https:','http:'].includes(u.protocol)?u.href:''}catch{return''}
 }
+function isPlatformUnavailableText(input){
+ const s=String(input||'').trim();
+ if(!s)return false;
+ return s.length<260&&/(?:this content isn.t available to everyone|this content is not available|thread not available|post is unavailable|content (?:isn.t|is not) available|log in to (?:see|view) this (?:post|content)|此內容無法顯示|無法查看此內容|此貼文不適用|不適合所有人查看此內容)/i.test(s);
+}
+function hasUsefulPreview(meta){return !!(meta?.body?.trim()||meta?.images?.length||meta?.title?.trim())}
+function isThreadsURL(url){try{return /^(?:www\.)?threads\.(?:com|net)$/.test(new URL(url).hostname.toLowerCase())}catch{return false}}
 function isGenericPreview(title,platform){
  const s=String(title||'').trim().toLowerCase();
  return !s||[platform.toLowerCase(),'instagram','threads','facebook','小紅書','x','tiktok','youtube','login • instagram'].includes(s)||/^log in (to|or)/.test(s)||/@[a-z0-9_.]+.*\bon\s+(threads|instagram|facebook)\b/i.test(s)||/\bon\s+(threads|instagram|facebook)\s*$/.test(s)
 }
-async function fetchPublicMetadata(url){
- // External public preview API; no secret token is bundled with this static GitHub Pages app.
+const PREVIEW_USAGE_KEY='shiji_public_preview_usage_v1';
+const QUOTA_WARNING_KEY='shiji_quota_warning_v1';
+function utcDay(){return new Date().toISOString().slice(0,10)}
+function previewStats(){
+ let v={};try{v=JSON.parse(localStorage.getItem(PREVIEW_USAGE_KEY)||'{}')}catch{}
+ return v.dayUTC===utcDay()?v:{dayUTC:utcDay(),attempts:0,successes:0,rateLimits:0,otherFailures:0,lastStatus:'none',lastAt:null};
+}
+function updatePreviewStats(status){
+ const d=previewStats();if(status==='attempt')d.attempts++;
+ else {if(status==='ok')d.successes++;else if(status==='rate-limit')d.rateLimits++;else d.otherFailures++;d.lastStatus=status;d.lastAt=Date.now()}
+ try{localStorage.setItem(PREVIEW_USAGE_KEY,JSON.stringify(d))}catch{}
+}
+function limitWarning(){
+ let d={};try{d=JSON.parse(localStorage.getItem(QUOTA_WARNING_KEY)||'{}')}catch{}
+ if(d.dayUTC!==utcDay())return {dayUTC:utcDay(),ai:null,preview:null,message:''};
+ const ai=d.ai||null,preview=d.preview||null;
+ return {...d,ai,preview,message:[ai?.message,preview?.message].filter(Boolean).join('\n')};
+}
+let quotaToastTimer=null;
+function showQuotaNotice(message){
+ let host=$('#quotaToast');
+ if(!host){host=document.createElement('div');host.id='quotaToast';host.setAttribute('role','status');host.setAttribute('aria-live','polite');document.body.appendChild(host)}
+ host.textContent=message;host.classList.add('visible');
+ if(quotaToastTimer)clearTimeout(quotaToastTimer);
+ quotaToastTimer=setTimeout(()=>host.classList.remove('visible'),10000);
+}
+function setLimitWarning(provider,message){
+ const d=limitWarning();d[provider]={message,at:Date.now()};delete d.message;
+ try{localStorage.setItem(QUOTA_WARNING_KEY,JSON.stringify(d))}catch{}
+ const el=$('#usageLimitInline');if(el){el.textContent=limitWarning().message;el.classList.remove('hidden')}
+ showQuotaNotice(message);
+}
+function clearLimitWarning(provider){
+ const d=limitWarning();if(!d[provider])return;
+ d[provider]=null;delete d.message;
+ try{localStorage.setItem(QUOTA_WARNING_KEY,JSON.stringify(d))}catch{}
+ const el=$('#usageLimitInline');if(el){el.textContent=limitWarning().message;el.classList.toggle('hidden',!limitWarning().message)}
+}
+async function fetchMicrolinkMetadata(url){
  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),13000);
+ updatePreviewStats('attempt');
  try{
   const res=await fetch('https://api.microlink.io/?url='+encodeURIComponent(url),{signal:ctl.signal,cache:'no-store'});
-  if(!res.ok)throw new Error(res.status===429?'公開預覽服務已達次數限制':`預覽服務回應 ${res.status}`);
-  const json=await res.json();if(json.status!=='success'||!json.data)throw new Error(json.message||'無法取得文章公開資訊');
+  if(res.status===429)throw new Error('公開預覽服務已限流（HTTP 429），請暫停批次補抓並稍後再試');
+  if(!res.ok)throw new Error(`預覽服務回應 ${res.status}`);
+  const json=await res.json();
+  if(json.status!=='success'||!json.data){
+    const message=String(json.message||json.data?.message||'公開預覽服務沒有回傳資料');
+    if(/rate.limit|too.many.requests|quota|limit.exceed/i.test(message))throw new Error('公開預覽服務已限流：'+message);
+    throw new Error(message);
+  }
   const d=json.data,platform=platformFromURL(url);
-  const title=String(d.title||'').trim(),description=String(d.description||'').trim();
-  const cover=cleanExternalURL(d.image?.url||'');const previewImages=uniq([cover,...(Array.isArray(d.images)?d.images.map(x=>cleanExternalURL(typeof x==='string'?x:x?.url||'')):[])]).filter(Boolean);
-  if(isGenericPreview(title,platform)&&!description&&!cover)throw new Error('來源平台限制，沒有公開文章資訊');
-  return {title:!isGenericPreview(title,platform)?title:'',body:description,images:previewImages,author:String(d.author||'').trim(),date:d.date||null};
+  const title=String(d.title||'').trim();
+  const candidate=String(d.description||'').trim();
+  const description=isPlatformUnavailableText(candidate)?'':candidate;
+  const cover=cleanExternalURL(d.image?.url||'');
+  const images=uniq([cover,...(Array.isArray(d.images)?d.images.map(x=>cleanExternalURL(typeof x==='string'?x:x?.url||'')):[])]).filter(Boolean);
+  const validTitle=!isGenericPreview(title,platform)&&!isPlatformUnavailableText(title)?title:'';
+  if(!description&&!images.length&&!validTitle)throw new Error(isPlatformUnavailableText(candidate)?'Threads 僅回傳「內容無法向所有人公開」的提示，未提供文章或圖片':'此平台沒有提供可讀取的公開內文或圖片');
+  updatePreviewStats('ok');clearLimitWarning('preview');
+  return {title:validTitle,body:description,images,author:String(d.author||'').trim(),date:d.date||null,source:'Microlink 公開預覽'};
+ }catch(e){
+  const rate=/\b429\b|限流|rate.limit|too.many.requests|quota|次數限制/i.test(String(e?.message||''));
+  updatePreviewStats(rate?'rate-limit':'error');
+  if(rate)setLimitWarning('preview','公開文章預覽服務目前遭限流，請稍後再嘗試；已暫停時不要連續按重新擷取。');
+  throw e;
  }finally{clearTimeout(timer)}
 }
+async function fetchPublicMetadata(url){
+ // Independent public-page read first; no paid scraper, cookie, or login bypass.
+ // GitHub Pages cannot cross-origin fetch Threads HTML directly, so the authenticated Worker reads it.
+ let direct=null,reason='',canonical='';
+ if(isThreadsURL(url)&&cloudConfig){
+  try{
+   const result=await cloudRequest('POST','/api/extract',{url});
+   if(result?.canonicalUrl)canonical=cleanExternalURL(result.canonicalUrl);
+   if(result?.found){
+    direct={title:isGenericPreview(result.title||'','Threads')?'':String(result.title||''),body:isPlatformUnavailableText(result.body)?'':String(result.body||''),images:uniq((result.images||[]).map(cleanExternalURL).filter(Boolean)),resolvedUrl:canonical,source:'Threads 公開網頁'};
+    // Cover-only previews can still be improved by a second independent source.
+    if(direct.body&&direct.images.length)return direct;
+   }
+   reason=result?.reason==='threads-access-limited'?'Threads 公開網頁回傳存取限制':result?.reason==='no-public-metadata'?'Threads 公開網頁未提供文章資訊':'';
+  }catch(e){
+   reason=e.status===404?'雲端 Worker 尚未更新擷取功能':e.message||'公開網頁無法讀取';
+  }
+ }
+ try{
+  const result=await fetchMicrolinkMetadata(canonical||url);
+  if(direct&&hasUsefulPreview(direct))return {
+   ...result,title:direct.title||result.title,body:direct.body||result.body,
+   images:uniq([...(direct.images||[]),...(result.images||[])]),resolvedUrl:canonical||result.resolvedUrl||'',
+   source:'Threads 公開網頁＋公開預覽'
+  };
+  return {...result,resolvedUrl:canonical};
+ }catch(e){
+  // Never discard good original content just because a secondary preview service is throttled.
+  if(direct&&hasUsefulPreview(direct))return direct;
+  if(reason)throw new Error(`${reason}；預覽服務也未取得內容（${e.message}）。可使用「貼上內文」補充。`);
+  throw e;
+ }
+}
+
 function isWeakSavedTitle(value,platform,url=''){
  const t=String(value||'').trim(),p=String(platform||platformFromURL(url)||'').trim();
  if(!t||/^(?:未命名收藏|收藏連結|文章連結)$/i.test(t))return true;
@@ -1272,7 +1386,8 @@ function mergePublicPreview(item,meta){
  if(item.titleSource!=='manual'&&(isWeakSavedTitle(item.title,item.platform,item.url)||item.title===quickFallbackTitle(item.url))){
    if(autoTitle)item.title=autoTitle;
  }
- if(!item.body&&meta.body)item.body=meta.body;
+ if(!item.body&&meta.body&&!isPlatformUnavailableText(meta.body))item.body=meta.body;
+ if(meta.resolvedUrl)item.resolvedUrl=meta.resolvedUrl;
  item.images=uniq([...(item.images||[]),...(meta.images||[])]);
  if(!item.placeName)item.placeName=findPlaceName(item.body,item.title);
  if(!item.address)item.address=extractAddress(item.body);
@@ -1286,6 +1401,72 @@ function mergePublicPreview(item,meta){
  item.sourceCapturedAt=Date.now();
  return old!==JSON.stringify([item.title,item.body,item.images,item.category,item.country,item.placeName,item.address]);
 }
+// A paste fallback never discards the URL, pictures, notes, or hand-edited taxonomy.
+function applyPastedClassification(item,body){
+ const text=[item.title||'',body].join(' ');
+ if(item.titleSource!=='manual'&&(isWeakSavedTitle(item.title,item.platform,item.url)||item.title===quickFallbackTitle(item.url))){
+  const suggested=readableTitle(item.url,body);
+  if(suggested)item.title=suggested;
+ }
+ item.body=body;item.sourceQuality='manual';item.previewError='';item.sourceCapturedAt=Date.now();
+ const category=inferCategory(text),country=inferCountry(text);
+ if(item.categorySource!=='manual'&&category!=='其他')item.category=category;
+ if(item.countrySource!=='manual'&&country!=='其他')item.country=country;
+ if(!item.city)item.city=findRegion(text);
+ if(!item.placeName)item.placeName=findPlaceName(body,item.title);
+ if(!item.address)item.address=extractAddress(body);
+ if(!item.products?.length)item.products=detectProductCandidates(body);
+ item.tags=uniq([...(item.tags||[]),...guessTags(text,item.country,item.category,data.customTags||[])]).slice(0,30);
+ item.terms=uniq([...(item.terms||[]),...makeSearchTerms({placeName:item.placeName,address:item.address,products:item.products,body,country:item.country})]).slice(0,22);
+ if(!hasDistinctSummary(item))item.summary='';
+}
+function applyTextAIFindings(item,a){
+ if(!a||typeof a!=='object')return;
+ const body=String(item.body||'');
+ if(item.categorySource!=='manual'&&a.category&&a.category!=='其他')item.category=a.category;
+ if(item.countrySource!=='manual'&&a.country&&a.country!=='其他'&&a.country.length<25)item.country=a.country;
+ if(!item.city&&a.city&&body.includes(a.city))item.city=a.city;
+ if(!item.placeName&&a.placeName&&body.includes(a.placeName))item.placeName=a.placeName;
+ if(!item.address&&a.address&&body.includes(a.address))item.address=a.address;
+ const grounded=(a.products||[]).filter(x=>typeof x==='string'&&x.length>=2&&body.includes(x));
+ item.products=uniq([...(item.products||[]),...grounded]).slice(0,20);
+ const tags=(a.tags||[]).filter(x=>typeof x==='string'&&x.length>=2&&x.length<=24).slice(0,12);
+ item.tags=uniq([...(item.tags||[]),...tags]).slice(0,35);
+ if(!item.summary&&a.summary&&a.summary.trim()&&!body.includes(a.summary.trim()))item.summary=a.summary.trim().slice(0,220);
+ item.terms=uniq([...(item.terms||[]),...makeSearchTerms({placeName:item.placeName,address:item.address,products:item.products,body,country:item.country})]).slice(0,22);
+}
+function openPasteArticleBody(id){
+ const item=data.items.find(x=>x.id===id);if(!item)return;
+ function back(){const x=data.items.find(i=>i.id===id);if(x)renderDetail();else closeModal()}
+ openModal(`<div class="sheetHead"><strong>補充文章內文</strong><button type="button" class="iconBtn uiBtn" id="closePasteArticle" aria-label="返回文章">${icon('close')}</button></div>
+ <form id="pasteArticleForm" class="form">
+ <div class="articlePasteHint">來源：${esc(item.platform)}。把原文複製後貼在這裡；不會移除原文章網址、照片或我的備註。儲存後自動重判分類與標籤；若已連接 Cloudflare AI，還會嘗試整理重點。AI 不可用時也能儲存。</div>
+ <label>文章內文<textarea id="pasteBody" class="articlePasteArea" rows="9" placeholder="長按原文選擇「複製」，回來貼上文章文字…" required>${esc(item.body||'')}</textarea></label>
+ <div class="pasteFormActions"><button type="button" class="ghost uiBtn" id="pasteFromClipboard">貼上剪貼簿</button><button type="button" class="ghost uiBtn" id="cancelPasteArticle">返回</button><button type="submit" class="primary uiBtn" id="submitPasteArticle">儲存並重新判斷</button></div>
+ <div id="pasteStatus" class="pasteProgress" role="status" aria-live="polite"></div></form>`);
+ $('#closePasteArticle').onclick=$('#cancelPasteArticle').onclick=back;
+ $('#pasteFromClipboard').onclick=async()=>{try{const text=await navigator.clipboard.readText();if(text)$('#pasteBody').value=text;else $('#pasteStatus').textContent='剪貼簿沒有文字。'}catch{$('#pasteStatus').textContent='iPhone 如果不允許直接讀取剪貼簿，請長按文字框選「貼上」。';$('#pasteBody').focus()}};
+ $('#pasteArticleForm').onsubmit=async e=>{
+  e.preventDefault();const body=$('#pasteBody').value.trim();const submit=$('#submitPasteArticle'),status=$('#pasteStatus');
+  if(body.length<6||isPlatformUnavailableText(body)||/^https?:\/\/\S+$/.test(body)){status.textContent='請貼入真正的文章文字，不能只有網址或平台限制提示。';return}
+  submit.disabled=true;submit.innerHTML=fetchSpinnerHTML()+' 儲存中…';status.textContent='先儲存內文與基本分類…';
+  try{
+   const current=data.items.find(i=>i.id===id);if(!current)throw new Error('找不到收藏');
+   applyPastedClassification(current,body);await save();
+   status.textContent='內文已儲存。正在重新整理分類與標籤…';
+   let aiNote='已依文章文字重新判斷分類與標籤。';
+   if(cloudConfig){
+    submit.innerHTML=fetchSpinnerHTML()+' AI 整理中…';
+    try{const output=await cloudRequest('POST','/api/analyze-text',{text:body,title:current.title});
+     const recent=data.items.find(i=>i.id===id);
+     if(recent&&recent.body===body&&output.analysis){applyTextAIFindings(recent,output.analysis);await save();aiNote='Cloudflare AI 已進一步整理文章重點與標籤。'}
+    }catch(e){aiNote='已用本機規則整理；雲端 AI 暫時未完成（不影響內文儲存）。'}
+   }
+   articleFetchFeedback.set(id,{kind:'ok',text:`已補入文章內文。${aiNote}`});render();back();
+  }catch(e){status.textContent='無法儲存：'+e.message;submit.disabled=false;submit.textContent='重試儲存'}
+ };
+}
+
 // Both the one-post and batch buttons show actual network activity (and block repeated taps).
 const articleFetchInFlight=new Set(),articleFetchFeedback=new Map();
 function fetchSpinnerHTML(){return '<span class="fetchSpinner" aria-hidden="true"></span>'}
@@ -1389,7 +1570,7 @@ async function startMissingContentRefetch(){
    if(latest){latest.previewError=reason;latest.previewCheckedAt=Date.now();latest.previewAttempts=(latest.previewAttempts||0)+1;await save()}
    articleFetchFeedback.set(i.id,{kind:'warn',text:`重新擷取未成功：${reason}`});
    contentRefetchState.failed++;
-   if(/429|次數限制|rate.limit|quota/i.test(reason)){
+   if(/429|次數限制|限流|rate.limit|quota/i.test(reason)){
     contentRefetchState.warning='預覽服務已限流；已暫停其餘文章，稍後可重新執行。';
     contentRefetchState.stop=true;
    }
@@ -1468,7 +1649,7 @@ function quickItem(url,meta,fields={}){
  // Only user supplied one-to-one images qualify as mapped product images.
  if(fields.images?.length && fields.images.length===products.length)products.forEach((p,idx)=>productImages[p]=fields.images[idx]);
  const quality=fields.body?'manual':meta?'preview':'linkOnly';const placeName=fields.placeName||findPlaceName(body,title);const address=fields.address||extractAddress(body);const city=findRegion(`${title} ${body}`);
- return normalizeItem({id:uid(),title,platform,url,body,category,country,city,products,images:articleImages,productImages,
+ return normalizeItem({id:uid(),title,platform,url,resolvedUrl:meta?.resolvedUrl||'',body,category,country,city,products,images:articleImages,productImages,
   tags:uniq([...guessTags(content,country,category),...(fields.tags||[])]),address,placeName,
   terms:makeSearchTerms({placeName,address,products,body,country}),
   summary:'',titleSource:fields.title?'manual':'auto',previewAttempts:meta?1:0,previewError:'',previewCheckedAt:meta?Date.now():null,
@@ -1577,6 +1758,8 @@ async function analyzeArticlePhotos(id,opts={}){
  const item=data.items.find(x=>x.id===id);
  if(!item||!item.images?.length||visionInFlight.has(id))return;
  if(!cloudConfig){if(!opts.silent)alert('請先在拾集右上角選單完成雲端同步設定。');return;}
+ // Do not waste further automatic AI requests after a confirmed daily limit.
+ if(opts.silent&&/今日免費額度已達上限/.test(limitWarning().ai?.message||''))return;
  const queue=availablePhotoIndexes(item,opts.silent?2:4);
  if(!queue.length){if(!opts.silent){const s=$('#visionStatus');if(s)s.textContent='目前可用圖片已辨識完畢；新增照片後可再試。'}return;}
  visionInFlight.add(id);
@@ -1598,7 +1781,10 @@ async function analyzeArticlePhotos(id,opts={}){
    if(target.countrySource!=='manual'&&target.country==='其他')target.country=inferCountry(`${target.body} ${evidence}`);
    target.tags=uniq([...(target.tags||[]),...guessTags(`${target.title} ${target.body} ${evidence}`,target.country,target.category)]);
    await save();succeeded++;
-  }catch(e){failed.push(`第 ${photo.index+1} 張：${e?.message||'失敗'}`);}
+  }catch(e){
+   const message=String(e?.message||'失敗');failed.push(`第 ${photo.index+1} 張：${message}`);
+   if(/今日免費額度已用完|今日免費額度已達上限|429|請求過於頻繁|請求速度受限/.test(message))break;
+  }
  }
  visionInFlight.delete(id);
  const text=`已完成 ${succeeded} 張圖片辨識。${failed.length?'其餘未完成：'+failed.join('；'):''}`;
@@ -1845,7 +2031,7 @@ async function cloudRequest(method,path,body,settings=cloudConfig){
    });
    let json={};try{json=await r.json()}catch{}
    if(!r.ok){
-    if(path==='/api/vision'){
+    if(path==='/api/vision'||path==='/api/analyze-text'){
       const names={
         'vision-ai-binding-missing':'Cloudflare Worker 尚未綁定 Workers AI。',
         'image-unavailable':'圖片來源無法讀取。可儲存圖片後在編輯頁上傳。',
@@ -1859,6 +2045,7 @@ async function cloudRequest(method,path,body,settings=cloudConfig){
       };
       const modelReason={
         'daily-quota':'Workers AI 今日免費額度已用完，請待重置後再試。',
+        'rate-limit':'Workers AI 請求過於頻繁，請稍後重試；這不一定代表今日免費額度用完。',
         'model-busy':'Cloudflare 模型目前忙碌，稍後再試。',
         'paid-plan':'Cloudflare 此模型需要付費方案，目前先不要升級，請回報錯誤。',
         'model-license':'模型授權尚未接受，請回報錯誤。',
@@ -1869,11 +2056,14 @@ async function cloudRequest(method,path,body,settings=cloudConfig){
       };
       const description=json.error==='vision-inference-failed'?(modelReason[json.reason]||modelReason['model-error']):(names[json.error]||`圖片辨識錯誤：${json.error||r.status}`);
       const suffix=json.detail?`（伺服器回報：${String(json.detail).slice(0,220)}）`:'';
+      if(json.reason==='daily-quota')setLimitWarning('ai','Workers AI 今日免費額度已達上限；文章收藏與本機分類仍可繼續使用。');
+      else if(json.reason==='rate-limit')setLimitWarning('ai','Workers AI 請求速度受限（429），請過一段時間再重試，不等於已用完每日額度。');
       throw new Error(`${description}${suffix}`);
     }
     const err=new Error(json.error==='unauthorized'?'密鑰不正確':json.error==='revision-conflict'?'雲端內容已被另一台裝置更新':json.error==='state-too-large'||r.status===413?'圖片或資料容量過大，無法上傳雲端。請先匯出備份並縮小圖片。':`雲端服務錯誤 ${r.status}：${json.error||'unknown'}`);
     err.status=r.status;throw err;
    }
+   if((path==='/api/vision'||path==='/api/analyze-text')&&json.ok)clearLimitWarning('ai');
    return json;
  }catch(e){
    if(e?.name==='AbortError')throw new Error('連線逾時：Worker 超過等待時間未回應，請稍後重試。');
@@ -1934,7 +2124,8 @@ async function cloudRun(){
   for(const msg of rows){
    const url=cleanExternalURL(msg.url);
    if(!url||already.has(url))continue;
-   const sharedText=String(msg.shared_text||'').replace(url,'').trim();
+   const rawText=String(msg.shared_text||'').replace(url,'').trim();
+   const sharedText=isPlatformUnavailableText(rawText)?'':rawText;
    const item=quickItem(url,null,sharedText.length>8?{body:sharedText}:{});
    item.inboxId=msg.id;
    if(sharedText.length>8)item.sourceQuality='shared'; // Share text is not confirmed full content.
@@ -1990,6 +2181,34 @@ async function cloudConnect(url,token){
  if(!cloudTimer)cloudTimer=setInterval(()=>{if(document.visibilityState==='visible')cloudRun()},5000);
  await cloudRun();return true;
 }
+function formatUsageTime(ms){return ms?formatSavedAt(ms):'尚無紀錄'}
+function usageOverviewHtml(){
+ const p=previewStats(),warning=limitWarning();
+ return `<div class="usageCard">
+  <strong>公開預覽服務（這台裝置，UTC ${esc(p.dayUTC)}）</strong>
+  <p>今日已請求 ${p.attempts} 次；成功 ${p.successes} 次、被限流 ${p.rateLimits} 次。</p>
+  <p>${p.lastStatus==='rate-limit'?'⚠️ 最近一次請求被限流。':p.lastStatus==='ok'?'最近一次請求成功。':p.lastStatus==='error'?'最近一次請求失敗（不一定是額度問題）。':'今天尚無預覽請求紀錄。'}</p>
+  <p class="usageSmall">這是本機請求紀錄，不是 Microlink 的帳戶剩餘免費額度；平台阻擋貼文內容也不代表達到限額。</p>
+  ${warning.message?`<p class="usageWarning">${esc(warning.message)}</p>`:''}
+ </div><div class="usageCard" id="aiUsageStats"><strong>Cloudflare Workers AI</strong><p>${cloudConfig?'正在確認使用狀態…':'尚未設定雲端，無法查看 AI 呼叫紀錄。'}</p></div>
+ <p class="usageSmall">AI 每次圖片與文字分析的消耗不同，因此「請求次數」不等於免費額度。剩餘 neurons 無法由目前的 Worker 精確讀取。圖片 AI 額度和公開文章預覽服務額度互不相同；此版未啟用 Browser Run。</p>`;
+}
+async function updateAIUsageStatus(){
+ const panel=$('#aiUsageStats');if(!panel||!cloudConfig)return;
+ try{
+  const d=await cloudRequest('GET','/api/usage');if(!$('#aiUsageStats'))return;
+  const used=(d.visionRequests||0)+(d.textRequests||0),recent=d.lastStatus||'none';
+  const status=recent==='daily-quota'?'⚠️ 最近一次 AI 呼叫顯示：今日免費額度已達上限。':recent==='rate-limit'?'⚠️ 最近一次 AI 呼叫被限流，請稍後重試。':recent==='ok'?'最近一次 AI 呼叫成功，尚未收到額度用完訊息。':recent==='none'?'今天尚未呼叫 AI。':`最近一次 AI 呼叫失敗（${esc(recent)}），不一定是額度問題。`;
+  panel.innerHTML=`<strong>Cloudflare Workers AI（UTC ${esc(d.dayUTC||utcDay())}）</strong><p>今日共呼叫 ${used} 次：圖片 ${d.visionRequests||0} 次、文字分析 ${d.textRequests||0} 次；成功 ${d.successfulRequests||0} 次。</p><p>${status}</p><p>最近紀錄：${esc(formatUsageTime(d.lastAt))}</p><p class="usageSmall">Cloudflare AI 免費額度按模型用量計費，無法只用呼叫次數算出剩餘量；可到 Cloudflare 控制台查看 Workers AI 用量。</p>`;
+ }catch(e){if($('#aiUsageStats'))$('#aiUsageStats').innerHTML=`<strong>Cloudflare Workers AI</strong><p>${e.status===404?'Worker 尚未升級至 1.8.8，請先更新 worker.js 才能查詢。':'無法查詢使用狀態：'+esc(e.message)}</p>`}
+}
+function openUsageReport(){
+ openModal(`<div class="sheetHead"><strong>免費服務額度狀態</strong><button type="button" class="iconBtn uiBtn" id="closeUsageReport" aria-label="關閉">${icon('close')}</button></div><div class="usageWrap">${usageOverviewHtml()}<div class="formActions"><button class="ghost uiBtn" id="refreshUsageStatus" type="button">重新檢查</button><button class="ghost uiBtn" id="usageToCloudSettings" type="button">雲端設定</button></div></div>`);
+ $('#closeUsageReport').onclick=closeModal;
+ $('#usageToCloudSettings').onclick=openCloudSettings;
+ $('#refreshUsageStatus').onclick=openUsageReport;
+ updateAIUsageStatus();
+}
 function openCloudSettings(){
  const active=!!cloudConfig;
  openModal(`<div class="sheetHead"><strong>雲端同步</strong><button class="iconBtn uiBtn" id="closeCloud" aria-label="關閉">${icon('close')}</button></div>
@@ -1999,7 +2218,7 @@ function openCloudSettings(){
   <label>私密同步密鑰<input type="password" id="cloudToken" autocomplete="off" placeholder="Worker Secret：SJ_TOKEN" value="${esc(cloudConfig?.token||'')}"></label>
   <p class="cloudHelp" id="cloudDialogStatus">${esc(cloudMessage)}</p>
   <div class="formActions cloudActions"><button type="button" class="ghost uiBtn" id="cancelCloud">取消</button><button type="button" class="primary uiBtn" id="connectCloud">${active?'重新連線':'開始連線'}</button></div>
-  ${active?`<div class="cloudDiagRow"><button type="button" class="ghost uiBtn" id="cloudDiagnose">檢查同步原因</button><p class="cloudHelp" id="cloudDiagResult">只檢查資料量與連線版本，不更動收藏，也不會公開密鑰。</p></div><div class="formActions"><button type="button" class="ghost uiBtn" id="syncCloudNow">立即同步</button><button type="button" class="ghost uiBtn" id="cloudPullForce">改用雲端資料</button><button type="button" class="ghost uiBtn" id="cloudPushForce">以本機覆蓋雲端</button><button type="button" class="ghost uiBtn" id="disconnectCloud">斷開</button></div>`:''}
+  ${active?`<div class="cloudDiagRow"><button type="button" class="ghost uiBtn" id="cloudUsageCheck">查看 AI／預覽額度狀態</button></div><div class="cloudDiagRow"><button type="button" class="ghost uiBtn" id="cloudDiagnose">檢查同步原因</button><p class="cloudHelp" id="cloudDiagResult">只檢查資料量與連線版本，不更動收藏，也不會公開密鑰。</p></div><div class="formActions"><button type="button" class="ghost uiBtn" id="syncCloudNow">立即同步</button><button type="button" class="ghost uiBtn" id="cloudPullForce">改用雲端資料</button><button type="button" class="ghost uiBtn" id="cloudPushForce">以本機覆蓋雲端</button><button type="button" class="ghost uiBtn" id="disconnectCloud">斷開</button></div>`:''}
  </div>`);
  $('#closeCloud').onclick=$('#cancelCloud').onclick=closeModal;
  $('#connectCloud').onclick=async()=>{
@@ -2010,6 +2229,7 @@ function openCloudSettings(){
   finally{btn.disabled=false}
  };
  if(!active)return;
+ $('#cloudUsageCheck').onclick=openUsageReport;
  $('#cloudDiagnose').onclick=async()=>{
   const btn=$('#cloudDiagnose'),out=$('#cloudDiagResult');
   btn.disabled=true;btn.innerHTML=fetchSpinnerHTML()+' 檢查中…';out.textContent='正在確認雲端修訂與資料大小…';
