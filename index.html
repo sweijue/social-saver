@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="拾集">
-<title>拾集 v1.8.9</title>
+<title>拾集 v1.8.10</title>
 <style>
 :root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#6e6e68;--line:#e4e4de;--soft:#efefe9;--shadow:0 10px 28px rgba(0,0,0,.07);--r:20px;--navh:74px}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif;font-size:17px}body{min-height:100vh;padding-bottom:calc(var(--navh) + env(safe-area-inset-bottom) + 18px)}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
@@ -513,7 +513,7 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 
 <script>
 
-const VERSION="1.8.9", STORE="socialSaver_data";
+const VERSION="1.8.10", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -1235,6 +1235,28 @@ function isGenericPreview(title,platform){
  const s=String(title||'').trim().toLowerCase();
  return !s||[platform.toLowerCase(),'instagram','threads','facebook','小紅書','x','tiktok','youtube','login • instagram'].includes(s)||/^log in (to|or)/.test(s)||/@[a-z0-9_.]+.*\bon\s+(threads|instagram|facebook)\b/i.test(s)||/\bon\s+(threads|instagram|facebook)\s*$/.test(s)
 }
+// Microlink cooldown is device-local; it is separate from Browser Run and Workers AI.
+const PREVIEW_COOLDOWN_KEY='shiji_public_preview_cooldown_v1';
+const PREVIEW_COOLDOWN_DEFAULT_MS=15*60*1000;
+function previewCooldownUntil(){
+ let raw=0;try{raw=Number(localStorage.getItem(PREVIEW_COOLDOWN_KEY)||0)}catch{}
+ return raw>Date.now()&&raw<Date.now()+24*60*60*1000?raw:0;
+}
+function previewCooldownMessage(){
+ const until=previewCooldownUntil();
+ return until?`公開文章預覽暫時限流，約 ${Math.max(1,Math.ceil((until-Date.now())/60000))} 分鐘後再試；這不影響雲端瀏覽器補抓。`:'';
+}
+function pausePublicPreview(retryAfter=''){
+ let delay=PREVIEW_COOLDOWN_DEFAULT_MS;
+ if(retryAfter){
+  const n=Number(retryAfter);
+  const parsed=Number.isFinite(n)?n*1000:Date.parse(retryAfter)-Date.now();
+  if(Number.isFinite(parsed)&&parsed>0)delay=Math.max(PREVIEW_COOLDOWN_DEFAULT_MS,Math.min(parsed,60*60*1000));
+ }
+ const until=Math.max(previewCooldownUntil(),Date.now()+delay);
+ try{localStorage.setItem(PREVIEW_COOLDOWN_KEY,String(until))}catch{}
+ return until;
+}
 const PREVIEW_USAGE_KEY='shiji_public_preview_usage_v1';
 const QUOTA_WARNING_KEY='shiji_quota_warning_v1';
 function utcDay(){return new Date().toISOString().slice(0,10)}
@@ -1250,7 +1272,8 @@ function updatePreviewStats(status){
 function limitWarning(){
  let d={};try{d=JSON.parse(localStorage.getItem(QUOTA_WARNING_KEY)||'{}')}catch{}
  if(d.dayUTC!==utcDay())return {dayUTC:utcDay(),ai:null,preview:null,message:''};
- const ai=d.ai||null,preview=d.preview||null;
+ const ai=d.ai||null;
+ const preview=/(?:公開文章預覽服務目前遭限流|公開文章預覽暫時限流|公開文章預覽服務暫時限流)/.test(d.preview?.message||'')&&!previewCooldownUntil()?null:(d.preview||null);
  return {...d,ai,preview,browser:d.browser||null,message:[ai?.message,preview?.message,d.browser?.message].filter(Boolean).join('\n')};
 }
 let quotaToastTimer=null;
@@ -1274,17 +1297,31 @@ function clearLimitWarning(provider){
  const el=$('#usageLimitInline');if(el){el.textContent=limitWarning().message;el.classList.toggle('hidden',!limitWarning().message)}
 }
 async function fetchMicrolinkMetadata(url){
+ // Once Microlink responds with 429, stop using its API briefly; skip requests
+ // instead of repeatedly consuming rate-limit attempts during batch refetch.
+ if(previewCooldownUntil()){
+  const error=new Error(previewCooldownMessage());
+  error.previewRateLimited=true;
+  error.previewCooldown=true;
+  throw error;
+ }
  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),13000);
  updatePreviewStats('attempt');
  try{
   const res=await fetch('https://api.microlink.io/?url='+encodeURIComponent(url),{signal:ctl.signal,cache:'no-store'});
-  if(res.status===429)throw new Error('公開預覽服務已限流（HTTP 429），請暫停批次補抓並稍後再試');
+  if(res.status===429){
+   pausePublicPreview(res.headers?.get('Retry-After')||'');
+   throw new Error('公開文章預覽服務回傳 HTTP 429（請求過於頻繁）。'+previewCooldownMessage());
+  }
   if(!res.ok)throw new Error(`預覽服務回應 ${res.status}`);
   const json=await res.json();
   if(json.status!=='success'||!json.data){
-    const message=String(json.message||json.data?.message||'公開預覽服務沒有回傳資料');
-    if(/rate.limit|too.many.requests|quota|limit.exceed/i.test(message))throw new Error('公開預覽服務已限流：'+message);
-    throw new Error(message);
+   const message=String(json.message||json.data?.message||'公開預覽服務沒有回傳資料');
+   if(/rate.limit|too.many.requests|quota|limit.exceed/i.test(message)){
+    pausePublicPreview();
+    throw new Error('公開文章預覽服務暫時限流：'+message+'。'+previewCooldownMessage());
+   }
+   throw new Error(message);
   }
   const d=json.data,platform=platformFromURL(url);
   const title=String(d.title||'').trim();
@@ -1298,14 +1335,17 @@ async function fetchMicrolinkMetadata(url){
   return {title:validTitle,body:description,images,author:String(d.author||'').trim(),date:d.date||null,source:'Microlink 公開預覽'};
  }catch(e){
   const rate=/\b429\b|限流|rate.limit|too.many.requests|quota|次數限制/i.test(String(e?.message||''));
+  if(rate&&!previewCooldownUntil())pausePublicPreview();
   updatePreviewStats(rate?'rate-limit':'error');
-  if(rate)setLimitWarning('preview','公開文章預覽服務目前遭限流，請稍後再嘗試；已暫停時不要連續按重新擷取。');
+  if(rate)e.previewRateLimited=true;
+  // Defer the visible warning until after public HTML / Browser Run fallback.
+  // A 429 from Microlink alone does not mean the whole article fetch failed.
   throw e;
  }finally{clearTimeout(timer)}
 }
 async function fetchPublicMetadata(url,options={}){
  // Public HTML + Microlink first. Browser Run is a limited last resort for Threads.
- let direct=null,preview=null,canonical='',reason='',previewError='';
+ let direct=null,preview=null,canonical='',reason='',previewError='',previewLimited=false;
  const threads=isThreadsURL(url),browserMode=options.browserMode||'auto';
  if(threads&&cloudConfig){
   try{
@@ -1326,7 +1366,7 @@ async function fetchPublicMetadata(url,options={}){
    if(merged){merged={...preview,title:merged.title||preview.title,body:merged.body||preview.body,
       images:uniq([...(merged.images||[]),...(preview.images||[])]),resolvedUrl:canonical||'',source:'Threads \u516c\u958b\u7db2\u9801\u8207\u9810\u89bd'};}
    else merged={...preview,resolvedUrl:canonical||''};
-  }catch(e){previewError=e.message||'Preview unavailable'}
+  }catch(e){previewError=e.message||'Preview unavailable';previewLimited=!!e.previewRateLimited||!!e.previewCooldown;}
  }
  // Automatic browser fallback is deliberately limited on the server; manual retry
  // is allowed more often. One-cover posts may be multi-photo carousels, so try once.
@@ -1336,14 +1376,19 @@ async function fetchPublicMetadata(url,options={}){
    const result=await cloudRequest('POST','/api/browser-extract',{url:canonical||url,mode:browserMode==='manual'?'manual':'auto'});
    const note=browserReasonText(result?.reason||'');
    if(result?.found){
+    const previousBody=String(merged?.body||'').trim();
+    const previousImages=Array.isArray(merged?.images)?merged.images:[];
     const fresh={title:isGenericPreview(result.title||'','Threads')?'':String(result.title||''),
        body:isPlatformUnavailableText(result.body)?'':String(result.body||''),
        images:uniq((result.images||[]).map(cleanExternalURL).filter(Boolean)),
        resolvedUrl:cleanExternalURL(result.canonicalUrl)||canonical,source:'Cloudflare Browser Run'};
+    const browserAdded=(!previousBody&&!!fresh.body.trim())||fresh.images.some(image=>!previousImages.includes(image))||(!merged&&!!fresh.title);
+    const previewFallbackNote=previewLimited?(browserAdded?'預覽服務暫時限流；已由雲端瀏覽器補到內容。':'預覽服務暫時限流；雲端瀏覽器已檢查，但沒有新增內容。'):'';
+    const combinedNote=[previewFallbackNote,note].filter(Boolean).join(' ');
     merged=merged?{...merged,title:merged.title||fresh.title,body:merged.body||fresh.body,
        images:uniq([...(merged.images||[]),...(fresh.images||[])]),
-       resolvedUrl:fresh.resolvedUrl||merged.resolvedUrl,source:'\u516c\u958b\u7db2\u9801\u8207\u96f2\u7aef\u700f\u89bd\u5668',browserNotice:note}:
-       {...fresh,browserNotice:note};
+       resolvedUrl:fresh.resolvedUrl||merged.resolvedUrl,source:'公開網頁與雲端瀏覽器',browserNotice:combinedNote}:
+       {...fresh,browserNotice:combinedNote};
     clearLimitWarning('browser');
    }else{
     if(note){if(merged)merged.browserNotice=note;else reason=[reason,note].filter(Boolean).join('\uff1b')}
@@ -1357,7 +1402,12 @@ async function fetchPublicMetadata(url,options={}){
     if(merged)merged.browserNotice=note;else reason=[reason,note].filter(Boolean).join('\uff1b');
   }
  }
- if(merged&&hasUsefulPreview(merged))return merged;
+ if(merged&&hasUsefulPreview(merged)){
+  // Recovered usable content: a Microlink 429 alone does not mean failure.
+  clearLimitWarning('preview');
+  return merged;
+ }
+ if(previewLimited)setLimitWarning('preview',previewCooldownMessage()||'公開文章預覽服務暫時限流；可以稍後再試，或使用單篇雲端瀏覽器補抓。');
  throw new Error([reason,previewError].filter(Boolean).join('\uff1b')||'\u516c\u958b\u4f86\u6e90\u672a\u63d0\u4f9b\u5167\u6587\u6216\u5716\u7247\u3002\u53ef\u8cbc\u4e0a\u5167\u6587\u88dc\u5145\u3002');
 }
 function browserReasonText(reason){
@@ -2226,11 +2276,12 @@ async function cloudConnect(url,token){
 }
 function formatUsageTime(ms){return ms?formatSavedAt(ms):'尚無紀錄'}
 function usageOverviewHtml(){
- const p=previewStats(),warning=limitWarning();
+ const p=previewStats(),warning=limitWarning(),cooldown=previewCooldownMessage();
  return `<div class="usageCard">
   <strong>公開預覽服務（這台裝置，UTC ${esc(p.dayUTC)}）</strong>
   <p>今日已請求 ${p.attempts} 次；成功 ${p.successes} 次、被限流 ${p.rateLimits} 次。</p>
   <p>${p.lastStatus==='rate-limit'?'⚠️ 最近一次請求被限流。':p.lastStatus==='ok'?'最近一次請求成功。':p.lastStatus==='error'?'最近一次請求失敗（不一定是額度問題）。':'今天尚無預覽請求紀錄。'}</p>
+  ${cooldown?`<p class="usageWarning">${esc(cooldown)}（自動暫停 Microlink，避免持續觸發 429）</p>`:''}
   <p class="usageSmall">這是本機請求紀錄，不是 Microlink 的帳戶剩餘免費額度；平台阻擋貼文內容也不代表達到限額。</p>
   ${warning.message?`<p class="usageWarning">${esc(warning.message)}</p>`:''}
  </div><div class="usageCard" id="aiUsageStats"><strong>Cloudflare Workers AI</strong><p>${cloudConfig?'正在確認使用狀態…':'尚未設定雲端，無法查看 AI 呼叫紀錄。'}</p></div>
