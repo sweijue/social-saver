@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="拾集">
-<title>拾集 v1.8.10</title>
+<title>拾集 v1.8.12</title>
 <style>
 :root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#6e6e68;--line:#e4e4de;--soft:#efefe9;--shadow:0 10px 28px rgba(0,0,0,.07);--r:20px;--navh:74px}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif;font-size:17px}body{min-height:100vh;padding-bottom:calc(var(--navh) + env(safe-area-inset-bottom) + 18px)}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
@@ -383,6 +383,22 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 .visionActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .visionActions .uiBtn{min-height:36px}
 
+\n/* v1.8.11: iPhone screenshot transcription fallback */
+.screenshotHelp{background:#f4f7f2;border:1px solid #dce6d8;border-radius:13px;padding:12px;color:#44574b;font-size:13px;line-height:1.65}
+.screenshotPick{border:1px dashed #9daa9d;border-radius:13px;padding:12px;background:#f8faf7;display:block}
+.screenshotPick input[type=file]{display:block;width:100%;font-size:14px;margin:9px 0 2px}
+.screenshotPick small{display:block;font-size:12px;line-height:1.55;color:#6a7368;margin-top:7px}
+.screenshotActions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:9px 0}
+.screenshotActions button{min-height:41px}
+.screenshotProgress{font-size:13px;color:#355344;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;min-height:20px}
+.screenshotFindings{display:grid;gap:8px;margin-top:9px}
+.screenshotFinding{font-size:12px;line-height:1.55;padding:9px 10px;border:1px solid #e1e4dc;background:#fafaf8;border-radius:10px;color:#405046}
+.screenshotFinding strong{display:block;font-size:13px;margin-bottom:2px}
+.screenshotConfirm{padding:8px 0;display:flex!important;align-items:start;gap:9px;font-size:13px;line-height:1.5}
+.screenshotConfirm input{margin-top:4px;flex:none;width:17px;height:17px}
+.screenshotFormDivider{margin:9px 0 14px;border-top:1px solid #eceee8}
+.screenshotCancel{flex-shrink:0}
+@media(max-width:390px){.screenshotActions{align-items:stretch}.screenshotActions button{flex:1;min-width:0}}
 </style>
 <style>
 .cascadeFilter{border:1px solid var(--line);border-radius:13px;background:#fff;overflow:hidden;margin:8px 0 14px}
@@ -513,7 +529,7 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 
 <script>
 
-const VERSION="1.8.10", STORE="socialSaver_data";
+const VERSION="1.8.12", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -777,8 +793,20 @@ function normalizeItem(i){
  const badPreviewBody=i.sourceQuality!=='manual'&&isPlatformUnavailableText(i.body);
  const safeBody=badPreviewBody?'':(i.body||'');
  const products=Array.isArray(i.products)?i.products:[];
- const images=Array.isArray(i.images)?i.images:[];
+ const originalImages=Array.isArray(i.images)?i.images:[];
+ const images=uniqueArticleImages(originalImages);
  const productImages={...(i.productImages||{})};
+ let vision=i.vision&&typeof i.vision==='object'?i.vision:{entries:[],updatedAt:0};
+ if(images.length!==originalImages.length&&Array.isArray(vision.entries)){
+  const indices=photoIndexMap(originalImages,images),seenPhotos=new Set();
+  const entries=[];
+  for(const row of vision.entries){
+   const old=Number(row?.index),index=Number.isInteger(old)&&old>=0?indices[old]:-1;
+   if(!Number.isInteger(index)||index<0||seenPhotos.has(index))continue;
+   seenPhotos.add(index);entries.push({...row,index,key:articlePhotoKey(images[index])});
+  }
+  vision={...vision,entries};
+ }
  // Sequential mapping is only defensible if the source provides equal numbers of photos and products.
  if(images.length===products.length && products.length){products.forEach((p,idx)=>{if(!productImages[p])productImages[p]=images[idx]})}
  return {
@@ -786,7 +814,7 @@ function normalizeItem(i){
   category:i.category||inferCategory(`${i.title||''} ${i.body||''}`),country:i.country||inferCountry(`${i.title||''} ${i.body||''} ${i.city||''}`),categorySource:i.categorySource||'auto',countrySource:i.countrySource||'auto',
   city:i.city||findRegion(`${i.title||''} ${safeBody}`),shoppingType:i.shoppingType||'',address:i.address||extractAddress(safeBody),placeName:i.placeName||findPlaceName(safeBody,i.title||''),products,
   tags:Array.isArray(i.tags)?i.tags:[],terms:makeSearchTerms({placeName:i.placeName||findPlaceName(safeBody,i.title||''),address:i.address||extractAddress(safeBody),products,body:safeBody,country:i.country}),images,productImages,
-  vision:i.vision&&typeof i.vision==='object'?i.vision:{entries:[],updatedAt:0},
+  vision,
   summary:(badPreviewBody||isPlatformUnavailableText(i.summary))?'':typeof i.summary==='string'?i.summary:'',note:i.note||'',
   sourceQuality:badPreviewBody&&!images.length?'linkOnly':(i.sourceQuality||'manual'),sourceCapturedAt:i.sourceCapturedAt||null,
   titleSource:i.titleSource||'auto',previewAttempts:i.previewAttempts||0,previewError:badPreviewBody?'來源僅回傳存取限制提示，請再次擷取或貼上內文':(i.previewError||''),previewCheckedAt:i.previewCheckedAt||null,
@@ -1105,7 +1133,7 @@ function renderDetail(){
  <div class="detailBody">
    <h2 class="detailTitle">${esc(i.title)}</h2>
    <div class="detailMeta">${esc(i.platform)} · ${esc(i.category)} · ${esc(i.country)}${i.city?` · ${esc(i.city)}`:''}</div><div class="detailSaved">收藏於 ${formatSavedAt(i.createdAt)}</div>
-   ${i.url?`<div class="detailSection"><div class="fetchActionRow"><a class="linkPill uiBtn" href="${esc(i.url)}" target="_blank" rel="noopener noreferrer">↗ 原文章</a><button type="button" class="linkPill uiBtn" id="retryArticle" ${refetchBusy?'disabled aria-busy="true"':''}>${refetchBusy?fetchSpinnerHTML()+' 擷取中…':icon('expand',14)+' 再次擷取'}</button><button type="button" class="linkPill uiBtn pasteContentBtn" id="pasteArticleText">${icon('edit',14)} 貼上內文並重新整理</button></div><div class="fetchFeedback" id="retryArticleStatus" role="status" data-kind="${refetchInfo?.kind||''}">${refetchInfo?esc(refetchInfo.text):i.previewError?`上次擷取未成功：${esc(i.previewError)}；可以稍後重試。`:i.sourceQuality==='linkOnly'?'只有文章連結，點「再次擷取」可重新嘗試取得標題、內文與圖片。':'公開資料依來源限制取得，若缺內容可以再次擷取。'}</div></div>`:''}${i.browserNotice?`<div class="fetchFeedback" role="status">${esc(i.browserNotice)}</div>`:''}${i.url&&['preview','shared','linkOnly'].includes(i.sourceQuality)?`<div class="photoLimit">目前僅取得 ${i.images?.length||0} 張公開預覽圖片；社群相簿的其餘圖片若未開放讀取，可用「編輯」補入多張。</div>`:''}
+   ${i.url?`<div class="detailSection"><div class="fetchActionRow"><a class="linkPill uiBtn" href="${esc(i.url)}" target="_blank" rel="noopener noreferrer">↗ 原文章</a><button type="button" class="linkPill uiBtn" id="retryArticle" ${refetchBusy?'disabled aria-busy="true"':''}>${refetchBusy?fetchSpinnerHTML()+' 擷取中…':icon('expand',14)+' 再次擷取'}</button><button type="button" class="linkPill uiBtn pasteContentBtn" id="pasteArticleText">${icon('image',14)} 手機補充文字／截圖</button></div><div class="fetchFeedback" id="retryArticleStatus" role="status" data-kind="${refetchInfo?.kind||''}">${refetchInfo?esc(refetchInfo.text):i.previewError?`上次擷取未成功：${esc(i.previewError)}；可以稍後重試。`:i.sourceQuality==='linkOnly'?'只有文章連結，點「再次擷取」可重新嘗試取得標題、內文與圖片。':'公開資料依來源限制取得，若缺內容可以再次擷取。'}</div></div>`:''}${i.browserNotice?`<div class="fetchFeedback" role="status">${esc(i.browserNotice)}</div>`:''}${i.url&&['preview','shared','linkOnly'].includes(i.sourceQuality)?`<div class="photoLimit">目前取得 ${i.images?.length||0} 張不同圖片（已排除重複封面）。如果原貼文是多圖輪播，但平台未載入其他張，雲端擷取仍無法保證抓齊。</div>`:''}
    ${i.images?.length?`<div class="detailSection visionSection">
     <div class="visionHead"><h4>圖片內容辨識</h4><button type="button" class="smallBtn uiBtn" id="analyzePhotos">${icon('search',15)} ${((i.vision?.entries||[]).length?'辨識其餘圖片／重試':'開始辨識')}</button></div>
     <p class="visionDesc">AI 讀取已收藏的圖片，提取可見文字、商品與地點線索。辨識結果可能有誤，確認後才套用到文章。</p>
@@ -1224,6 +1252,46 @@ function platformFromURL(url){
 function cleanExternalURL(url){
  try{const u=new URL(String(url||'').trim());return ['https:','http:'].includes(u.protocol)?u.href:''}catch{return''}
 }
+// A photo is NOT unique merely because its CDN URL / signature / crop size differs.
+// Instagram / Threads often return one photo from OG, Twitter and Browser Run
+// with distinct query strings or edge hostnames. Do not count these as new slides.
+function articlePhotoKey(source){
+ const src=String(source||'').trim();if(!src)return '';
+ if(src.startsWith('data:'))return 'data:'+src; // exact bytes only; don't merge different uploads
+ if(src.startsWith('blob:'))return src;
+ if(/^(?:meta-photo:|meta-cache:|meta-path:|url:)/.test(src))return src;
+ let url;try{url=new URL(src)}catch{return src}
+ const host=url.hostname.toLowerCase().replace(/^www\./,'');
+ const meta=/(?:^|\.)(?:fbcdn\.net|cdninstagram\.com|threads\.com|threads\.net|instagram\.com)$/.test(host);
+ if(meta){
+  // Images can arrive from different Instagram CDN edges. Their media filename
+  // contains stable ID components even when stp, crop, token and host change.
+  let filename='';try{filename=decodeURIComponent(url.pathname.split('/').pop()||'')}catch{filename=url.pathname.split('/').pop()||''}
+  const media=filename.match(/^(\d{7,})_(\d{7,})_(\d{7,})_[^/]*\.(?:jpe?g|png|webp)$/i);
+  if(media)return 'meta-photo:'+media[1]+'_'+media[2]+'_'+media[3];
+  const cache=url.searchParams.get('ig_cache_key')||url.searchParams.get('media_id');
+  if(cache)return 'meta-cache:'+cache.split('.')[0];
+  // Same CDN path with another signature or resize parameters remains one image.
+  return 'meta-path:'+url.pathname.replace(/\/s\d+x\d+\//g,'/').toLowerCase();
+ }
+ // Don't strip arbitrary query strings from other hosts: some identify distinct photos.
+ return 'url:'+url.href;
+}
+function uniqueArticleImages(input){
+ const seen=new Set(),images=[];
+ for(const raw of input||[]){
+  if(typeof raw!=='string'||!raw.trim())continue;
+  const src=raw.trim(),key=articlePhotoKey(src);
+  if(!key||seen.has(key))continue;
+  seen.add(key);images.push(src);
+ }
+ return images;
+}
+// Migrate prior articles without reordering originals or inventing unavailable slides.
+function photoIndexMap(oldImages,newImages){
+ const keys=new Map(newImages.map((src,index)=>[articlePhotoKey(src),index]));
+ return oldImages.map(src=>keys.has(articlePhotoKey(src))?keys.get(articlePhotoKey(src)):-1);
+}
 function isPlatformUnavailableText(input){
  const s=String(input||'').trim();
  if(!s)return false;
@@ -1328,7 +1396,7 @@ async function fetchMicrolinkMetadata(url){
   const candidate=String(d.description||'').trim();
   const description=isPlatformUnavailableText(candidate)?'':candidate;
   const cover=cleanExternalURL(d.image?.url||'');
-  const images=uniq([cover,...(Array.isArray(d.images)?d.images.map(x=>cleanExternalURL(typeof x==='string'?x:x?.url||'')):[])]).filter(Boolean);
+  const images=uniqueArticleImages([cover,...(Array.isArray(d.images)?d.images.map(x=>cleanExternalURL(typeof x==='string'?x:x?.url||'')):[])]);
   const validTitle=!isGenericPreview(title,platform)&&!isPlatformUnavailableText(title)?title:'';
   if(!description&&!images.length&&!validTitle)throw new Error(isPlatformUnavailableText(candidate)?'Threads 僅回傳「內容無法向所有人公開」的提示，未提供文章或圖片':'此平台沒有提供可讀取的公開內文或圖片');
   updatePreviewStats('ok');clearLimitWarning('preview');
@@ -1353,7 +1421,7 @@ async function fetchPublicMetadata(url,options={}){
    if(result?.canonicalUrl)canonical=cleanExternalURL(result.canonicalUrl);
    if(result?.found)direct={title:isGenericPreview(result.title||'','Threads')?'':String(result.title||''),
      body:isPlatformUnavailableText(result.body)?'':String(result.body||''),
-     images:uniq((result.images||[]).map(cleanExternalURL).filter(Boolean)),
+     images:uniqueArticleImages((result.images||[]).map(cleanExternalURL).filter(Boolean)),
      resolvedUrl:canonical,source:'Threads public HTML'};
    if(!direct)reason=result?.reason==='threads-access-limited'?'Threads \u672a\u5411\u5916\u90e8\u670d\u52d9\u63d0\u4f9b\u8cbc\u6587\u5167\u5bb9':'Threads \u516c\u958b\u7db2\u9801\u672a\u63d0\u4f9b\u5b8c\u6574\u8cc7\u6599';
   }catch(e){reason=e.status===404?'Worker \u5c1a\u672a\u5347\u7d1a\u64f7\u53d6\u529f\u80fd':e.message||''}
@@ -1364,7 +1432,7 @@ async function fetchPublicMetadata(url,options={}){
   try{
    preview=await fetchMicrolinkMetadata(canonical||url);
    if(merged){merged={...preview,title:merged.title||preview.title,body:merged.body||preview.body,
-      images:uniq([...(merged.images||[]),...(preview.images||[])]),resolvedUrl:canonical||'',source:'Threads \u516c\u958b\u7db2\u9801\u8207\u9810\u89bd'};}
+      images:uniqueArticleImages([...(merged.images||[]),...(preview.images||[])]),resolvedUrl:canonical||'',source:'Threads \u516c\u958b\u7db2\u9801\u8207\u9810\u89bd'};}
    else merged={...preview,resolvedUrl:canonical||''};
   }catch(e){previewError=e.message||'Preview unavailable';previewLimited=!!e.previewRateLimited||!!e.previewCooldown;}
  }
@@ -1380,13 +1448,13 @@ async function fetchPublicMetadata(url,options={}){
     const previousImages=Array.isArray(merged?.images)?merged.images:[];
     const fresh={title:isGenericPreview(result.title||'','Threads')?'':String(result.title||''),
        body:isPlatformUnavailableText(result.body)?'':String(result.body||''),
-       images:uniq((result.images||[]).map(cleanExternalURL).filter(Boolean)),
+       images:uniqueArticleImages((result.images||[]).map(cleanExternalURL).filter(Boolean)),
        resolvedUrl:cleanExternalURL(result.canonicalUrl)||canonical,source:'Cloudflare Browser Run'};
-    const browserAdded=(!previousBody&&!!fresh.body.trim())||fresh.images.some(image=>!previousImages.includes(image))||(!merged&&!!fresh.title);
+    const browserAdded=(!previousBody&&!!fresh.body.trim())||fresh.images.some(image=>!previousImages.some(old=>articlePhotoKey(old)===articlePhotoKey(image)))||(!merged&&!!fresh.title);
     const previewFallbackNote=previewLimited?(browserAdded?'預覽服務暫時限流；已由雲端瀏覽器補到內容。':'預覽服務暫時限流；雲端瀏覽器已檢查，但沒有新增內容。'):'';
     const combinedNote=[previewFallbackNote,note].filter(Boolean).join(' ');
     merged=merged?{...merged,title:merged.title||fresh.title,body:merged.body||fresh.body,
-       images:uniq([...(merged.images||[]),...(fresh.images||[])]),
+       images:uniqueArticleImages([...(merged.images||[]),...(fresh.images||[])]),
        resolvedUrl:fresh.resolvedUrl||merged.resolvedUrl,source:'公開網頁與雲端瀏覽器',browserNotice:combinedNote}:
        {...fresh,browserNotice:combinedNote};
     clearLimitWarning('browser');
@@ -1481,7 +1549,7 @@ function mergePublicPreview(item,meta){
  if(!item.body&&meta.body&&!isPlatformUnavailableText(meta.body))item.body=meta.body;
  if(meta.resolvedUrl)item.resolvedUrl=meta.resolvedUrl;
  if(meta.browserNotice!==undefined)item.browserNotice=meta.browserNotice;
- item.images=uniq([...(item.images||[]),...(meta.images||[])]);
+ item.images=uniqueArticleImages([...(item.images||[]),...(meta.images||[])]);
  if(!item.placeName)item.placeName=findPlaceName(item.body,item.title);
  if(!item.address)item.address=extractAddress(item.body);
   if(!item.city)item.city=findRegion(`${item.title} ${item.body}`);
@@ -1528,35 +1596,114 @@ function applyTextAIFindings(item,a){
  if(!item.summary&&a.summary&&a.summary.trim()&&!body.includes(a.summary.trim()))item.summary=a.summary.trim().slice(0,220);
  item.terms=uniq([...(item.terms||[]),...makeSearchTerms({placeName:item.placeName,address:item.address,products:item.products,body,country:item.country})]).slice(0,22);
 }
+function screenshotVisionText(analysis){
+ // Only transcribe text the model explicitly marked as visible; summaries are not exact quotations.
+ const lines=(Array.isArray(analysis?.visibleText)?analysis.visibleText:[]).map(s=>String(s||'').replace(/\s+/g,' ').trim()).filter(s=>s.length>=2&&!isPlatformUnavailableText(s));
+ return uniq(lines).join('\n').slice(0,7200);
+}
+function appendScreenshotText(existing,incoming){
+ const prior=String(existing||'').trim(),parts=String(incoming||'').split(/\n+/).map(s=>s.trim()).filter(Boolean);
+ const kept=parts.filter(s=>!prior.includes(s));
+ const added=uniq(kept).join('\n');return added?[prior,added].filter(Boolean).join('\n'):prior;
+}
+async function screenshotForVision(file){
+ if(!file||(!String(file.type||'').startsWith('image/')&&!/\.(?:heic|heif|png|jpe?g|webp)$/i.test(file.name)))throw new Error('請選擇圖片檔案');
+ const src=await fileAsDataURL(file),photo=new Image();photo.src=src;
+ try{await photo.decode()}catch{throw new Error('無法開啟這張圖片，請改用 JPG 或 PNG 截圖。')}
+ // Preserve screenshot text detail; Worker accepts images up to ~2 MB / 2.85 MB base64.
+ const maxSide=1900,ratio=Math.min(1,maxSide/Math.max(photo.width,photo.height));
+ const c=document.createElement('canvas');c.width=Math.max(1,Math.round(photo.width*ratio));c.height=Math.max(1,Math.round(photo.height*ratio));
+ const context=c.getContext('2d');if(!context)throw new Error('此瀏覽器無法處理圖片');
+ context.fillStyle='#fff';context.fillRect(0,0,c.width,c.height);context.drawImage(photo,0,0,c.width,c.height);
+ let encoded=c.toDataURL('image/jpeg',.88);
+ if(encoded.length>2700000)encoded=c.toDataURL('image/jpeg',.72);
+ if(encoded.length>2700000){const scaled=document.createElement('canvas');scaled.width=Math.max(1,Math.floor(c.width*.72));scaled.height=Math.max(1,Math.floor(c.height*.72));scaled.getContext('2d').drawImage(c,0,0,scaled.width,scaled.height);encoded=scaled.toDataURL('image/jpeg',.72)}
+ if(encoded.length>2700000)throw new Error('圖片太大，請先裁切成較小的截圖。');
+ return encoded;
+}
 function openPasteArticleBody(id){
  const item=data.items.find(x=>x.id===id);if(!item)return;
- function back(){const x=data.items.find(i=>i.id===id);if(x)renderDetail();else closeModal()}
- openModal(`<div class="sheetHead"><strong>補充文章內文</strong><button type="button" class="iconBtn uiBtn" id="closePasteArticle" aria-label="返回文章">${icon('close')}</button></div>
+ let running=false,stopRequested=false,photoSuggestions=[];
+ function back(){if(running){stopRequested=true;return}const x=data.items.find(i=>i.id===id);if(x)renderDetail();else closeModal()}
+ openModal(`<div class="sheetHead"><strong>手機補充文章內容</strong><button type="button" class="iconBtn uiBtn" id="closePasteArticle" aria-label="返回文章">${icon('close')}</button></div>
  <form id="pasteArticleForm" class="form">
- <div class="articlePasteHint">來源：${esc(item.platform)}。把原文複製後貼在這裡；不會移除原文章網址、照片或我的備註。儲存後自動重判分類與標籤；若已連接 Cloudflare AI，還會嘗試整理重點。AI 不可用時也能儲存。</div>
- <label>文章內文<textarea id="pasteBody" class="articlePasteArea" rows="9" placeholder="長按原文選擇「複製」，回來貼上文章文字…" required>${esc(item.body||'')}</textarea></label>
- <div class="pasteFormActions"><button type="button" class="ghost uiBtn" id="pasteFromClipboard">貼上剪貼簿</button><button type="button" class="ghost uiBtn" id="cancelPasteArticle">返回</button><button type="submit" class="primary uiBtn" id="submitPasteArticle">儲存並重新判斷</button></div>
+ <div class="screenshotHelp">如果 Threads／Instagram 不讓雲端讀取，可先在手機截圖，回來選取多張圖片，讓 Workers AI 讀取其中的文字。<strong>截圖內容會先顯示給你確認</strong>，不會直接覆寫原收藏的圖片、備註或手動分類。</div>
+ <label class="screenshotPick"><strong>① 選擇文章截圖（可多選）</strong><input type="file" id="articleScreenshots" accept="image/*,.heic,.heif" multiple><small>最多一次 6 張，依選取順序辨識。僅將圖片暫時送至 Cloudflare AI；不會把截圖原檔存入收藏，避免同步資料過大。</small></label>
+ <div class="screenshotActions"><button type="button" class="ghost uiBtn" id="ocrArticleScreenshots">${icon('image',16)} 辨識截圖文字</button><button type="button" class="ghost uiBtn screenshotCancel hidden" id="stopOcrScreenshots">停止後續辨識</button></div>
+ <div class="screenshotProgress" id="screenshotProgress" role="status" aria-live="polite"></div>
+ <div class="screenshotFindings" id="screenshotFindings"></div>
+ <div class="screenshotFormDivider"></div>
+ <label>② 確認或補充文章文字<textarea id="pasteBody" class="articlePasteArea" rows="9" placeholder="截圖辨識後會將可見文字補在這裡；也可長按貼上複製的內文…">${esc(item.body||'')}</textarea></label>
+ <div class="screenshotActions"><button type="button" class="ghost uiBtn" id="pasteFromClipboard">貼上剪貼簿文字</button></div>
+ <label class="screenshotConfirm"><input type="checkbox" id="confirmPhotoEntities"><span>我已核對辨識結果，也要將圖片找到的<strong>商品／地點候選</strong>加入文章。辨識可能有誤，預設不加入。</span></label>
+ <div class="pasteFormActions"><button type="button" class="ghost uiBtn" id="cancelPasteArticle">返回</button><button type="submit" class="primary uiBtn" id="submitPasteArticle">確認並儲存整理</button></div>
  <div id="pasteStatus" class="pasteProgress" role="status" aria-live="polite"></div></form>`);
  $('#closePasteArticle').onclick=$('#cancelPasteArticle').onclick=back;
- $('#pasteFromClipboard').onclick=async()=>{try{const text=await navigator.clipboard.readText();if(text)$('#pasteBody').value=text;else $('#pasteStatus').textContent='剪貼簿沒有文字。'}catch{$('#pasteStatus').textContent='iPhone 如果不允許直接讀取剪貼簿，請長按文字框選「貼上」。';$('#pasteBody').focus()}};
+ $('#pasteFromClipboard').onclick=async()=>{try{const text=await navigator.clipboard.readText();if(text){$('#pasteBody').value=appendScreenshotText($('#pasteBody').value,text);$('#pasteStatus').textContent='已加入剪貼簿文字；請確認內容後儲存。'}else $('#pasteStatus').textContent='剪貼簿沒有文字。'}catch{$('#pasteStatus').textContent='若 iPhone 不允許直接讀取剪貼簿，請長按文字框選「貼上」。';$('#pasteBody').focus()}};
+ $('#stopOcrScreenshots').onclick=()=>{stopRequested=true;$('#screenshotProgress').textContent='停止要求已收到；目前這張結束後就停止，不會自動儲存。'};
+ $('#ocrArticleScreenshots').onclick=async()=>{
+  const files=[...$('#articleScreenshots').files];const status=$('#screenshotProgress'),button=$('#ocrArticleScreenshots'),stop=$('#stopOcrScreenshots');
+  if(running)return;
+  if(!files.length){status.textContent='請先選取至少一張文章截圖。';return}
+  if(files.length>6){status.textContent='一次最多 6 張截圖，請分批選取。';return}
+  if(!cloudConfig){status.textContent='截圖辨識需要現有的 Cloudflare Worker 連線與 AI 綁定；也可以直接貼上文字儲存。';return}
+  stopRequested=false;running=true;button.disabled=true;$('#submitPasteArticle').disabled=true;stop.classList.remove('hidden');
+  const messages=[],results=[];let ok=0;
+  try{
+   for(let ix=0;ix<files.length;ix++){
+    if(stopRequested)break;
+    status.textContent=`${fetchSpinnerHTML()} 正在辨識第 ${ix+1} / ${files.length} 張截圖…\n已完成 ${ok} 張`;
+    try{
+     const imageData=await screenshotForVision(files[ix]);
+     if(stopRequested)break;
+     const response=await cloudRequest('POST','/api/vision',{imageData});
+     const a=response.analysis||{},recognized=screenshotVisionText(a);
+     results.push({index:ix,name:files[ix].name,analysis:a,text:recognized});ok++;
+     if(recognized)$('#pasteBody').value=appendScreenshotText($('#pasteBody').value,recognized);
+     messages.push(`第 ${ix+1} 張：${recognized?'已讀出文字':'沒有辨識到可確認的文字'}`);
+     const findings=$('#screenshotFindings');
+     if(findings)findings.innerHTML=results.map(r=>`<div class="screenshotFinding"><strong>第 ${r.index+1} 張：${esc(r.name)}</strong>${r.text?`已補入文字：${esc(r.text.slice(0,185))}${r.text.length>185?'…':''}`:'沒有可靠的可見文字；不會將 AI 猜測當作原文。'}${r.analysis.products?.length?`<div>商品候選：${esc(r.analysis.products.join('、'))}</div>`:''}${r.analysis.places?.length?`<div>地點候選：${esc(r.analysis.places.join('、'))}</div>`:''}${r.analysis.uncertain?`<div>不確定：${esc(r.analysis.uncertain)}</div>`:''}</div>`).join('');
+    }catch(err){messages.push(`第 ${ix+1} 張失敗：${String(err?.message||'無法辨識').slice(0,180)}`);if(/今日免費額度已達上限|429|請求過於頻繁|請求速度受限/.test(String(err?.message||'')))break;}
+   }
+   photoSuggestions=results;
+   status.textContent=`辨識完成：${ok} / ${files.length} 張。${stopRequested?'（已停止後續辨識）': ''}\n${messages.join('\n')}\n請確認文字後，按「確認並儲存整理」。`;
+  }finally{running=false;button.disabled=false;$('#submitPasteArticle').disabled=false;stop.classList.add('hidden')}
+ };
  $('#pasteArticleForm').onsubmit=async e=>{
-  e.preventDefault();const body=$('#pasteBody').value.trim();const submit=$('#submitPasteArticle'),status=$('#pasteStatus');
-  if(body.length<6||isPlatformUnavailableText(body)||/^https?:\/\/\S+$/.test(body)){status.textContent='請貼入真正的文章文字，不能只有網址或平台限制提示。';return}
-  submit.disabled=true;submit.innerHTML=fetchSpinnerHTML()+' 儲存中…';status.textContent='先儲存內文與基本分類…';
+  e.preventDefault();if(running)return;
+  const body=$('#pasteBody').value.trim(),entityConfirm=$('#confirmPhotoEntities').checked;
+  const candidates=photoSuggestions.flatMap(x=>[...(x.analysis.products||[]),...(x.analysis.places||[])]).filter(x=>typeof x==='string'&&x.trim());
+  const submit=$('#submitPasteArticle'),status=$('#pasteStatus');
+  const hasText=body.length>=6&&!isPlatformUnavailableText(body)&&!/^https?:\/\/\S+$/.test(body);
+  if(!hasText&&!(entityConfirm&&candidates.length)){status.textContent='請先補入文章文字，或明確勾選已核對的商品／地點候選；不能只有網址。';return}
+  submit.disabled=true;submit.innerHTML=fetchSpinnerHTML()+' 儲存中…';status.textContent='正在更新原收藏…';
   try{
    const current=data.items.find(i=>i.id===id);if(!current)throw new Error('找不到收藏');
-   applyPastedClassification(current,body);await save();
-   status.textContent='內文已儲存。正在重新整理分類與標籤…';
-   let aiNote='已依文章文字重新判斷分類與標籤。';
-   if(cloudConfig){
+   if(hasText)applyPastedClassification(current,body);
+   if(entityConfirm){
+    const known=new Set((current.products||[]).map(norm));
+    for(const result of photoSuggestions){
+     for(const prod of result.analysis.products||[]){const name=String(prod||'').trim();if(name&&name.length<=140&&!known.has(norm(name))){current.products.push(name);known.add(norm(name));}}
+    }
+    if(!current.placeName)current.placeName=photoSuggestions.flatMap(x=>x.analysis.places||[]).find(Boolean)||'';
+    if(!current.address)current.address=photoSuggestions.flatMap(x=>x.analysis.addresses||[]).find(Boolean)||'';
+    current.tags=uniq([...(current.tags||[]),...photoSuggestions.flatMap(x=>x.analysis.tags||[]).filter(t=>typeof t==='string'&&t.length<=26)]).slice(0,35);
+    const evidence=[...current.products,current.placeName,current.address,...current.tags].join(' ');
+    if(current.categorySource!=='manual'&&current.category==='其他'){const predicted=inferCategory(evidence);if(predicted!=='其他')current.category=predicted}
+    if(current.countrySource!=='manual'&&current.country==='其他'){const predicted=inferCountry(evidence);if(predicted!=='其他')current.country=predicted}
+    current.terms=uniq([...(current.terms||[]),...current.products,current.placeName,current.address]).slice(0,30);
+   }
+   await save();status.textContent='內容已儲存。正在整理分類與標籤…';
+   let aiNote='已依補充文字重新判斷分類與標籤。';
+   if(hasText&&cloudConfig){
     submit.innerHTML=fetchSpinnerHTML()+' AI 整理中…';
     try{const output=await cloudRequest('POST','/api/analyze-text',{text:body,title:current.title});
      const recent=data.items.find(i=>i.id===id);
      if(recent&&recent.body===body&&output.analysis){applyTextAIFindings(recent,output.analysis);await save();aiNote='Cloudflare AI 已進一步整理文章重點與標籤。'}
-    }catch(e){aiNote='已用本機規則整理；雲端 AI 暫時未完成（不影響內文儲存）。'}
+    }catch(err){aiNote='已用本機規則整理；雲端 AI 暫時未完成（不影響內文儲存）。'}
    }
-   articleFetchFeedback.set(id,{kind:'ok',text:`已補入文章內文。${aiNote}`});render();back();
-  }catch(e){status.textContent='無法儲存：'+e.message;submit.disabled=false;submit.textContent='重試儲存'}
+   articleFetchFeedback.set(id,{kind:'ok',text:`已補充文章內容。${aiNote}`});render();back();
+  }catch(err){status.textContent='無法儲存：'+err.message;submit.disabled=false;submit.textContent='確認並儲存整理'}
  };
 }
 
@@ -1737,7 +1884,7 @@ function quickItem(url,meta,fields={}){
  const content=[title,body].join(' ');
  const country=inferCountry(content),category=inferCategory(content);
  const products=fields.products?.length?fields.products:detectProductCandidates(body);
- const articleImages=uniq([...(meta?.images||[]),...(fields.images||[])]);
+ const articleImages=uniqueArticleImages([...(meta?.images||[]),...(fields.images||[])]);
  const productImages={};
  // Only user supplied one-to-one images qualify as mapped product images.
  if(fields.images?.length && fields.images.length===products.length)products.forEach((p,idx)=>productImages[p]=fields.images[idx]);
@@ -1839,10 +1986,10 @@ function editorHTML(item){
 
 // Vision runs only when Cloudflare AI is bound; never put an AI key in public HTML.
 const visionInFlight=new Set();
-const photoSourceKey=(s)=>String(s||'').startsWith('data:')?'upload:'+String(s).length+':'+String(s).slice(-28):String(s);
+const photoSourceKey=articlePhotoKey;
 function availablePhotoIndexes(item,limit=3){
  const entries=item.vision?.entries||[];
- const seen=new Set(entries.map(x=>x.key));
+ const seen=new Set(entries.map(x=>articlePhotoKey(x.key)));
  return (item.images||[]).map((s,index)=>({s,index,key:photoSourceKey(s)}))
   .filter(x=>x.s&&!seen.has(x.key)&&!x.s.startsWith('data:image/svg'))
   .slice(0,limit);
@@ -1946,7 +2093,7 @@ function openEditor(id=null){
    const added=await Promise.all([...$('#fUploadImages').files].map(smallImageDataURL));images.push(...added);
    const tags=$('#fTags').value.split(',').map(x=>x.trim()).filter(Boolean);
    const productImages={...(item.productImages||{})};
-   if(images.length===products.length)products.forEach((p,idx)=>{if(!productImages[p])productImages[p]=images[idx]});
+   if(uniqueArticleImages(images).length===products.length)products.forEach((p,idx)=>{if(!productImages[p])productImages[p]=uniqueArticleImages(images)[idx]});
    const placeName=$('#fPlace').value.trim()||findPlaceName(body,title),address=$('#fAddress').value.trim()||extractAddress(body);
    data.customCategories=uniq([...(data.customCategories||[]),category]);
    data.customCountries=uniq([...(data.customCountries||[]),country]);

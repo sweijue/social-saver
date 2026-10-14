@@ -1,5 +1,5 @@
 /**
- * 拾集 Cloud API v1.8.9 — deploy as a Cloudflare Worker.
+ * 拾集 Cloud API v1.8.12 — deploy as a Cloudflare Worker.
  * Bind Cloudflare D1 database as DB; add Worker Secret SJ_TOKEN (min 32 chars).
  * Allowed browser origin is fixed to the user's GitHub Pages domain.
  * The secret must NOT be committed to GitHub or embedded in index.html.
@@ -309,6 +309,22 @@ function safeBrowserImage(input,base){
   return u.href;
  }catch{return ''}
 }
+// Ignore alternate sizes/CDN signatures for the same Meta photo.
+function metaMediaKey(input){
+ try{
+  const u=new URL(String(input||''));const host=u.hostname.toLowerCase();
+  if(!/(?:^|\.)(?:fbcdn\.net|cdninstagram\.com|threads\.com|threads\.net|instagram\.com)$/.test(host))return u.href;
+  const filename=decodeURIComponent(u.pathname.split('/').pop()||'');
+  const match=filename.match(/^(\d{7,})_(\d{7,})_(\d{7,})_[^/]*\.(?:jpe?g|png|webp)$/i);
+  if(match)return 'meta-photo:'+match[1]+'_'+match[2]+'_'+match[3];
+  const cache=u.searchParams.get('ig_cache_key')||u.searchParams.get('media_id');
+  return cache?'meta-cache:'+cache.split('.')[0]:'meta-path:'+u.pathname.replace(/\/s\d+x\d+\//g,'/').toLowerCase();
+ }catch{return String(input||'')}
+}
+function bestSourceFromSet(srcset){
+ const parts=String(srcset||'').split(',').map(x=>x.trim().split(/\s+/)[0]).filter(Boolean);
+ return parts.length?parts[parts.length-1]:'';
+}
 function browserScrapeData(payload,canonicalUrl){
  const groups=Array.isArray(payload?.result)?payload.result:Array.isArray(payload)?payload:[];
  const bySelector=(part)=>groups.find(g=>g.selector===part)?.results||[];
@@ -325,19 +341,30 @@ function browserScrapeData(payload,canonicalUrl){
  if(blockedPage){body='';title=''}
  if(/^(threads|log in|login)$/i.test(title.trim()))title='';
  if(body.length>9000)body=body.slice(0,9000);
- const imgs=[];
- const push=s=>{const u=safeBrowserImage(s,canonicalUrl);if(u&&!imgs.includes(u))imgs.push(u)};
+ const imgs=[],mediaSeen=new Set();
+ const push=s=>{
+  const u=safeBrowserImage(s,canonicalUrl);if(!u)return;
+  const id=metaMediaKey(u);if(mediaSeen.has(id))return;
+  mediaSeen.add(id);imgs.push(u);
+ };
+ // OpenGraph cover comes first. Other DOM images are added only if genuinely different.
+ if(!blockedPage)push(firstAttr('meta[property="og:image"]','content'));
  // Only choose substantial post photos, not user icons, navigation images, or advertisements.
  for(const sel of ['article img','[role="article"] img','main article img']){
   for(const item of bySelector(sel)){
    if(Number(item.width)>0&&Number(item.width)<110)continue;
    if(Number(item.height)>0&&Number(item.height)<85)continue;
    if(/avatar|profile picture|profile photo|user icon/i.test(attr(item,'alt')))continue;
-   push(attr(item,'src')||attr(item,'data-src'));
+   // Responsive image URLs are often stored in srcset when src is a placeholder.
+   const current=attr(item,'currentSrc')||attr(item,'src')||attr(item,'data-src');
+   push(bestSourceFromSet(attr(item,'srcset')||attr(item,'data-srcset'))||current);
   }
  }
- // If no gallery DOM is visible, fall back to the standard page cover.
- if(!imgs.length&&!blockedPage)push(firstAttr('meta[property="og:image"]','content'));
+ // Some carousel slides are present as <picture><source> before their <img> loads.
+ for(const sel of ['article picture source','[role="article"] picture source']){
+  for(const item of bySelector(sel))push(bestSourceFromSet(attr(item,'srcset')||attr(item,'data-srcset')));
+ }
+ // A screenshot or website metadata cannot reveal carousel slides Threads did not load.
  const found=!blockedPage&&!!(body.trim()||imgs.length);
  return {ok:true,found,source:'browser-run',canonicalUrl,title:title.slice(0,250),body,images:imgs.slice(0,12),
    reason:found?'ok':'browser-no-readable-post',imagesComplete:false};
@@ -361,6 +388,8 @@ async function extractBrowserThreads(env,body){
      {selector:'article img'},
      {selector:'[role="article"] img'},
      {selector:'main article img'},
+     {selector:'article picture source'},
+     {selector:'[role="article"] picture source'},
      {selector:'article'},
      {selector:'[role="article"]'}],
    gotoOptions:{waitUntil:'networkidle2',timeout:20000}
@@ -400,7 +429,7 @@ export default {
       return new Response(null,{status:204,headers:headersFor(origin)});
     }
     const pathname=new URL(request.url).pathname.replace(/\/+$/,'')||'/';
-    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.9',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env)},200,origin);
+    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.12',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env)},200,origin);
     if(!env.DB||!env.SJ_TOKEN||String(env.SJ_TOKEN).length<32)return reply({error:'server-not-configured'},503,origin);
     try{
       let body=null;
