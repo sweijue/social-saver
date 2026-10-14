@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="拾集">
-<title>拾集 v1.8.6</title>
+<title>拾集 v1.8.7</title>
 <style>
 :root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#6e6e68;--line:#e4e4de;--soft:#efefe9;--shadow:0 10px 28px rgba(0,0,0,.07);--r:20px;--navh:74px}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif;font-size:17px}body{min-height:100vh;padding-bottom:calc(var(--navh) + env(safe-area-inset-bottom) + 18px)}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
@@ -451,6 +451,28 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 .editorTaxField{display:flex;align-items:end;gap:6px;min-width:0}.editorTaxField>label{flex:1;min-width:0}
 .editorTaxField .editorTaxPlus{flex:none;display:grid;place-items:center;width:38px;height:41px!important;min-width:38px;padding:0!important;border:1px solid #d8d9d5;border-radius:10px;background:#fff;color:#222;margin-bottom:0}
 @media(max-width:380px){.fetchActionRow{grid-template-columns:repeat(2,minmax(0,130px))}.fetchActionRow>.linkPill{font-size:12px}}
+
+/* 拾集 v1.8.7：內容重新擷取的可視化執行進度 */
+.fetchSpinner{display:inline-block;width:15px;height:15px;flex:0 0 15px;border:2px solid currentColor;border-right-color:transparent;border-top-color:transparent;border-radius:50%;animation:shijiFetchSpin .75s linear infinite;vertical-align:-3px}
+@keyframes shijiFetchSpin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.fetchSpinner{animation-duration:2s}}
+#retryArticle:disabled,#quickRetry:disabled,.refetchPageBtn:disabled{opacity:.7;cursor:progress}
+.refetchPageArea{display:flex;flex-wrap:wrap;gap:9px;align-items:center;margin:0 0 15px}
+.refetchPageBtn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid #b6c5b9;border-radius:11px;background:#eef3ee;color:#284c3f;min-height:38px;padding:8px 12px;font-size:13px;font-weight:800}
+.refetchPageHint{color:#777e76;font-size:11px;line-height:1.5}
+.refetchDrawerBtn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:38px;width:100%;font-weight:800!important}
+.contentRefetchBanner{position:fixed;z-index:205;left:12px;right:12px;bottom:calc(79px + env(safe-area-inset-bottom,0px));max-width:520px;margin-inline:auto;padding:12px 13px;border-radius:15px;background:#fcfdfb;border:1px solid #c9d9ca;box-shadow:0 8px 30px rgba(30,54,40,.16);color:#24352d}
+.contentRefetchBanner.hidden{display:none}
+.refetchBannerTop{display:flex;align-items:center;gap:8px}
+.refetchBannerTop strong{flex:1;min-width:0;font-size:13px;line-height:1.4}
+.refetchBannerTop button{border:1px solid #d4dcd4;border-radius:9px;background:white;min-height:30px;padding:4px 8px;font-size:12px;color:#34483b}
+.refetchBannerTop button:disabled{opacity:.55}
+.refetchBannerText{font-size:12px;line-height:1.5;margin:6px 0;color:#53665b;white-space:pre-wrap;overflow-wrap:anywhere}
+.refetchTrack{height:5px;background:#e0eae0;border-radius:4px;overflow:hidden}
+#contentRefetchFill{background:#4c8060;display:block;width:0;height:100%;transition:width .2s}
+#contentRefetchProgress[aria-busy="true"] .refetchBannerTop strong{color:#274936}
+.cloudDiagRow{border:1px solid #dee6de;background:#f6faf6;padding:11px;border-radius:12px;margin:8px 0}.cloudDiagRow .cloudHelp{white-space:pre-line;overflow-wrap:anywhere}
+.fetchFeedback[data-kind="ok"]{color:#287150}.fetchFeedback[data-kind="warn"]{color:#955e24}
 </style>
 </head>
 <body>
@@ -465,13 +487,17 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
   <button class="bottomBtn" data-view="search"><span class="ico">⌕</span><span>搜尋</span></button>
 </nav>
 <div id="batchBar" class="batchBar hidden"></div>
+<div id="contentRefetchProgress" class="contentRefetchBanner hidden" role="status" aria-live="polite" aria-busy="false">
+ <div class="refetchBannerTop"><span class="fetchSpinner" id="contentRefetchSpinner" aria-hidden="true"></span><strong id="contentRefetchTitle">準備補抓文章…</strong><button type="button" id="contentRefetchStop">停止</button><button type="button" id="contentRefetchClose" class="hidden" aria-label="關閉進度">關閉</button></div>
+ <div class="refetchBannerText" id="contentRefetchInfo"></div><div class="refetchTrack" aria-hidden="true"><span id="contentRefetchFill"></span></div>
+</div>
 <div id="drawerHost"></div>
 <div id="modalHost"></div><div id="lightboxHost"></div>
 <input id="importFile" type="file" accept="application/json" class="hidden">
 
 <script>
 
-const VERSION="1.8.6", STORE="socialSaver_data";
+const VERSION="1.8.7", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -832,8 +858,9 @@ function cardHTML(i){
 function commonProducts(group){const m={};group.forEach(i=>(i.products||[]).forEach((p,idx)=>{const k=norm(p);if(!m[k])m[k]={name:p,count:0,image:productImage(i,p,idx)};m[k].count++}));return Object.values(m).filter(x=>x.count>1).sort((a,b)=>b.count-a.count)}
 function similarClusters(){const items=allSorted(),used=new Set(),out=[];for(let a=0;a<items.length;a++){if(used.has(items[a].id))continue;const g=[items[a]];for(let b=a+1;b<items.length;b++){const A=items[a],B=items[b],pa=new Set((A.products||[]).map(norm)),pb=new Set((B.products||[]).map(norm)),shared=[...pa].filter(x=>pb.has(x)).length,tagShared=(A.tags||[]).filter(x=>(B.tags||[]).includes(x)).length;if(shared>=1||(A.category===B.category&&A.country===B.country&&tagShared>=2))g.push(B)}if(g.length>1){g.forEach(x=>used.add(x.id));out.push(g)}}return out}
 function renderLibrary(){
- const list=filteredItems();
+ const list=filteredItems(),missing=getMissingContentItems().length;
  return `<div class="pageHead"><div><h2>拾集</h2><p>${list.length} 篇收藏 · 點卡片查看內容</p></div></div>
+ ${missing?`<div class="refetchPageArea"><button type="button" class="refetchPageBtn uiBtn" id="refetchAllMissing" ${contentRefetchState.running?'disabled':''}>${contentRefetchState.running?fetchSpinnerHTML()+' 補抓進行中':icon('expand',15)+' 一鍵補抓缺漏 '+missing+' 篇'}</button><span class="refetchPageHint">僅補抓缺少標題、內文或封面的文章；不覆蓋手動內容</span></div>`:''}
  ${list.length?`<div class="grid">${list.map(cardHTML).join('')}</div>`:'<div class="empty">沒有符合條件的收藏。</div>'}`
 }
 
@@ -930,7 +957,7 @@ function bindTaxonomyChips(){
   b.addEventListener('contextmenu',e=>{e.preventDefault();clear();openTaxonomyManager(kind,value)});
  });
 }
-function bindPage(){bindTaxonomyChips();$$('[data-open]').forEach(b=>b.onclick=e=>{if(e.target.closest('[data-select]'))return;openDetail(b.dataset.open)});$$('[data-select]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();toggleSelect(b.dataset.select)});$$('[data-edit]').forEach(b=>b.onclick=e=>{e.stopPropagation();openEditor(b.dataset.edit)});$$('[data-delete]').forEach(b=>b.onclick=e=>{e.stopPropagation();deleteOne(b.dataset.delete)});$$('[data-listmode]').forEach(b=>b.onclick=()=>{listMode=b.dataset.listmode;render()});$$('[data-done]').forEach(c=>c.onchange=()=>{const [lid,idx]=c.dataset.done.split(':');const l=data.shoppingLists.find(x=>x.id===lid);if(l){l.items[+idx].done=c.checked;save();render()}});$$('[data-qty]').forEach(b=>b.onclick=()=>{const [lid,idx,d]=b.dataset.qty.split(':');const l=data.shoppingLists.find(x=>x.id===lid);if(l){l.items[+idx].qty=Math.max(1,(l.items[+idx].qty||1)+(+d));save();render()}});$$('[data-shopimg]').forEach(b=>b.onclick=()=>{const [lid,idx]=b.dataset.shopimg.split(':');editShoppingImage(lid,+idx)});
+function bindPage(){bindTaxonomyChips();if($('#refetchAllMissing'))$('#refetchAllMissing').onclick=startMissingContentRefetch;$$('[data-open]').forEach(b=>b.onclick=e=>{if(e.target.closest('[data-select]'))return;openDetail(b.dataset.open)});$$('[data-select]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();toggleSelect(b.dataset.select)});$$('[data-edit]').forEach(b=>b.onclick=e=>{e.stopPropagation();openEditor(b.dataset.edit)});$$('[data-delete]').forEach(b=>b.onclick=e=>{e.stopPropagation();deleteOne(b.dataset.delete)});$$('[data-listmode]').forEach(b=>b.onclick=()=>{listMode=b.dataset.listmode;render()});$$('[data-done]').forEach(c=>c.onchange=()=>{const [lid,idx]=c.dataset.done.split(':');const l=data.shoppingLists.find(x=>x.id===lid);if(l){l.items[+idx].done=c.checked;save();render()}});$$('[data-qty]').forEach(b=>b.onclick=()=>{const [lid,idx,d]=b.dataset.qty.split(':');const l=data.shoppingLists.find(x=>x.id===lid);if(l){l.items[+idx].qty=Math.max(1,(l.items[+idx].qty||1)+(+d));save();render()}});$$('[data-shopimg]').forEach(b=>b.onclick=()=>{const [lid,idx]=b.dataset.shopimg.split(':');editShoppingImage(lid,+idx)});
 $$('[data-view-shop-image]').forEach(b=>b.onclick=()=>{const [lid,idx]=b.dataset.viewShopImage.split(':');const l=data.shoppingLists.find(x=>x.id===lid);if(!l)return;const photos=l.items.map((it,j)=>({src:it.image,caption:it.name,originalIdx:j})).filter(x=>x.src);openImageViewer(photos,Math.max(0,photos.findIndex(x=>x.originalIdx===+idx)),l.name)});
 
 $$('[data-remove-shop]').forEach(b=>b.onclick=()=>{const [lid,idx]=b.dataset.removeShop.split(':');const l=data.shoppingLists.find(x=>x.id===lid);if(l&&confirm('刪除這個購物品項？')){l.items.splice(+idx,1);save();render()}});
@@ -1035,9 +1062,9 @@ function drawerHTML(){
  <div class="drawerTitle">篩選收藏</div><div class="cascadeFilter"><details open><summary>分類 · ${esc(categoryFilter)} </summary><div class="chips">${cats.map(x=>`<button class="chip ${categoryFilter===x?'active':''}" data-cat="${esc(x)}">${esc(x)}</button>`).join('')}</div></details>
  ${`<details><summary>　↳ 國家 · ${esc(countryFilter)}</summary><div class="chips">${countries.map(x=>`<button class="chip ${countryFilter===x?'active':''}" data-country="${esc(x)}">${esc(x)}</button>`).join('')}</div></details>`}
  ${`<details><summary>　　↳ 標籤 · ${esc(tagFilter)}</summary><div class="chips">${tags.map(x=>`<button class="chip ${tagFilter===x?'active':''}" data-tag="${esc(x)}">${x==='全部'?'全部':'# '+esc(x)}</button>`).join('')}</div></details>`}</div>
- <div class="drawerSection"><div class="drawerTitle">分類與標籤管理</div><button class="smallBtn" id="manageTaxonomy">新增／重新命名／刪除</button></div><div class="drawerSection"><div class="drawerTitle">雲端同步</div><div class="toolRow"><button class="smallBtn" id="cloudSetupBtn">設定／管理同步</button><button class="smallBtn" id="cloudSyncBtn">立即同步</button></div><p class="cloudHelp" id="cloudDrawerStatus">${esc(cloudMessage)}</p></div><div class="drawerSection"><div class="drawerTitle">資料工具</div><div class="toolRow"><button class="smallBtn" id="exportBtn">匯出備份</button><button class="smallBtn" id="importBtn">匯入備份</button><button class="smallBtn" id="resetFilter">清除篩選</button></div></div><div class="drawerSection"><div id="storageWarning" class="storageWarning ${storageError?'':'hidden'}">${esc(storageError||'')}</div><div class="storageFoot">本機保留備份。雲端同步需完成設定，建議定期匯出備份。</div><div class="filterLabel">目前版本</div><strong>v${VERSION}</strong></div></aside>`
+ <div class="drawerSection"><div class="drawerTitle">分類與標籤管理</div><button class="smallBtn" id="manageTaxonomy">新增／重新命名／刪除</button></div><div class="drawerSection"><div class="drawerTitle">雲端同步</div><div class="toolRow"><button class="smallBtn" id="cloudSetupBtn">設定／管理同步</button><button class="smallBtn" id="cloudSyncBtn">立即同步</button></div><p class="cloudHelp" id="cloudDrawerStatus">${esc(cloudMessage)}</p></div><div class="drawerSection"><div class="drawerTitle">內容補抓</div><button type="button" class="smallBtn refetchDrawerBtn" id="refetchDrawer" ${contentRefetchState.running?'disabled':''}>${contentRefetchState.running?fetchSpinnerHTML()+' 補抓進行中':icon('expand',15)+' 一鍵補抓缺漏文章（'+getMissingContentItems().length+' 篇）'}</button><p class="cloudHelp">只重新檢查缺少內文、封面或有效標題的收藏，不另建卡片。平台未開放的內容仍可能抓不到。</p></div><div class="drawerSection"><div class="drawerTitle">資料工具</div><div class="toolRow"><button class="smallBtn" id="exportBtn">匯出備份</button><button class="smallBtn" id="importBtn">匯入備份</button><button class="smallBtn" id="resetFilter">清除篩選</button></div></div><div class="drawerSection"><div id="storageWarning" class="storageWarning ${storageError?'':'hidden'}">${esc(storageError||'')}</div><div class="storageFoot">本機保留備份。雲端同步需完成設定，建議定期匯出備份。</div><div class="filterLabel">目前版本</div><strong>v${VERSION}</strong></div></aside>`
 }
-function openDrawer(){$('#drawerHost').innerHTML=drawerHTML();$('#closeDrawer').onclick=$('#drawerBackdrop').onclick=closeDrawer;$$('[data-cat]').forEach(b=>b.onclick=()=>{categoryFilter=b.dataset.cat;countryFilter='全部';tagFilter='全部';openDrawer();render()});$$('[data-country]').forEach(b=>b.onclick=()=>{countryFilter=b.dataset.country;tagFilter='全部';openDrawer();render()});$$('[data-tag]').forEach(b=>b.onclick=()=>{tagFilter=b.dataset.tag;openDrawer();render()});$('#manageTaxonomy').onclick=openTaxonomyManager;$('#cloudSetupBtn').onclick=()=>{closeDrawer();openCloudSettings()};$('#cloudSyncBtn').onclick=async()=>{closeDrawer();await cloudRun()};$('#exportBtn').onclick=exportData;$('#importBtn').onclick=()=>$('#importFile').click();$('#resetFilter').onclick=()=>{categoryFilter=countryFilter=tagFilter='全部';openDrawer();render()}}
+function openDrawer(){$('#drawerHost').innerHTML=drawerHTML();$('#closeDrawer').onclick=$('#drawerBackdrop').onclick=closeDrawer;$$('[data-cat]').forEach(b=>b.onclick=()=>{categoryFilter=b.dataset.cat;countryFilter='全部';tagFilter='全部';openDrawer();render()});$$('[data-country]').forEach(b=>b.onclick=()=>{countryFilter=b.dataset.country;tagFilter='全部';openDrawer();render()});$$('[data-tag]').forEach(b=>b.onclick=()=>{tagFilter=b.dataset.tag;openDrawer();render()});$('#manageTaxonomy').onclick=openTaxonomyManager;$('#refetchDrawer').onclick=()=>{closeDrawer();startMissingContentRefetch()};$('#cloudSetupBtn').onclick=()=>{closeDrawer();openCloudSettings()};$('#cloudSyncBtn').onclick=async()=>{closeDrawer();await cloudRun()};$('#exportBtn').onclick=exportData;$('#importBtn').onclick=()=>$('#importFile').click();$('#resetFilter').onclick=()=>{categoryFilter=countryFilter=tagFilter='全部';openDrawer();render()}}
 function closeDrawer(){$('#drawerHost').innerHTML=''}
 function openModal(html){
  $('#modalHost').innerHTML=`<div class="modalBackdrop" id="modalBackdrop"><section class="sheet" id="sheet">${html}</section></div>`;
@@ -1049,6 +1076,7 @@ function openDetail(id){detailIds=detailOrder().map(i=>i.id);if(!detailIds.inclu
 function renderDetail(){
  const i=data.items.find(x=>x.id===detailIds[detailIndex]);
  if(!i)return closeModal();
+ const refetchBusy=articleFetchInFlight.has(i.id),refetchInfo=articleFetchFeedback.get(i.id);
  const places=locationCandidates(i),place=places[0]||'',address=i.address||extractAddress(i.body),mapRegion=i.city||findRegion(i.body||''),insights=keyInsights(i),showSummary=hasDistinctSummary(i),detailTerms=uniq([...makeSearchTerms({placeName:place,address,products:i.products,body:i.body,country:i.country}),...(i.terms||[])]).slice(0,18);
  openModal(`<div class="sheetHead">
    <strong>${detailIndex+1} / ${detailIds.length}</strong>
@@ -1059,7 +1087,7 @@ function renderDetail(){
  <div class="detailBody">
    <h2 class="detailTitle">${esc(i.title)}</h2>
    <div class="detailMeta">${esc(i.platform)} · ${esc(i.category)} · ${esc(i.country)}${i.city?` · ${esc(i.city)}`:''}</div><div class="detailSaved">收藏於 ${formatSavedAt(i.createdAt)}</div>
-   ${i.url?`<div class="detailSection"><div class="fetchActionRow"><a class="linkPill uiBtn" href="${esc(i.url)}" target="_blank" rel="noopener noreferrer">↗ 原文章</a><button type="button" class="linkPill uiBtn" id="retryArticle">${icon('expand',14)} 再次擷取</button></div><div class="fetchFeedback" id="retryArticleStatus" role="status">${i.previewError?`上次擷取未成功：${esc(i.previewError)}；可以稍後重試。`:i.sourceQuality==='linkOnly'?'只有文章連結，點「再次擷取」可重新嘗試取得標題、內文與圖片。':'公開資料依來源限制取得，若缺內容可以再次擷取。'}</div></div>`:''}${i.url&&['preview','shared','linkOnly'].includes(i.sourceQuality)?`<div class="photoLimit">目前僅取得 ${i.images?.length||0} 張公開預覽圖片；社群相簿的其餘圖片若未開放讀取，可用「編輯」補入多張。</div>`:''}
+   ${i.url?`<div class="detailSection"><div class="fetchActionRow"><a class="linkPill uiBtn" href="${esc(i.url)}" target="_blank" rel="noopener noreferrer">↗ 原文章</a><button type="button" class="linkPill uiBtn" id="retryArticle" ${refetchBusy?'disabled aria-busy="true"':''}>${refetchBusy?fetchSpinnerHTML()+' 擷取中…':icon('expand',14)+' 再次擷取'}</button></div><div class="fetchFeedback" id="retryArticleStatus" role="status" data-kind="${refetchInfo?.kind||''}">${refetchInfo?esc(refetchInfo.text):i.previewError?`上次擷取未成功：${esc(i.previewError)}；可以稍後重試。`:i.sourceQuality==='linkOnly'?'只有文章連結，點「再次擷取」可重新嘗試取得標題、內文與圖片。':'公開資料依來源限制取得，若缺內容可以再次擷取。'}</div></div>`:''}${i.url&&['preview','shared','linkOnly'].includes(i.sourceQuality)?`<div class="photoLimit">目前僅取得 ${i.images?.length||0} 張公開預覽圖片；社群相簿的其餘圖片若未開放讀取，可用「編輯」補入多張。</div>`:''}
    ${i.images?.length?`<div class="detailSection visionSection">
     <div class="visionHead"><h4>圖片內容辨識</h4><button type="button" class="smallBtn uiBtn" id="analyzePhotos">${icon('search',15)} ${((i.vision?.entries||[]).length?'辨識其餘圖片／重試':'開始辨識')}</button></div>
     <p class="visionDesc">AI 讀取已收藏的圖片，提取可見文字、商品與地點線索。辨識結果可能有誤，確認後才套用到文章。</p>
@@ -1249,8 +1277,8 @@ function mergePublicPreview(item,meta){
  if(!item.placeName)item.placeName=findPlaceName(item.body,item.title);
  if(!item.address)item.address=extractAddress(item.body);
   if(!item.city)item.city=findRegion(`${item.title} ${item.body}`);
- if(item.category==='其他')item.category=inferCategory(`${item.title} ${item.body}`);
- if(item.country==='其他')item.country=inferCountry(`${item.title} ${item.body}`);
+ if(item.category==='其他'&&item.categorySource!=='manual')item.category=inferCategory(`${item.title} ${item.body}`);
+ if(item.country==='其他'&&item.countrySource!=='manual')item.country=inferCountry(`${item.title} ${item.body}`);
  item.tags=uniq([...(item.tags||[]),...guessTags(`${item.title} ${item.body}`,item.country,item.category)]);
  item.terms=makeSearchTerms({placeName:item.placeName,address:item.address,products:item.products,body:item.body,country:item.country});
  item.sourceQuality=item.body?(item.sourceQuality==='manual'?'manual':item.sourceQuality==='shared'?'shared':'preview'):'linkOnly';
@@ -1258,27 +1286,124 @@ function mergePublicPreview(item,meta){
  item.sourceCapturedAt=Date.now();
  return old!==JSON.stringify([item.title,item.body,item.images,item.category,item.country,item.placeName,item.address]);
 }
+// Both the one-post and batch buttons show actual network activity (and block repeated taps).
+const articleFetchInFlight=new Set(),articleFetchFeedback=new Map();
+function fetchSpinnerHTML(){return '<span class="fetchSpinner" aria-hidden="true"></span>'}
+function needsContentRefetch(i){
+ if(!i||!i.url||i.isExample||i.sourceQuality==='manual')return false;
+ const validTitle=!isWeakSavedTitle(i.title,i.platform,i.url)&&i.title!==quickFallbackTitle(i.url);
+ const hasBody=String(i.body||'').replace(/https?:\/\/\S+/gi,'').trim().length>=8;
+ const hasImage=Array.isArray(i.images)&&i.images.length>0;
+ return i.sourceQuality==='linkOnly'||!validTitle||!hasBody||!hasImage;
+}
+function getMissingContentItems(){return data.items.filter(needsContentRefetch)}
+function describeContentRefetch(before,item,meta,changed){
+ const addedImages=Math.max(0,(item.images?.length||0)-before.images);
+ const addedText=!before.body&&!!item.body;
+ const addedTitle=before.title!==item.title;
+ if(changed||addedImages||addedText||addedTitle){
+  const words=[addedTitle?'標題':'',addedText?'內文':'',addedImages?`${addedImages} 張圖片`:''].filter(Boolean);
+  return {kind:'ok',text:words.length?`已補上：${words.join('、')}。`:'已更新公開文章資訊。'};
+ }
+ return {kind:'warn',text:`已重新檢查，但來源沒有提供比現有更多的內容（目前 ${item.images?.length||0} 張公開圖片）。可以之後重試或手動補充。`};
+}
 async function retryItemMetadata(id){
  const target=data.items.find(i=>i.id===id);
- if(!target||!target.url)return;
- const btn=$('#retryArticle');const status=$('#retryArticleStatus');
- if(btn){btn.disabled=true;btn.textContent='擷取中…'}
- if(status)status.textContent='正在重新取得這篇文章的公開資訊…';
+ if(!target||!target.url||articleFetchInFlight.has(id))return;
+ articleFetchInFlight.add(id);
+ articleFetchFeedback.set(id,{kind:'',text:'正在讀取原始文章的公開資料，請稍候…'});
+ if(detailIds[detailIndex]===id)renderDetail();
  try{
   const meta=await fetchPublicMetadata(target.url);
   const latest=data.items.find(i=>i.id===id);
-  if(!latest)return; // User may have deleted the post while the request was running.
-  mergePublicPreview(latest,meta);
-  await save();
-  render();
-  if(detailIds[detailIndex]===id)renderDetail();
-  const note=$('#retryArticleStatus');
-  if(note)note.textContent=`重新擷取完成：取得 ${meta.images.length} 張公開圖片${meta.body?'與文章預覽':''}。`;
+  if(!latest)return;
+  const before={title:latest.title,body:latest.body,images:latest.images?.length||0};
+  const changed=mergePublicPreview(latest,meta);
+  articleFetchFeedback.set(id,describeContentRefetch(before,latest,meta,changed));
+  await save();render();
  }catch(e){
   const latest=data.items.find(i=>i.id===id);
-  if(latest){latest.previewError=String(e?.message||'來源暫無公開資訊');latest.previewCheckedAt=Date.now();latest.previewAttempts=(latest.previewAttempts||0)+1;await save()}
-  if(status)status.textContent=`仍無法取得公開內容：${String(e?.message||'來源限制')}。可以稍後再試或編輯補充。`;
- }finally{const b=$('#retryArticle');if(b){b.disabled=false;b.innerHTML=icon('expand',14)+' 再次擷取'}}
+  const reason=String(e?.message||'來源暫時沒有公開資訊');
+  if(latest){latest.previewError=reason;latest.previewCheckedAt=Date.now();latest.previewAttempts=(latest.previewAttempts||0)+1;await save()}
+  articleFetchFeedback.set(id,{kind:'warn',text:`重新擷取失敗：${reason}。可以稍後再試；不會刪除原本的收藏。`});
+ }finally{
+  articleFetchInFlight.delete(id);
+  if(detailIds[detailIndex]===id && $('#retryArticle'))renderDetail();
+ }
+}
+
+const contentRefetchState={running:false,stop:false,done:false,total:0,finished:0,updated:0,unchanged:0,failed:0,current:'',warning:''};
+function updateContentRefetchProgress(){
+ const p=$('#contentRefetchProgress');if(!p)return;
+ p.classList.toggle('hidden',!contentRefetchState.running&&!contentRefetchState.done);
+ p.setAttribute('aria-busy',contentRefetchState.running?'true':'false');
+ const spinner=$('#contentRefetchSpinner');if(spinner)spinner.classList.toggle('hidden',!contentRefetchState.running);
+ const stop=$('#contentRefetchStop'),close=$('#contentRefetchClose');
+ if(stop){stop.classList.toggle('hidden',!contentRefetchState.running);stop.disabled=contentRefetchState.stop;stop.textContent=contentRefetchState.stop?'停止中…':'停止'}
+ if(close)close.classList.toggle('hidden',contentRefetchState.running);
+ const title=$('#contentRefetchTitle');
+ if(title)title.textContent=contentRefetchState.running?`補抓中 ${contentRefetchState.finished} / ${contentRefetchState.total} 篇`:(contentRefetchState.stop?'補抓已停止':'補抓完成');
+ const info=$('#contentRefetchInfo');
+ if(info)info.textContent=contentRefetchState.running?
+  `目前：${contentRefetchState.current||'準備中'}\n已補上 ${contentRefetchState.updated} 篇 · 無新資訊 ${contentRefetchState.unchanged} 篇 · 失敗 ${contentRefetchState.failed} 篇${contentRefetchState.stop?' · 正在停止':''}`:
+  `已檢查 ${contentRefetchState.finished} 篇：補上 ${contentRefetchState.updated} 篇，沒有新資訊 ${contentRefetchState.unchanged} 篇，失敗 ${contentRefetchState.failed} 篇。${contentRefetchState.warning?'\n'+contentRefetchState.warning:''}`;
+ const fill=$('#contentRefetchFill');if(fill)fill.style.width=(contentRefetchState.total?Math.round(contentRefetchState.finished/contentRefetchState.total*100):0)+'%';
+}
+function stopContentRefetch(){contentRefetchState.stop=true;updateContentRefetchProgress()}
+function closeContentRefetchProgress(){if(contentRefetchState.running)return;contentRefetchState.done=false;updateContentRefetchProgress()}
+$('#contentRefetchStop').onclick=stopContentRefetch;
+$('#contentRefetchClose').onclick=closeContentRefetchProgress;
+async function startMissingContentRefetch(){
+ if(contentRefetchState.running)return;
+ const pending=getMissingContentItems().filter(i=>!articleFetchInFlight.has(i.id));
+ if(!pending.length){
+  contentRefetchState.done=true;contentRefetchState.stop=false;contentRefetchState.total=contentRefetchState.finished=0;
+  contentRefetchState.updated=contentRefetchState.unchanged=contentRefetchState.failed=0;
+  contentRefetchState.warning='目前沒有缺少基本公開內容的收藏；若文章相簿缺圖，可透過編輯補充。';
+  updateContentRefetchProgress();return;
+ }
+ if(pending.length>20&&!confirm(`將依序重新檢查 ${pending.length} 篇文章，可能需要幾分鐘。確定開始嗎？`))return;
+ Object.assign(contentRefetchState,{running:true,stop:false,done:false,total:pending.length,finished:0,updated:0,unchanged:0,failed:0,current:'',warning:''});
+ updateContentRefetchProgress();render();
+ for(const entry of pending){
+  if(contentRefetchState.stop)break;
+  const i=data.items.find(x=>x.id===entry.id);
+  if(!i||!needsContentRefetch(i))continue;
+  articleFetchInFlight.add(i.id);
+  contentRefetchState.current=i.title||i.url;
+  updateContentRefetchProgress();
+  try{
+   const meta=await fetchPublicMetadata(i.url);
+   const latest=data.items.find(x=>x.id===i.id);
+   if(latest){
+    const before={title:latest.title,body:latest.body,images:latest.images?.length||0};
+    const changed=mergePublicPreview(latest,meta);
+    const detail=describeContentRefetch(before,latest,meta,changed);
+    articleFetchFeedback.set(latest.id,detail);
+    if(detail.kind==='ok')contentRefetchState.updated++;else contentRefetchState.unchanged++;
+    await save();
+   }
+  }catch(e){
+   const reason=String(e?.message||'來源暫無公開資訊');
+   const latest=data.items.find(x=>x.id===i.id);
+   if(latest){latest.previewError=reason;latest.previewCheckedAt=Date.now();latest.previewAttempts=(latest.previewAttempts||0)+1;await save()}
+   articleFetchFeedback.set(i.id,{kind:'warn',text:`重新擷取未成功：${reason}`});
+   contentRefetchState.failed++;
+   if(/429|次數限制|rate.limit|quota/i.test(reason)){
+    contentRefetchState.warning='預覽服務已限流；已暫停其餘文章，稍後可重新執行。';
+    contentRefetchState.stop=true;
+   }
+  }finally{
+   articleFetchInFlight.delete(i.id);
+   contentRefetchState.finished++;
+   updateContentRefetchProgress();
+   // Give the preview service breathing room; avoid launching all posts at once.
+   if(!contentRefetchState.stop)await new Promise(r=>setTimeout(r,750));
+  }
+ }
+ contentRefetchState.running=false;contentRefetchState.done=true;contentRefetchState.current='';
+ updateContentRefetchProgress();render();
+ if(detailIds[detailIndex]&&$('#retryArticle'))renderDetail();
 }
 
 function detectProductCandidates(text){
@@ -1379,7 +1504,7 @@ function openQuickAdd(prefill=''){
  async function runLookup(){
   const url=cleanExternalURL(inp.value);
   if(!url){status.textContent='請貼上有效的 http / https 網址';preview.classList.add('hidden');cached=null;return}
-  const thisJob=++job;loadedURL=url;cached=null;status.textContent='正在取得公開預覽資訊…';status.dataset.state='loading';if($('#quickRetry'))$('#quickRetry').disabled=true;
+  const thisJob=++job;loadedURL=url;cached=null;status.textContent='正在取得公開預覽資訊…';status.dataset.state='loading';if($('#quickRetry')){$('#quickRetry').disabled=true;$('#quickRetry').innerHTML=fetchSpinnerHTML()+' 擷取中…'};
   try{
    const found=await fetchPublicMetadata(url);
    if(thisJob!==job)return;
@@ -1391,7 +1516,7 @@ function openQuickAdd(prefill=''){
   }catch(err){if(thisJob!==job)return;cached=null;status.dataset.state='fail';
    status.textContent=`無法讀取文章內容：${err.message||'來源限制'}。可以先儲存連結，或展開下方補充文字。`;
    preview.classList.add('hidden');if($('#quickAdvanced'))$('#quickAdvanced').open=true;
-  }finally{if(thisJob===job&&$('#quickRetry'))$('#quickRetry').disabled=false}
+  }finally{if(thisJob===job&&$('#quickRetry')){$('#quickRetry').disabled=false;$('#quickRetry').innerHTML=icon('expand',15)+' 重新擷取公開資訊'}}
  }
  $('#quickRetry').onclick=()=>{clearTimeout(delay);lookupPromise=runLookup()};
  inp.addEventListener('input',()=>{clearTimeout(delay);delay=setTimeout(()=>{if(cleanExternalURL(inp.value))lookupPromise=runLookup()},500)});
@@ -1750,6 +1875,10 @@ async function cloudRequest(method,path,body,settings=cloudConfig){
     err.status=r.status;throw err;
    }
    return json;
+ }catch(e){
+   if(e?.name==='AbortError')throw new Error('連線逾時：Worker 超過等待時間未回應，請稍後重試。');
+   if(e instanceof TypeError && /fetch|network|load failed/i.test(String(e.message)))throw new Error('無法連線至雲端。請確認網路、Worker 網址及 Cloudflare 服務是否正常。');
+   throw e;
  }finally{clearTimeout(timer)}
 }
 function cloudMerge(remote,local){
@@ -1771,7 +1900,10 @@ function cloudMerge(remote,local){
 async function cloudCommit(){
  const before=Number(cloudMeta.revision||0);
  const stamp=Number(data._savedAt||0);
- const result=await cloudRequest('PUT','/api/state',{expectedRevision:before,data:safeClone(data)});
+ const outgoing={expectedRevision:before,data:safeClone(data)};
+ const size=new TextEncoder().encode(JSON.stringify(outgoing)).length;
+ if(size>=1_498_000)throw new Error(`待同步資料約 ${(size/1_000_000).toFixed(2)} MB，超過雲端 1.5 MB 上限。可能有多張上傳圖片；本機資料仍保留，請先匯出備份，不要使用「以本機覆蓋雲端」。`);
+ const result=await cloudRequest('PUT','/api/state',outgoing);
  cloudMeta.revision=result.revision;
  // If a local edit happened mid-flight, keep it pending for the next cycle.
  cloudMeta.dirty=Number(data._savedAt||0)!==stamp;
@@ -1867,7 +1999,7 @@ function openCloudSettings(){
   <label>私密同步密鑰<input type="password" id="cloudToken" autocomplete="off" placeholder="Worker Secret：SJ_TOKEN" value="${esc(cloudConfig?.token||'')}"></label>
   <p class="cloudHelp" id="cloudDialogStatus">${esc(cloudMessage)}</p>
   <div class="formActions cloudActions"><button type="button" class="ghost uiBtn" id="cancelCloud">取消</button><button type="button" class="primary uiBtn" id="connectCloud">${active?'重新連線':'開始連線'}</button></div>
-  ${active?`<div class="formActions"><button type="button" class="ghost uiBtn" id="syncCloudNow">立即同步</button><button type="button" class="ghost uiBtn" id="cloudPullForce">改用雲端資料</button><button type="button" class="ghost uiBtn" id="cloudPushForce">以本機覆蓋雲端</button><button type="button" class="ghost uiBtn" id="disconnectCloud">斷開</button></div>`:''}
+  ${active?`<div class="cloudDiagRow"><button type="button" class="ghost uiBtn" id="cloudDiagnose">檢查同步原因</button><p class="cloudHelp" id="cloudDiagResult">只檢查資料量與連線版本，不更動收藏，也不會公開密鑰。</p></div><div class="formActions"><button type="button" class="ghost uiBtn" id="syncCloudNow">立即同步</button><button type="button" class="ghost uiBtn" id="cloudPullForce">改用雲端資料</button><button type="button" class="ghost uiBtn" id="cloudPushForce">以本機覆蓋雲端</button><button type="button" class="ghost uiBtn" id="disconnectCloud">斷開</button></div>`:''}
  </div>`);
  $('#closeCloud').onclick=$('#cancelCloud').onclick=closeModal;
  $('#connectCloud').onclick=async()=>{
@@ -1878,6 +2010,25 @@ function openCloudSettings(){
   finally{btn.disabled=false}
  };
  if(!active)return;
+ $('#cloudDiagnose').onclick=async()=>{
+  const btn=$('#cloudDiagnose'),out=$('#cloudDiagResult');
+  btn.disabled=true;btn.innerHTML=fetchSpinnerHTML()+' 檢查中…';out.textContent='正在確認雲端修訂與資料大小…';
+  const size=new TextEncoder().encode(JSON.stringify({expectedRevision:Number(cloudMeta.revision||0),data})).length;
+  const sizeText=(size/1_000_000).toFixed(2)+' MB';
+  try{
+   const remote=await cloudRequest('GET','/api/state');
+   const msgs=[`雲端連線正常。這台裝置的收藏資料約 ${sizeText}（雲端上限 1.5 MB）。`];
+   if(size>=1_498_000)msgs.push('資料已超出同步大小限制，請先匯出備份；上傳圖片需要改用雲端圖庫，請勿直接覆蓋雲端。');
+   else if(size>1_200_000)msgs.push('資料量接近上限，之後加圖片可能造成同步失敗。');
+   if(cloudMeta.revision===null)msgs.push('本機尚未建立同步修訂，請重新檢查雲端連線設定。');
+   else if(remote.revision!==cloudMeta.revision&&cloudMeta.dirty)msgs.push(`偵測到版本衝突（本機 ${cloudMeta.revision}、雲端 ${remote.revision}），不要直接覆蓋；建議先匯出本機備份。`);
+   else if(remote.revision!==cloudMeta.revision)msgs.push(`雲端已有較新修訂 ${remote.revision}，可以先按「立即同步」取得更新。`);
+   else if(cloudMeta.dirty)msgs.push('本機有待同步變更，請按「立即同步」後查看結果。');
+   else msgs.push('目前未發現資料量或版本衝突問題。若仍失敗，請提供「同步失敗：」後面的錯誤訊息。');
+   out.textContent=msgs.join('\n');
+  }catch(e){out.textContent=`本機資料約 ${sizeText}。讀取雲端失敗：${e.message}`}
+  finally{btn.disabled=false;btn.textContent='檢查同步原因'}
+ };
  $('#syncCloudNow').onclick=async()=>{cloudConflict=false;closeModal();await cloudRun();if(cloudMessage.startsWith('同步失敗'))alert(cloudMessage)};
  $('#cloudPullForce').onclick=async()=>{
   if(!confirm('將這台裝置目前的資料改為雲端版本。請先匯出本機備份，確定嗎？'))return;
