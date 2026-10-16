@@ -399,6 +399,9 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 .screenshotFormDivider{margin:9px 0 14px;border-top:1px solid #eceee8}
 .screenshotCancel{flex-shrink:0}
 @media(max-width:390px){.screenshotActions{align-items:stretch}.screenshotActions button{flex:1;min-width:0}}
+/* v1.8.13 stateful retry feedback */
+.retryPolicyStatus{margin-top:8px;padding:9px 11px;background:#f6f5ef;border-left:3px solid #a68e5a;border-radius:8px;color:#655531;font-size:12px;line-height:1.55}
+.retryCardHint{margin-top:6px;font-size:11px;line-height:1.4;color:#856b3e}
 </style>
 <style>
 .cascadeFilter{border:1px solid var(--line);border-radius:13px;background:#fff;overflow:hidden;margin:8px 0 14px}
@@ -529,7 +532,7 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 
 <script>
 
-const VERSION="1.8.12", STORE="socialSaver_data";
+const VERSION="1.8.13", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -789,6 +792,71 @@ function locationCandidates(item){
  for(const m of raw.matchAll(quotes)){if(/(?:店|館|咖啡|cafe|café|coffee|餐廳|食堂|茶屋|烘焙)/i.test(m[1]))add(m[1])}
  return names.slice(0,8);
 }
+// v1.8.13: stateful, bounded retry policy. Only record NEW actual outcomes;
+// existing collections keep their old data and are not retroactively marked failed.
+function normalizeRetryState(state){
+ const v=state&&typeof state==='object'&&!Array.isArray(state)?state:{};
+ return {consecutive:Math.max(0,Math.min(12,Number(v.consecutive)||0)),sameReason:Math.max(0,Math.min(12,Number(v.sameReason)||0)),
+  reason:['restricted','no-content','rate-limit','temporary'].includes(v.reason)?v.reason:'',
+  status:['waiting','paused','ready'].includes(v.status)?v.status:'ready',
+  nextAt:Math.max(0,Number(v.nextAt)||0),lastAt:Math.max(0,Number(v.lastAt)||0),
+  lastError:String(v.lastError||'').slice(0,220)};
+}
+function retryFailureReason(message){
+ const str=String(message||'');
+ if(/\b429\b|限流|過於頻繁|too many requests|rate.limit|cooldown|冷卻|quota|額度|達上限/i.test(str))return 'rate-limit';
+ if(/this content isn.t available|thread not available|存取限制|未向外部服務提供|平台.*(?:無法|限制)|雲端瀏覽器也未取得可讀內容|browser-no-readable-post|browser-page-blocked|無法向所有人公開|not available to everyone|threads-access-limited/i.test(str))return 'restricted';
+ if(/timeout|timed out|逾時|網路|斷線|失去連線|temporar|connection|fetch failed|\b50[0234]\b|service unavailable|伺服器|browser-cooldown/i.test(str))return 'temporary';
+ return 'no-content';
+}
+function clearFetchRetry(item){
+ item.retryState=normalizeRetryState(null);
+ item.previewError='';
+}
+function markFetchRetry(item,message,overriddenReason){
+ const prior=normalizeRetryState(item.retryState),reason=overriddenReason||retryFailureReason(message),now=Date.now();
+ const consecutive=prior.consecutive+1;
+ const sameReason=prior.reason===reason?prior.sameReason+1:1;
+ // Two repeated access restrictions are enough; other repeated dead ends stop after three.
+ // Temporary quota/network problems are not mislabelled as permanently inaccessible.
+ const paused=reason==='restricted'?sameReason>=2:reason==='no-content'?consecutive>=3:consecutive>=3;
+ const wait=reason==='rate-limit'?[30,90,180][Math.min(consecutive-1,2)]*60000:
+   reason==='temporary'?[15,60,180][Math.min(consecutive-1,2)]*60000:
+   [15,60,180][Math.min(consecutive-1,2)]*60000;
+ const providerWait=reason==='rate-limit'&&typeof previewCooldownUntil==='function'?Number(previewCooldownUntil())||0:0;
+ item.retryState={consecutive,sameReason,reason,status:paused?'paused':'waiting',
+  nextAt:paused?0:Math.max(now+wait,providerWait),lastAt:now,lastError:String(message||'').slice(0,220)};
+ item.previewError=String(message||'').slice(0,260);item.previewCheckedAt=now;
+ item.previewAttempts=(item.previewAttempts||0)+1;
+ return item.retryState;
+}
+function retryStatusText(item){
+ const r=normalizeRetryState(item?.retryState);
+ if(r.status==='ready')return '';
+ const why=r.reason==='restricted'?'Threads 持續限制外部讀取':r.reason==='rate-limit'?'服務限流／額度問題':r.reason==='temporary'?'暫時性連線問題':'來源沒有提供新內容';
+ if(r.status==='paused')return `已暫停自動擷取（連續 ${r.consecutive} 次無進展：${why}）；仍可手動按「再次擷取」。`;
+ return `已嘗試 ${r.consecutive} 次：${why}。${r.nextAt>Date.now()?`最早 ${new Date(r.nextAt).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})} 再自動嘗試。`:'等待下一次自動嘗試。'}`;
+}
+function retryAutoEligible(item,now=Date.now()){
+ const r=normalizeRetryState(item?.retryState);
+ return r.status==='waiting'&&r.nextAt>0&&r.nextAt<=now&&!item?.isExample&&item?.sourceQuality!=='manual';
+}
+function retryBatchEligible(item,now=Date.now()){
+ const r=normalizeRetryState(item?.retryState);
+ return r.status==='ready'||r.status==='waiting'&&r.nextAt<=now;
+}
+function contentActuallyImproved(before,item){
+ return before.title!==item.title&&!isWeakSavedTitle(item.title,item.platform,item.url)||(!before.body&&!!String(item.body||'').trim())||
+   (item.images||[]).some(src=>!before.imageKeys.includes(articlePhotoKey(src)));
+}
+function snapshotFetchContent(item){return {title:item.title,body:String(item.body||'').trim(),imageKeys:(item.images||[]).map(articlePhotoKey)}}
+function recordFetchCheck(item,before,meta){
+ const improved=contentActuallyImproved(before,item);
+ if(improved){clearFetchRetry(item);return true}
+ // Changing an informational browser notice is not a successful content fetch.
+ markFetchRetry(item,meta?.browserNotice||'重新擷取後沒有取得更多文字或圖片',meta?.browserNotice&&retryFailureReason(meta.browserNotice)==='restricted'?'restricted':'no-content');
+ return false;
+}
 function normalizeItem(i){
  const badPreviewBody=i.sourceQuality!=='manual'&&isPlatformUnavailableText(i.body);
  const safeBody=badPreviewBody?'':(i.body||'');
@@ -817,7 +885,7 @@ function normalizeItem(i){
   vision,
   summary:(badPreviewBody||isPlatformUnavailableText(i.summary))?'':typeof i.summary==='string'?i.summary:'',note:i.note||'',
   sourceQuality:badPreviewBody&&!images.length?'linkOnly':(i.sourceQuality||'manual'),sourceCapturedAt:i.sourceCapturedAt||null,
-  titleSource:i.titleSource||'auto',previewAttempts:i.previewAttempts||0,previewError:badPreviewBody?'來源僅回傳存取限制提示，請再次擷取或貼上內文':(i.previewError||''),previewCheckedAt:i.previewCheckedAt||null,
+  retryState:normalizeRetryState(i.retryState),titleSource:i.titleSource||'auto',previewAttempts:i.previewAttempts||0,previewError:badPreviewBody?'來源僅回傳存取限制提示，請再次擷取或貼上內文':(i.previewError||''),previewCheckedAt:i.previewCheckedAt||null,
   createdAt:i.createdAt||Date.now(),status:i.status||((i.category||'')==='購物'?'想買':'剛收藏')
  }
 }
@@ -892,6 +960,7 @@ function cardHTML(i){
     <h3 class="title">${esc(i.title)} ${i.isExample?'<span class="tag example">範例</span>':''}</h3>
     <div class="meta">${esc(i.category)}${i.city?` · ${esc(i.city)}`:''}</div>
     <div class="originalSnippet"><span>${i.sourceQuality==='preview'?'摘要':i.sourceQuality==='linkOnly'?'連結':'原文'}</span>${esc(i.body||(!i.url?i.summary:'')||'點開查看原始連結與已保存的資訊')}</div>
+    ${i.retryState?.status==='paused'?`<div class="retryCardHint">自動擷取已暫停 · 可手動重試</div>`:''}
     ${i.note?.trim()?`<div class="cardNote"><span class="cardNoteKey">備註</span><span class="cardNoteText">${esc(i.note.trim())}</span></div>`:''}
     <div class="tagRow">${(i.tags||[]).slice(0,3).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>
     <div class="savedTime">收藏於 ${formatSavedAt(i.createdAt)}</div>
@@ -904,9 +973,9 @@ function cardHTML(i){
 function commonProducts(group){const m={};group.forEach(i=>(i.products||[]).forEach((p,idx)=>{const k=norm(p);if(!m[k])m[k]={name:p,count:0,image:productImage(i,p,idx)};m[k].count++}));return Object.values(m).filter(x=>x.count>1).sort((a,b)=>b.count-a.count)}
 function similarClusters(){const items=allSorted(),used=new Set(),out=[];for(let a=0;a<items.length;a++){if(used.has(items[a].id))continue;const g=[items[a]];for(let b=a+1;b<items.length;b++){const A=items[a],B=items[b],pa=new Set((A.products||[]).map(norm)),pb=new Set((B.products||[]).map(norm)),shared=[...pa].filter(x=>pb.has(x)).length,tagShared=(A.tags||[]).filter(x=>(B.tags||[]).includes(x)).length;if(shared>=1||(A.category===B.category&&A.country===B.country&&tagShared>=2))g.push(B)}if(g.length>1){g.forEach(x=>used.add(x.id));out.push(g)}}return out}
 function renderLibrary(){
- const list=filteredItems(),missing=getMissingContentItems().length;
+  const list=filteredItems(),missing=getMissingContentItems().length,paused=data.items.filter(i=>needsContentRefetch(i)&&i.retryState?.status==='paused').length;
  return `<div class="pageHead"><div><h2>拾集</h2><p>${list.length} 篇收藏 · 點卡片查看內容</p></div></div>
- ${missing?`<div class="refetchPageArea"><button type="button" class="refetchPageBtn uiBtn" id="refetchAllMissing" ${contentRefetchState.running?'disabled':''}>${contentRefetchState.running?fetchSpinnerHTML()+' 補抓進行中':icon('expand',15)+' 一鍵補抓缺漏 '+missing+' 篇'}</button><span class="refetchPageHint">僅補抓缺少標題、內文或封面的文章；不覆蓋手動內容</span></div>`:''}
+ ${missing||paused?`<div class="refetchPageArea">${missing?`<button type="button" class="refetchPageBtn uiBtn" id="refetchAllMissing" ${contentRefetchState.running?'disabled':''}>${contentRefetchState.running?fetchSpinnerHTML()+' 補抓進行中':icon('expand',15)+' 一鍵補抓缺漏 '+missing+' 篇'}</button>`:''}<span class="refetchPageHint">缺漏文章有冷卻與停止門檻，避免反覆消耗額度；不覆蓋手動內容${paused?`；${paused} 篇已暫停自動擷取`:''}</span></div>`:''}
  ${list.length?`<div class="grid">${list.map(cardHTML).join('')}</div>`:'<div class="empty">沒有符合條件的收藏。</div>'}`
 }
 
@@ -1133,7 +1202,7 @@ function renderDetail(){
  <div class="detailBody">
    <h2 class="detailTitle">${esc(i.title)}</h2>
    <div class="detailMeta">${esc(i.platform)} · ${esc(i.category)} · ${esc(i.country)}${i.city?` · ${esc(i.city)}`:''}</div><div class="detailSaved">收藏於 ${formatSavedAt(i.createdAt)}</div>
-   ${i.url?`<div class="detailSection"><div class="fetchActionRow"><a class="linkPill uiBtn" href="${esc(i.url)}" target="_blank" rel="noopener noreferrer">↗ 原文章</a><button type="button" class="linkPill uiBtn" id="retryArticle" ${refetchBusy?'disabled aria-busy="true"':''}>${refetchBusy?fetchSpinnerHTML()+' 擷取中…':icon('expand',14)+' 再次擷取'}</button><button type="button" class="linkPill uiBtn pasteContentBtn" id="pasteArticleText">${icon('image',14)} 手機補充文字／截圖</button></div><div class="fetchFeedback" id="retryArticleStatus" role="status" data-kind="${refetchInfo?.kind||''}">${refetchInfo?esc(refetchInfo.text):i.previewError?`上次擷取未成功：${esc(i.previewError)}；可以稍後重試。`:i.sourceQuality==='linkOnly'?'只有文章連結，點「再次擷取」可重新嘗試取得標題、內文與圖片。':'公開資料依來源限制取得，若缺內容可以再次擷取。'}</div></div>`:''}${i.browserNotice?`<div class="fetchFeedback" role="status">${esc(i.browserNotice)}</div>`:''}${i.url&&['preview','shared','linkOnly'].includes(i.sourceQuality)?`<div class="photoLimit">目前取得 ${i.images?.length||0} 張不同圖片（已排除重複封面）。如果原貼文是多圖輪播，但平台未載入其他張，雲端擷取仍無法保證抓齊。</div>`:''}
+   ${i.url?`<div class="detailSection"><div class="fetchActionRow"><a class="linkPill uiBtn" href="${esc(i.url)}" target="_blank" rel="noopener noreferrer">↗ 原文章</a><button type="button" class="linkPill uiBtn" id="retryArticle" ${refetchBusy?'disabled aria-busy="true"':''}>${refetchBusy?fetchSpinnerHTML()+' 擷取中…':icon('expand',14)+' 再次擷取'}</button><button type="button" class="linkPill uiBtn pasteContentBtn" id="pasteArticleText">${icon('image',14)} 手機補充文字／截圖</button></div><div class="fetchFeedback" id="retryArticleStatus" role="status" data-kind="${refetchInfo?.kind||''}">${refetchInfo?esc(refetchInfo.text):i.previewError?`上次擷取未成功：${esc(i.previewError)}；可以稍後重試。`:i.sourceQuality==='linkOnly'?'只有文章連結，點「再次擷取」可重新嘗試取得標題、內文與圖片。':'公開資料依來源限制取得，若缺內容可以再次擷取。'}</div>${retryStatusText(i)?`<div class="retryPolicyStatus" role="status">${esc(retryStatusText(i))}</div>`:''}</div>`:''}${i.browserNotice?`<div class="fetchFeedback" role="status">${esc(i.browserNotice)}</div>`:''}${i.url&&['preview','shared','linkOnly'].includes(i.sourceQuality)?`<div class="photoLimit">目前取得 ${i.images?.length||0} 張不同圖片（已排除重複封面）。如果原貼文是多圖輪播，但平台未載入其他張，雲端擷取仍無法保證抓齊。</div>`:''}
    ${i.images?.length?`<div class="detailSection visionSection">
     <div class="visionHead"><h4>圖片內容辨識</h4><button type="button" class="smallBtn uiBtn" id="analyzePhotos">${icon('search',15)} ${((i.vision?.entries||[]).length?'辨識其餘圖片／重試':'開始辨識')}</button></div>
     <p class="visionDesc">AI 讀取已收藏的圖片，提取可見文字、商品與地點線索。辨識結果可能有誤，確認後才套用到文章。</p>
@@ -1569,7 +1638,7 @@ function applyPastedClassification(item,body){
   const suggested=readableTitle(item.url,body);
   if(suggested)item.title=suggested;
  }
- item.body=body;item.sourceQuality='manual';item.previewError='';item.sourceCapturedAt=Date.now();
+ item.body=body;item.sourceQuality='manual';clearFetchRetry(item);item.sourceCapturedAt=Date.now();
  const category=inferCategory(text),country=inferCountry(text);
  if(item.categorySource!=='manual'&&category!=='其他')item.category=category;
  if(item.countrySource!=='manual'&&country!=='其他')item.country=country;
@@ -1717,7 +1786,7 @@ function needsContentRefetch(i){
  const hasImage=Array.isArray(i.images)&&i.images.length>0;
  return i.sourceQuality==='linkOnly'||!validTitle||!hasBody||!hasImage;
 }
-function getMissingContentItems(){return data.items.filter(needsContentRefetch)}
+function getMissingContentItems(){return data.items.filter(i=>needsContentRefetch(i)&&retryBatchEligible(i))}
 function describeContentRefetch(before,item,meta,changed){
  const addedImages=Math.max(0,(item.images?.length||0)-before.images);
  const addedText=!before.body&&!!item.body;
@@ -1739,14 +1808,17 @@ async function retryItemMetadata(id){
   const latest=data.items.find(i=>i.id===id);
   if(!latest)return;
   const before={title:latest.title,body:latest.body,images:latest.images?.length||0};
+  const original=snapshotFetchContent(latest);
   const changed=mergePublicPreview(latest,meta);
-  articleFetchFeedback.set(id,describeContentRefetch(before,latest,meta,changed));
+  const improved=recordFetchCheck(latest,original,meta);
+  articleFetchFeedback.set(id,improved?describeContentRefetch(before,latest,meta,changed):
+   {kind:'warn',text:`沒有找到新增內容。${retryStatusText(latest)}`});
   await save();render();
  }catch(e){
   const latest=data.items.find(i=>i.id===id);
   const reason=String(e?.message||'來源暫時沒有公開資訊');
-  if(latest){latest.previewError=reason;latest.previewCheckedAt=Date.now();latest.previewAttempts=(latest.previewAttempts||0)+1;await save()}
-  articleFetchFeedback.set(id,{kind:'warn',text:`重新擷取失敗：${reason}。可以稍後再試；不會刪除原本的收藏。`});
+  if(latest){markFetchRetry(latest,reason);await save()}
+  articleFetchFeedback.set(id,{kind:'warn',text:`重新擷取失敗：${reason}。${latest?retryStatusText(latest):'不會刪除原本的收藏。'}`});
  }finally{
   articleFetchInFlight.delete(id);
   if(detailIds[detailIndex]===id && $('#retryArticle'))renderDetail();
@@ -1780,7 +1852,7 @@ async function startMissingContentRefetch(){
  if(!pending.length){
   contentRefetchState.done=true;contentRefetchState.stop=false;contentRefetchState.total=contentRefetchState.finished=0;
   contentRefetchState.updated=contentRefetchState.unchanged=contentRefetchState.failed=0;
-  contentRefetchState.warning='目前沒有缺少基本公開內容的收藏；若文章相簿缺圖，可透過編輯補充。';
+  contentRefetchState.warning='目前沒有可自動重試的文章（已達停止門檻或仍在冷卻中的文章會略過）。可在單篇文章內手動重試。';
   updateContentRefetchProgress();return;
  }
  if(pending.length>20&&!confirm(`將依序重新檢查 ${pending.length} 篇文章，可能需要幾分鐘。確定開始嗎？`))return;
@@ -1798,17 +1870,20 @@ async function startMissingContentRefetch(){
    const latest=data.items.find(x=>x.id===i.id);
    if(latest){
     const before={title:latest.title,body:latest.body,images:latest.images?.length||0};
+    const original=snapshotFetchContent(latest);
     const changed=mergePublicPreview(latest,meta);
-    const detail=describeContentRefetch(before,latest,meta,changed);
+    const improved=recordFetchCheck(latest,original,meta);
+    const detail=improved?describeContentRefetch(before,latest,meta,changed):
+       {kind:'warn',text:`沒有新資訊。${retryStatusText(latest)}`};
     articleFetchFeedback.set(latest.id,detail);
-    if(detail.kind==='ok')contentRefetchState.updated++;else contentRefetchState.unchanged++;
+    if(improved)contentRefetchState.updated++;else contentRefetchState.unchanged++;
     await save();
    }
   }catch(e){
    const reason=String(e?.message||'來源暫無公開資訊');
    const latest=data.items.find(x=>x.id===i.id);
-   if(latest){latest.previewError=reason;latest.previewCheckedAt=Date.now();latest.previewAttempts=(latest.previewAttempts||0)+1;await save()}
-   articleFetchFeedback.set(i.id,{kind:'warn',text:`重新擷取未成功：${reason}`});
+   if(latest){markFetchRetry(latest,reason);await save()}
+   articleFetchFeedback.set(i.id,{kind:'warn',text:`重新擷取未成功：${reason}${latest?'；'+retryStatusText(latest):''}`});
    contentRefetchState.failed++;
    if(/429|次數限制|限流|rate.limit|quota/i.test(reason)){
     contentRefetchState.warning='預覽服務已限流；已暫停其餘文章，稍後可重新執行。';
@@ -2098,7 +2173,8 @@ function openEditor(id=null){
    data.customCategories=uniq([...(data.customCategories||[]),category]);
    data.customCountries=uniq([...(data.customCountries||[]),country]);
    data.customTags=uniq([...(data.customTags||[]),...tags]);
-   const obj=normalizeItem({...item,title,titleSource:'manual',body,city,country,category,categorySource:'manual',countrySource:'manual',placeName,address,products,images,productImages,tags,platform:$('#fPlatform').value,url:$('#fUrl').value.trim(),shoppingType:$('#fShoppingType').value.trim(),note:$('#fNote').value,summary:body.replace(/\s+/g,' ').slice(0,150),createdAt:item.createdAt});
+   const manualContentChanged=body!==String(item.body||'')||JSON.stringify(uniqueArticleImages(images))!==JSON.stringify(item.images||[]);
+   const obj=normalizeItem({...item,title,titleSource:'manual',body,sourceQuality:manualContentChanged&&body?'manual':item.sourceQuality,retryState:manualContentChanged?normalizeRetryState(null):item.retryState,city,country,category,categorySource:'manual',countrySource:'manual',placeName,address,products,images,productImages,tags,platform:$('#fPlatform').value,url:$('#fUrl').value.trim(),shoppingType:$('#fShoppingType').value.trim(),note:$('#fNote').value,summary:body.replace(/\s+/g,' ').slice(0,150),createdAt:item.createdAt});
    Object.assign(item,obj);await save();closeModal();render();
    if(added.length&&cloudConfig)setTimeout(()=>analyzeArticlePhotos(item.id,{silent:true}),500)
   }catch(err){alert('儲存失敗：'+err.message)}finally{if(submit)submit.disabled=false}
@@ -2388,20 +2464,53 @@ async function hydrateSharedArticles(queue){
    const target=data.items.find(x=>x.id===entry.id);
    if(!target||target.url!==entry.url||target.sourceQuality==='manual')continue;
    // Merge into the same existing post ID; do not create a second card.
+   const before=snapshotFetchContent(target);
    mergePublicPreview(target,meta);
+   recordFetchCheck(target,before,meta);
    await save();render();
    if(target.images?.length&&cloudConfig&&!target.isExample)setTimeout(()=>analyzeArticlePhotos(target.id,{silent:true}),650);
   }catch(err){
    const target=data.items.find(x=>x.id===entry.id);
-   if(target){target.previewError=String(err?.message||'公開內容無法擷取');target.previewCheckedAt=Date.now();target.previewAttempts=(target.previewAttempts||0)+1;await save()}
+   if(target){markFetchRetry(target,String(err?.message||'公開內容無法擷取'));await save()}
   }
  }
 }
+// Foreground-only gentle retries; never schedule a previously untracked old bookmark.
+const AUTO_RETRY_USAGE_KEY='shiji_auto_retry_usage_v1813';
+let autoRetryBusy=false,autoRetryTimer=null;
+function retryDailyAllowance(){
+ const day=new Date().toISOString().slice(0,10);let obj;
+ try{obj=JSON.parse(localStorage.getItem(AUTO_RETRY_USAGE_KEY)||'null')}catch{}
+ return obj?.day===day?{day,count:Math.max(0,Number(obj.count)||0)}:{day,count:0};
+}
+async function attemptDueContentRetry(){
+ if(autoRetryBusy||articleFetchInFlight.size||contentRefetchState.running||!cloudConfig||!cloudMeta.wasConnected||cloudBusy||cloudConflict||document.visibilityState!=='visible'||navigator.onLine===false)return;
+ const quota=retryDailyAllowance();if(quota.count>=6)return;
+ if(typeof previewCooldownUntil==='function'&&previewCooldownUntil()>Date.now())return;
+ const due=data.items.filter(i=>needsContentRefetch(i)&&retryAutoEligible(i)).sort((a,b)=>a.retryState.nextAt-b.retryState.nextAt)[0];
+ if(!due)return;
+ autoRetryBusy=true;articleFetchInFlight.add(due.id);
+ try{
+  localStorage.setItem(AUTO_RETRY_USAGE_KEY,JSON.stringify({day:quota.day,count:quota.count+1}));
+  const meta=await fetchPublicMetadata(due.url,{browserMode:'off'});
+  const target=data.items.find(x=>x.id===due.id);
+  if(target&&target.sourceQuality!=='manual'){
+   const before=snapshotFetchContent(target);mergePublicPreview(target,meta);
+   const improved=recordFetchCheck(target,before,meta);
+   articleFetchFeedback.set(target.id,improved?{kind:'ok',text:'背景重試已補上內容。'}:{kind:'warn',text:retryStatusText(target)});
+   await save();render();
+  }
+ }catch(e){const target=data.items.find(x=>x.id===due.id);if(target){markFetchRetry(target,String(e?.message||'重試未成功'));await save()}}
+ finally{articleFetchInFlight.delete(due.id);autoRetryBusy=false;
+  if(detailIds[detailIndex]===due.id&&$('#retryArticle'))renderDetail();}
+}
+function startAutoRetryTimer(){if(!autoRetryTimer)autoRetryTimer=setInterval(()=>{attemptDueContentRetry().catch(()=>{})},90000)}
 async function cloudBoot(){
  if(!cloudConfig)return;
  if(!cloudConfig.url||!cloudConfig.token){cloudConfig=null;return}
  await cloudRun();
  if(!cloudTimer)cloudTimer=setInterval(()=>{if(document.visibilityState==='visible')cloudRun()},5000);
+ startAutoRetryTimer();
 }
 async function cloudConnect(url,token){
  const config={url:cloudServerURL(url),token:String(token||'').trim()};
@@ -2419,6 +2528,7 @@ async function cloudConnect(url,token){
  await writeStore(data);
  await cloudCommit();cloudConflict=false;render();
  if(!cloudTimer)cloudTimer=setInterval(()=>{if(document.visibilityState==='visible')cloudRun()},5000);
+ startAutoRetryTimer();
  await cloudRun();return true;
 }
 function formatUsageTime(ms){return ms?formatSavedAt(ms):'尚無紀錄'}
@@ -2524,6 +2634,7 @@ function openCloudSettings(){
   try{localStorage.removeItem(CLOUD_CONFIG_KEY);localStorage.removeItem(CLOUD_META_KEY)}catch{}
   cloudConfig=null;cloudMeta={revision:null,dirty:false,wasConnected:false};cloudConflict=false;
   if(cloudTimer){clearInterval(cloudTimer);cloudTimer=null}
+  if(autoRetryTimer){clearInterval(autoRetryTimer);autoRetryTimer=null}
   cloudMessage='尚未設定雲端';closeModal();cloudStatusUI()
  };
 }
