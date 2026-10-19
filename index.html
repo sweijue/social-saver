@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="拾集">
-<title>拾集 v1.8.22</title>
+<title>拾集 v1.8.24</title>
 <style>
 :root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#6e6e68;--line:#e4e4de;--soft:#efefe9;--shadow:0 10px 28px rgba(0,0,0,.07);--r:20px;--navh:74px}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif;font-size:17px}body{min-height:100vh;padding-bottom:calc(var(--navh) + env(safe-area-inset-bottom) + 18px)}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
@@ -581,7 +581,7 @@ main{padding-top:calc(116px + env(safe-area-inset-top))!important}
 
 <script>
 
-const VERSION="1.8.23", STORE="socialSaver_data";
+const VERSION="1.8.24", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -2512,7 +2512,7 @@ try{const shared=new URL(location.href).searchParams.get('url');if(shared&&clean
 // iOS browser gesture scaling can distort this app layout; keep native vertical scrolling.
 document.addEventListener('gesturestart',e=>e.preventDefault(),{passive:false});
 document.addEventListener('gesturechange',e=>e.preventDefault(),{passive:false});
-// ----- 拾集雲端同步 v1.8.23 (Cloudflare Worker + D1, automatic legacy compatibility) -----
+// ----- 拾集雲端同步 v1.8.24 (Cloudflare Worker + D1, v2 self-echo fix) -----
 // Keys, including the private token, are written only to the user's own browser storage.
 // Never hardcode the token into a public GitHub Pages HTML file.
 const CLOUD_CONFIG_KEY = 'shiji_cloud_config_v1';
@@ -2637,27 +2637,77 @@ async function v2Initialize(status,{firstConnect=false,settings=cloudConfig}={})
  cloudMeta.dirty=v2LocalDirty();persistCloud();
  render();
 }
+// Compare the *effective* content seen by the app, because items are normalised
+// when stored. Never mistake a server echo of our last successful write for a
+// second device's independent change.
+function v2RemoteHash(rec){
+ if(rec.deleted)return '@deleted';
+ if(rec.kind==='items')return v2Hash(normalizeItem(rec.content));
+ return v2Hash(rec.content);
+}
+function v2AssessRecord(rec,docs=v2Docs(data),base=cloudV2){
+ const key=v2Key(rec.kind,rec.id),known=base?.entries?.[key]||null;
+ const local=docs.get(key);
+ const localHash=local?v2Hash(local.content):'@deleted';
+ const remoteHash=v2RemoteHash(rec);
+ const localChanged=known?known.hash!==localHash:!!local;
+ const remoteChanged=known?remoteHash!==known.hash:true;
+ // The server's change feed may contain our own previously ACKed record because
+ // the global cursor advances on pulls, not after every individual push.
+ // Such a replay must not update the baseline to a newer, still-unuploaded local edit.
+ const echoed=!!known&&!remoteChanged;
+ const conflict=localChanged&&remoteChanged&&remoteHash!==localHash;
+ const needsApply=!conflict&&!echoed&&remoteHash!==localHash;
+ return {key,known,local,localHash,remoteHash,localChanged,remoteChanged,echoed,conflict,needsApply};
+}
 async function v2Pull(settings=cloudConfig){
  const batch=await v2ReadChanges(cloudV2.since,settings);
- let changed=false;
+ const docs=v2Docs(data),nextEntries={...cloudV2.entries},apply=[];
+ // Validate the whole batch BEFORE changing any document; do not leave a
+ // partially applied response in memory when a later record conflicts.
  for(const r of batch.records){
-  const key=v2Key(r.kind,r.id),baseline=cloudV2.entries[key];
-  const local=v2Docs(data).get(key);
-  const localHash=local?v2Hash(local.content):'@deleted';
-  const localChanged=baseline?baseline.hash!==localHash:!!local;
-  // A concurrent edit of the same document must stop instead of silently replacing it.
-  const remoteHash=r.deleted?'@deleted':v2Hash(r.content);
-  if(localChanged&&remoteHash!==localHash){
+  const a=v2AssessRecord(r,docs);
+  if(a.conflict){
    cloudConflict=true;
-   throw new Error('同一篇文章或清單在不同裝置都有修改。請先匯出本機備份，暫停同步以避免覆蓋。');
+   cloudConflictDetail={kind:r.kind,id:r.id,title:a.local?.content?.title||r.content?.title||'',baseVersion:a.known?.version??0,remoteVersion:r.version};
+   throw new Error('偵測到同一筆收藏在手機與雲端都有不同修改；兩邊都沒有被覆蓋。');
   }
-  if(remoteHash!==localHash){v2SetRecord(r);changed=true}
-  const effective=v2Docs(data).get(key);
-  cloudV2.entries[key]={version:r.version,hash:r.deleted?'@deleted':v2Hash(effective?.content??r.content)};
+  if(a.echoed){
+   // Version may increase even if another client writes identical content.
+   // Keep the *old* hash to ensure local follow-up edits still get uploaded.
+   nextEntries[a.key]={version:Math.max(Number(r.version||0),Number(a.known.version||0)),hash:a.known.hash};
+   continue;
+  }
+  if(a.needsApply)apply.push(r);
+  // The remote state is now authoritative for this record only when the local
+  // copy was not independently changed, or both devices already agree.
+  nextEntries[a.key]={version:r.version,hash:r.deleted?'@deleted':a.remoteHash};
  }
- if(changed){await writeStore(data);render()}
+ const previousData=apply.length?safeClone(data):null;
+ if(apply.length){
+  try{
+   for(const r of apply)v2SetRecord(r);
+   if(!await writeStore(data))throw new Error('本機儲存失敗；雲端變更沒有確認完成。');
+  }catch(e){data=previousData;throw e}
+ }
+ // Baseline/cursor only advance after data has been safely stored.
+ cloudV2.entries=nextEntries;
  cloudV2.since=batch.since;
  v2SaveBaseline();
+ if(apply.length)render();
+}
+async function v2PendingDiagnostics(){
+ if(!cloudV2?.entries)return null;
+ const batch=await v2ReadChanges(cloudV2.since),docs=v2Docs(data);
+ let echoed=0,updates=0;
+ const real=[];
+ for(const r of batch.records){
+  const a=v2AssessRecord(r,docs);
+  if(a.echoed)echoed++;
+  else if(a.conflict)real.push({kind:r.kind,id:r.id,title:a.local?.content?.title||r.content?.title||'',baseVersion:a.known?.version??0,remoteVersion:r.version});
+  else updates++;
+ }
+ return {echoed,updates,real,since:batch.since};
 }
 async function v2Push(settings=cloudConfig){
  const current=v2Docs(data),changes=[];
@@ -2753,7 +2803,7 @@ async function cloudV2Sync({firstConnect=false,settings=cloudConfig}={}){
  return sent;
 }
 
-let cloudBusy=false,cloudConflict=false,cloudMessage='尚未設定雲端',cloudTimer=null,cloudSaveTimer=null;
+let cloudBusy=false,cloudConflict=false,cloudConflictDetail=null,cloudMessage='尚未設定雲端',cloudTimer=null,cloudSaveTimer=null;
 let cloudLastSuccess=0; // session-only: never claim that an unverified stale session is currently connected
 let cloudMigrationProgress=''; // An incomplete first-time conversion is not a successful full sync
 let cloudSilentCheck=false,cloudPendingItems=0; // quiet polling and active Worker jobs are distinct states
@@ -2860,7 +2910,7 @@ async function cloudRequest(method,path,body,settings=cloudConfig){
       throw new Error(`${description}${suffix}`);
     }
     const err=new Error(json.error==='unauthorized'?'密鑰不正確':json.error==='revision-conflict'?'雲端內容已被另一台裝置更新':json.error==='document-version-conflict'?'同一篇文章已由其他裝置更新，已停止同步以保護修改。':json.error==='document-too-large'?'單篇文章包含過大的圖片資料，無法安全同步；請先匯出備份並縮小手動上傳的圖片。':json.error==='legacy-changed-after-migration'?'另有舊版裝置更新雲端，請先更新所有裝置並匯出備份。':json.error==='state-too-large'||r.status===413?'單筆圖片或資料容量過大，請先匯出備份並縮小圖片。':`雲端服務錯誤 ${r.status}：${json.error||'unknown'}`);
-    err.status=r.status;throw err;
+    err.status=r.status;err.kind=json.kind;err.id=json.id;err.currentVersion=json.currentVersion;throw err;
    }
    if((path==='/api/vision'||path==='/api/analyze-text')&&json.ok)clearLimitWarning('ai');
    return json;
@@ -2994,7 +3044,7 @@ async function cloudRun({silent=false}={}){
  }catch(e){
   if(e?.deferred){cloudMessage=e.message;cloudStatusUI()}
   else{
-   if(e?.status===409||/衝突|不同版本|另有舊版裝置/.test(String(e?.message)))cloudConflict=true;
+   if(e?.status===409||/衝突|不同版本|另有舊版裝置/.test(String(e?.message))){cloudConflict=true; if(e?.status===409)cloudConflictDetail={kind:e.kind||'',id:e.id||'',title:'',baseVersion:null,remoteVersion:e.currentVersion??null};}
    cloudMessage=`同步失敗：${e.message}${added?'；已先在本機保存 '+added+' 篇新文章，請勿刪除 App':''}`;cloudStatusUI();
   }
  }
@@ -3072,7 +3122,7 @@ async function cloudConnect(url,token){
  const prev={config:cloudConfig,meta:{...cloudMeta},baseline:cloudV2,conflict:cloudConflict};
  try{
   if(!same){cloudV2=null;cloudMeta={revision:null,dirty:!!cloudMeta.dirty,wasConnected:false}}
-  cloudConfig=config;cloudConflict=false;
+  cloudConfig=config;cloudConflict=false;cloudConflictDetail=null;
   await cloudRun();
   if(cloudMessage.startsWith('同步失敗'))throw new Error(cloudMessage);
   localStorage.setItem(CLOUD_CONFIG_KEY,JSON.stringify(config));
@@ -3134,7 +3184,7 @@ function openCloudSettings(){
  const active=!!cloudConfig;
  openModal(`<div class="sheetHead"><strong>雲端同步</strong><button class="iconBtn uiBtn" id="closeCloud" aria-label="關閉">${icon('close')}</button></div>
  <div class="form">
-  <p class="cloudHelp">手機分享捷徑送到 Worker 後，雲端會嘗試擷取文章與多張圖片；打開拾集會自動收取。維持原有 D1 同步模式，不會在開啟 App 時自動移轉資料。密鑰只存在這台裝置。</p>
+  <p class="cloudHelp">手機分享捷徑送到 Worker 後，雲端會嘗試擷取文章與圖片；打開拾集會自動收取。沿用目前的 D1 資料格式；若雲端已啟用分筆同步，不會重新移轉或自動回復舊格式。密鑰只存在這台裝置。</p>
   <label>Cloudflare Worker 網址<input type="url" id="cloudUrl" autocomplete="off" placeholder="https://shiji-sync.你的帳號.workers.dev" value="${esc(cloudConfig?.url||'')}"></label>
   <label>私密同步密鑰<input type="password" id="cloudToken" autocomplete="off" placeholder="Worker Secret：SJ_TOKEN" value="${esc(cloudConfig?.token||'')}"></label>
   <p class="cloudHelp" id="cloudDialogStatus">${esc(cloudMessage)}</p>
@@ -3168,12 +3218,18 @@ function openCloudSettings(){
     if(cloudConflict)msgs.push('目前存在分筆資料衝突，請先匯出本機備份，不會自動覆蓋。');
     else if(v2LocalDirty())msgs.push('本機有部分文章或清單尚未同步；可按「立即同步」。');
     else msgs.push('目前沒有待上傳的分筆變更。');
-   }else msgs.push('首次移轉尚未完成；可按立即同步繼續，舊資料不會刪除。');
+    // Read-only verification. No POST/PUT, no acknowledgement or data mutation.
+    if(cloudV2?.entries){
+     const d=await v2PendingDiagnostics();
+     msgs.push(`待讀取紀錄檢查：已知版本重送 ${d.echoed} 筆；需正常套用 ${d.updates} 筆；真正資料衝突 ${d.real.length} 筆。`);
+     for(const x of d.real.slice(0,3))msgs.push(`衝突項目：${x.kind==='items'?'文章':x.kind==='meta'?'分類設定':'清單'} ${x.title||x.id}（本機基準 v${x.baseVersion}、雲端 v${x.remoteVersion}）。`);
+    }else msgs.push('本機沒有可用的分筆同步基準，尚無法判斷哪一筆衝突；請先備份。');
+   }else msgs.push('雲端使用原有 D1 整份同步，這次不會啟動移轉。');
    out.textContent=msgs.join('\n');
   }catch(e){out.textContent=`本機資料約 ${sizeText}。讀取雲端失敗：${e.message}`}
   finally{btn.disabled=false;btn.textContent='檢查同步原因'}
  };
- $('#syncCloudNow').onclick=async()=>{cloudConflict=false;closeModal();await cloudRun();if(cloudMessage.startsWith('同步失敗'))alert(cloudMessage)};
+ $('#syncCloudNow').onclick=async()=>{cloudConflict=false;cloudConflictDetail=null;closeModal();await cloudRun();if(cloudMessage.startsWith('同步失敗'))alert(cloudMessage)};
  $('#cloudBackupNow').onclick=exportData;
  $('#cloudLegacyBackup').onclick=async()=>{
   const btn=$('#cloudLegacyBackup');btn.disabled=true;
@@ -3189,7 +3245,7 @@ function openCloudSettings(){
  $('#disconnectCloud').onclick=()=>{
   if(!confirm('斷開雲端？本機資料會保留，但不再同步。'))return;
   try{localStorage.removeItem(CLOUD_CONFIG_KEY);localStorage.removeItem(CLOUD_META_KEY);localStorage.removeItem(CLOUD_V2_KEY)}catch{}
-  cloudConfig=null;cloudMeta={revision:null,dirty:false,wasConnected:false};cloudV2=null;cloudConflict=false;cloudLastSuccess=0;
+  cloudConfig=null;cloudMeta={revision:null,dirty:false,wasConnected:false};cloudV2=null;cloudConflict=false;cloudConflictDetail=null;cloudLastSuccess=0;
   if(cloudTimer){clearInterval(cloudTimer);cloudTimer=null}
   if(autoRetryTimer){clearInterval(autoRetryTimer);autoRetryTimer=null}
   cloudPendingItems=0;cloudMessage='尚未設定雲端';closeModal();cloudStatusUI()
