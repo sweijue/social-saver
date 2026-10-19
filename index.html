@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="拾集">
-<title>拾集 v1.8.18</title>
+<title>拾集 v1.8.19</title>
 <style>
 :root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#6e6e68;--line:#e4e4de;--soft:#efefe9;--shadow:0 10px 28px rgba(0,0,0,.07);--r:20px;--navh:74px}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif;font-size:17px}body{min-height:100vh;padding-bottom:calc(var(--navh) + env(safe-area-inset-bottom) + 18px)}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
@@ -581,7 +581,7 @@ main{padding-top:calc(116px + env(safe-area-inset-top))!important}
 
 <script>
 
-const VERSION="1.8.18", STORE="socialSaver_data";
+const VERSION="1.8.19", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -1237,6 +1237,13 @@ function openModal(html){
 function closeModal(){$('#modalHost').innerHTML=''}
 function detailOrder(){return filteredItems(window.searchQuery||'')}
 function openDetail(id){detailIds=detailOrder().map(i=>i.id);if(!detailIds.includes(id))detailIds=allSorted().map(i=>i.id);detailIndex=Math.max(0,detailIds.indexOf(id));renderDetail()}
+function visionEntriesHTML(i){return [...(i.vision?.entries||[])].sort((a,b)=>a.index-b.index).map(x=>`<div class="visionItem">
+      ${i.images[x.index]?`<img class="visionThumb" src="${esc(i.images[x.index])}" alt="第 ${x.index+1} 張圖片">`:'<span></span>'}
+      <div class="visionText"><strong>圖片 ${x.index+1}</strong>${x.summary?`<div>${esc(x.summary)}</div>`:''}
+      ${x.visibleText?.length?`<div><span class="visionLabel">圖片文字</span>${esc(x.visibleText.join(' · '))}</div>`:''}
+      ${x.products?.length?`<div class="visionPills">${x.products.map(t=>`<span class="visionPill">商品：${esc(t)}</span>`).join('')}</div>`:''}
+      ${x.places?.length?`<div class="visionPills">${x.places.map(t=>`<span class="visionPill">地點：${esc(t)}</span>`).join('')}</div>`:''}
+      ${x.uncertain?`<small>不確定：${esc(x.uncertain)}</small>`:''}</div></div>`).join('');}
 function renderDetail(){
  const i=data.items.find(x=>x.id===detailIds[detailIndex]);
  if(!i)return closeModal();
@@ -1254,16 +1261,10 @@ function renderDetail(){
    ${i.url?`<div class="detailSection"><div class="fetchActionRow"><a class="linkPill uiBtn" href="${esc(i.url)}" target="_blank" rel="noopener noreferrer">↗ 原文章</a><button type="button" class="linkPill uiBtn" id="retryArticle" ${refetchBusy?'disabled aria-busy="true"':''}>${refetchBusy?fetchSpinnerHTML()+' 擷取中…':icon('expand',14)+' 再次擷取'}</button><button type="button" class="linkPill uiBtn pasteContentBtn" id="pasteArticleText">${icon('image',14)} 手機補充文字／截圖</button></div><div class="fetchFeedback" id="retryArticleStatus" role="status" data-kind="${refetchInfo?.kind||''}">${refetchInfo?esc(refetchInfo.text):i.previewError?`上次擷取未成功：${esc(i.previewError)}；可以稍後重試。`:i.sourceQuality==='linkOnly'?'只有文章連結，點「再次擷取」可重新嘗試取得標題、內文與圖片。':'公開資料依來源限制取得，若缺內容可以再次擷取。'}</div>${retryStatusText(i)?`<div class="retryPolicyStatus" role="status">${esc(retryStatusText(i))}</div>`:''}</div>`:''}${i.browserNotice?`<div class="fetchFeedback" role="status">${esc(i.browserNotice)}</div>`:''}${i.url&&['preview','shared','linkOnly'].includes(i.sourceQuality)?`<div class="photoLimit">目前取得 ${i.images?.length||0} 張不同圖片（已排除重複封面）。新版會嘗試操作輪播下一張；若 Threads 不開放讀取，仍可能有缺圖，張數不代表已完整。</div>`:''}
    ${i.images?.length?`<div class="detailSection visionSection">
     <div class="visionHead"><h4>圖片內容辨識</h4><button type="button" class="smallBtn uiBtn" id="analyzePhotos">${icon('search',15)} ${((i.vision?.entries||[]).length?'辨識其餘圖片／重試':'開始辨識')}</button></div>
-    <p class="visionDesc">AI 讀取已收藏的圖片，提取可見文字、商品與地點線索。辨識結果可能有誤，確認後才套用到文章。</p>
-    <div id="visionStatus" class="visionStatus">${(i.vision?.entries||[]).length?`已分析 ${i.vision.entries.length} / ${i.images.length} 張圖片。`:'尚未辨識。新增圖片後也能再次分析。'}</div>
-    ${(i.vision?.entries||[]).map(x=>`<div class="visionItem">
-      ${i.images[x.index]?`<img class="visionThumb" src="${esc(i.images[x.index])}" alt="第 ${x.index+1} 張圖片">`:'<span></span>'}
-      <div class="visionText"><strong>圖片 ${x.index+1}</strong>${x.summary?`<div>${esc(x.summary)}</div>`:''}
-      ${x.visibleText?.length?`<div><span class="visionLabel">圖片文字</span>${esc(x.visibleText.join(' · '))}</div>`:''}
-      ${x.products?.length?`<div class="visionPills">${x.products.map(t=>`<span class="visionPill">商品：${esc(t)}</span>`).join('')}</div>`:''}
-      ${x.places?.length?`<div class="visionPills">${x.places.map(t=>`<span class="visionPill">地點：${esc(t)}</span>`).join('')}</div>`:''}
-      ${x.uncertain?`<small>不確定：${esc(x.uncertain)}</small>`:''}</div></div>`).join('')}
-    ${(i.vision?.entries||[]).length?`<div class="visionActions"><button type="button" class="ghost uiBtn" id="applyVision">確認並套用圖片線索</button></div>`:''}
+    <p class="visionDesc">新文章會逐張自動辨識所有已取得的圖片，離開 App 後下次開啟會續接。商品與地點仍需你確認才正式套用。</p>
+    <div id="visionStatus" class="visionStatus">${esc(visionSummaryText(i))}</div>
+    <div id="visionResultsLive">${visionEntriesHTML(i)}</div>
+    <div class="visionActions" id="visionActionsLive">${(i.vision?.entries||[]).length?`<button type="button" class="ghost uiBtn" id="applyVision">確認並套用圖片線索</button>`:''}</div>
   </div>`:''}
    <div class="detailSection"><h4>${i.sourceQuality==='preview'?'文章預覽（非全文）':i.sourceQuality==='linkOnly'?'文章內容未擷取':'原始文章內容'}</h4><div class="bodyText originalBody">${esc(i.body||'此平台未提供可讀取的內文，可透過「原文章」查看，或編輯卡片補充。')}</div></div>
    ${i.imageSummary?`<div class="detailSection"><h4>圖片 AI 描述（非作者原文）</h4><div class="bodyText">${esc(i.imageSummary)}</div><p class="autoTagNote">根據已取得的圖片產生，可能有辨識錯誤；不是社群作者原文。</p></div>`:''}
@@ -1678,7 +1679,12 @@ function mergePublicPreview(item,meta){
  if(!item.body&&meta.body&&!isPlatformUnavailableText(meta.body))item.body=meta.body;
  if(meta.resolvedUrl)item.resolvedUrl=meta.resolvedUrl;
  if(meta.browserNotice!==undefined)item.browserNotice=meta.browserNotice;
+ const previousPhotoKeys=new Set((item.images||[]).map(articlePhotoKey));
  item.images=uniqueArticleImages([...(item.images||[]),...(meta.images||[])]);
+ if(item.images.some(src=>!previousPhotoKeys.has(articlePhotoKey(src)))&&!item.isExample){
+  item.vision=item.vision||{entries:[],updatedAt:0};item.vision.autoPending=true;
+  scheduleVisionQueue(1200);
+ }
  if(!item.placeName)item.placeName=findPlaceName(item.body,item.title);
  if(!item.address)item.address=extractAddress(item.body);
   if(!item.city)item.city=findRegion(`${item.title} ${item.body}`);
@@ -2119,63 +2125,190 @@ function editorHTML(item){
 }
 
 // Vision runs only when Cloudflare AI is bound; never put an AI key in public HTML.
+// v1.8.19: Queue ALL unanalysed images, save each result immediately, and resume
+// foreground work after reconnect/reopen. The global queue is SERIAL to avoid
+// unnecessary AI rate limiting, with persisted pauses for quota/errors.
 const visionInFlight=new Set();
 const photoSourceKey=articlePhotoKey;
-function availablePhotoIndexes(item,limit=3){
- const entries=item.vision?.entries||[];
- const seen=new Set(entries.map(x=>articlePhotoKey(x.key)));
+const VISION_AUTO_GAP_MS=1900;
+const VISION_WAKE_MS=60000;
+const VISION_QUOTA_PAUSE_KEY='shiji_vision_quota_pause_1819';
+let visionWorkBusy=false,visionWorkTimer=null,visionWorkTimerAt=0,visionNextRequestAt=0,visionQuotaPauseMemory=0;
+function visionDoneKeys(item){return new Set((item.vision?.entries||[]).map(x=>photoSourceKey(x.key)))}
+function allPendingPhotoIndexes(item){
+ const seen=visionDoneKeys(item);
  return (item.images||[]).map((s,index)=>({s,index,key:photoSourceKey(s)}))
-  .filter(x=>x.s&&!seen.has(x.key)&&!x.s.startsWith('data:image/svg'))
-  .slice(0,limit);
+  .filter(x=>x.s&&!seen.has(x.key)&&!x.s.startsWith('data:image/svg'));
+}
+function availablePhotoIndexes(item,limit=Infinity){return allPendingPhotoIndexes(item).slice(0,limit)}
+function visionBlockedUntil(){
+ let t=0;try{t=Number(localStorage.getItem(VISION_QUOTA_PAUSE_KEY)||0)}catch{}
+ return Math.max(Number.isFinite(t)&&t>Date.now()?t:0,visionQuotaPauseMemory>Date.now()?visionQuotaPauseMemory:0);
+}
+function nextUTCReset(){const d=new Date();return Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()+1,0,2,0)}
+function visionPauseAllForQuota(){
+ const until=nextUTCReset();visionQuotaPauseMemory=until;try{localStorage.setItem(VISION_QUOTA_PAUSE_KEY,String(until))}catch{}
+ return until;
+}
+function visionFailureFor(item,key){return (item.vision?.failures||[]).find(x=>x.key===key)}
+function visionFailInfo(e){
+ const reason=String(e?.reason||'');const msg=String(e?.message||'圖片辨識失敗');
+ if(reason==='daily-quota'||/今日免費額度已(?:用完|達上限)/.test(msg))return {type:'quota',wait:0,message:msg};
+ if(reason==='rate-limit'||/請求過於頻繁|請求速度受限|\b429\b/.test(msg))return {type:'rate',wait:20*60*1000,message:msg};
+ if(/圖片來源無法讀取|圖片格式不支援|圖片尺寸或檔案太大|圖片資料無效|來源無法由伺服器|image-unavailable|unsupported-image|image-too-large|invalid-image/.test(msg))return {type:'unavailable',wait:0,message:msg};
+ return {type:'temporary',wait:30*60*1000,message:msg};
+}
+function visionEligibleImages(item,now=Date.now()){
+ return allPendingPhotoIndexes(item).filter(photo=>{
+  const failure=visionFailureFor(item,photo.key);
+  return !failure||(!failure.permanent&&Number(failure.nextAt||0)<=now);
+ });
+}
+function visionSummaryText(item){
+ const total=(item.images||[]).length,done=total-allPendingPhotoIndexes(item).length;
+ if(!total)return '沒有可辨識的圖片。';
+ const pending=total-done;
+ if(!pending)return `已分析 ${done} / ${total} 張圖片，全部完成。`;
+ const failures=allPendingPhotoIndexes(item).filter(x=>visionFailureFor(item,x.key)?.permanent).length;
+ const until=visionBlockedUntil();
+ if(until)return `已分析 ${done} / ${total} 張；AI 今日額度已達上限，待額度重置後續接。`;
+ if(item.vision?.autoPending){
+  if(visionInFlight.has(item.id))return `正在逐張辨識：已完成 ${done} / ${total} 張…`;
+  if(failures===pending)return `已分析 ${done} / ${total} 張，另外 ${failures} 張來源無法讀取；可手動重試。`;
+  return `已分析 ${done} / ${total} 張，其餘 ${pending} 張${failures?`（含 ${failures} 張無法讀取）`:''}將自動繼續。`;
+ }
+ return `已分析 ${done} / ${total} 張，還有 ${pending} 張未辨識。`;
+}
+function updateVisionDisplay(id){
+ if(detailIds[detailIndex]!==id)return;
+ const target=data.items.find(x=>x.id===id),status=document.querySelector('#visionStatus');
+ if(status&&target)status.textContent=visionSummaryText(target);
+ const results=document.querySelector('#visionResultsLive');if(results&&target)results.innerHTML=visionEntriesHTML(target);
+ const actions=document.querySelector('#visionActionsLive');if(actions&&target){actions.innerHTML=(target.vision?.entries||[]).length?'<button type="button" class="ghost uiBtn" id="applyVision">確認並套用圖片線索</button>':'';if(document.querySelector('#applyVision'))document.querySelector('#applyVision').onclick=()=>applyVisionSuggestions(id)}
+ const btn=document.querySelector('#analyzePhotos');
+ if(btn){btn.disabled=!!(visionWorkBusy&&visionInFlight.has(id));btn.innerHTML=visionInFlight.has(id)?fetchSpinnerHTML()+' 辨識中…':icon('search',15)+' '+(allPendingPhotoIndexes(target).length?'辨識其餘圖片／重試':'全部已辨識')}
+}
+function scheduleVisionQueue(delay=450){
+ if(visionWorkTimer){if(visionWorkTimerAt<=Date.now()+delay)return;clearTimeout(visionWorkTimer)}
+ visionWorkTimerAt=Date.now()+delay;
+ visionWorkTimer=setTimeout(()=>{visionWorkTimer=null;visionWorkTimerAt=0;drainVisionQueue().catch(()=>{})},delay);
+}
+function startVisionQueue(){
+ if(!cloudConfig||!cloudMeta.wasConnected)return;
+ if(document.visibilityState!=='visible'||navigator.onLine===false)return;
+ scheduleVisionQueue();
+}
+async function enqueueArticleVision(id,{manual=false}={}){
+ const item=data.items.find(x=>x.id===id);
+ if(!item||item.isExample||!item.images?.length||!allPendingPhotoIndexes(item).length)return;
+ if(!cloudConfig){if(manual)alert('請先在拾集的雲端設定完成連線。');return;}
+ item.vision=item.vision&&typeof item.vision==='object'?item.vision:{entries:[],updatedAt:0};
+ item.vision.autoPending=true;
+ item.vision.failures=Array.isArray(item.vision.failures)?item.vision.failures:[];
+ if(manual){
+  // Retrying is a deliberate action. Clear per-photo failures, but never
+  // ignore an actual Workers AI daily quota pause.
+  item.vision.failures=[];
+ }
+ await save();updateVisionDisplay(id);
+ if(manual&&visionBlockedUntil()){const status=document.querySelector('#visionStatus');if(status)status.textContent=visionSummaryText(item);return}
+ startVisionQueue();
 }
 async function analyzeArticlePhotos(id,opts={}){
- const item=data.items.find(x=>x.id===id);
- if(!item||!item.images?.length||visionInFlight.has(id))return;
- if(!cloudConfig){if(!opts.silent)alert('請先在拾集右上角選單完成雲端同步設定。');return;}
- // Do not waste further automatic AI requests after a confirmed daily limit.
- if(opts.silent&&/今日免費額度已達上限/.test(limitWarning().ai?.message||''))return;
- const queue=availablePhotoIndexes(item,opts.silent?2:4);
- if(!queue.length){if(!opts.silent){const s=$('#visionStatus');if(s)s.textContent='目前可用圖片已辨識完畢；新增照片後可再試。'}return;}
- visionInFlight.add(id);
- const btn=$('#analyzePhotos');if(btn){btn.disabled=true;btn.textContent='分析中…';}
- let succeeded=0,failed=[];
- for(const photo of queue){
-  const live=$('#visionStatus');if(live&&detailIds[detailIndex]===id)live.textContent=`正在辨識第 ${photo.index+1} 張圖片…`;
-  try{
-   const payload=photo.s.startsWith('data:image/')?{imageData:photo.s}:{imageUrl:photo.s};
-   const res=await cloudRequest('POST','/api/vision',payload);
-   const target=data.items.find(x=>x.id===id);if(!target)break;
-   target.vision=target.vision||{entries:[],updatedAt:0};
-   target.vision.entries=Array.isArray(target.vision.entries)?target.vision.entries:[];
-   target.vision.entries.push({...res.analysis,index:photo.index,key:photo.key});
-   target.vision.updatedAt=Date.now();
-   // When the publisher did not provide text, show an explicitly AI-labeled
-   // description of an available photo. Never store it as the author's body.
-   const imageDescription=String(res.analysis?.summary||'').trim();
-   if(!target.body&&imageDescription){
+ return enqueueArticleVision(id,{manual:!opts.silent});
+}
+async function drainVisionQueue(){
+ if(visionWorkBusy||!cloudConfig||!cloudMeta.wasConnected||cloudConflict||document.visibilityState!=='visible'||navigator.onLine===false)return;
+ if(visionBlockedUntil())return;
+ if(cloudBusy){scheduleVisionQueue(2800);return}
+ visionWorkBusy=true;
+ try{
+  // Only explicit pending jobs are resumed. Do not silently consume the AI
+  // quota on all historical bookmarks merely because an app version changed.
+  while(document.visibilityState==='visible'&&navigator.onLine!==false&&cloudConfig&&!cloudConflict){
+   if(visionBlockedUntil())break;
+   const now=Date.now();
+   const candidates=data.items.filter(i=>!i.isExample&&i.vision?.autoPending&&allPendingPhotoIndexes(i).length);
+   if(!candidates.length)break;
+   let task=null,soonest=Infinity;
+   for(const item of candidates){
+    const available=visionEligibleImages(item,now);
+    if(available.length){task={item,photo:available[0]};break}
+    for(const photo of allPendingPhotoIndexes(item)){
+     const failure=visionFailureFor(item,photo.key);
+     if(failure&&!failure.permanent)soonest=Math.min(soonest,Number(failure.nextAt)||Infinity);
+    }
+   }
+   if(!task){if(soonest<Infinity)scheduleVisionQueue(Math.min(VISION_WAKE_MS,Math.max(3000,soonest-now)));break}
+   const {item,photo}=task,id=item.id;
+   const gap=visionNextRequestAt-Date.now();if(gap>0)await new Promise(resolve=>setTimeout(resolve,gap));
+   if(document.visibilityState!=='visible'||navigator.onLine===false||!cloudConfig)break;
+   visionInFlight.add(id);updateVisionDisplay(id);
+   visionNextRequestAt=Date.now()+VISION_AUTO_GAP_MS;
+   try{
+    const payload=photo.s.startsWith('data:image/')?{imageData:photo.s}:{imageUrl:photo.s};
+    const res=await cloudRequest('POST','/api/vision',payload);
+    const target=data.items.find(x=>x.id===id);
+    if(!target)continue;
+    target.vision=target.vision||{entries:[],updatedAt:0};
+    target.vision.entries=Array.isArray(target.vision.entries)?target.vision.entries:[];
+    // Avoid duplicate entries if the same photo was completed elsewhere while
+    // an AI request was in progress.
+    const keys=visionDoneKeys(target);
+    if(!keys.has(photo.key)){
+     const actualIndex=(target.images||[]).findIndex(src=>photoSourceKey(src)===photo.key);
+     if(actualIndex>=0){target.vision.entries.push({...res.analysis,index:actualIndex,key:photo.key});target.vision.entries.sort((a,b)=>a.index-b.index)}
+    }
+    target.vision.updatedAt=Date.now();
+    target.vision.failures=(target.vision.failures||[]).filter(x=>x.key!==photo.key);
+    const imageDescription=String(res.analysis?.summary||'').trim();
+    if(!target.body&&imageDescription){
      if(!target.imageSummary)target.imageSummary=imageDescription.slice(0,240);
      if(target.titleSource!=='manual'&&(isWeakSavedTitle(target.title,target.platform,target.url)||target.titleSource==='image-ai')){
-       target.title='圖片辨識：'+imageDescription.slice(0,38);
-       target.titleSource='image-ai';
+      target.title='圖片辨識：'+imageDescription.slice(0,38);target.titleSource='image-ai';
      }
-   }
-   // Only derive obvious metadata from visible words, never auto-apply product/place identity.
-   const evidence=uniq([...(res.analysis.visibleText||[]),...(res.analysis.tags||[])]).join(' ');
-   if(target.categorySource!=='manual'&&target.category==='其他')target.category=inferCategory(`${target.body} ${evidence}`);
-   if(target.countrySource!=='manual'&&target.country==='其他')target.country=inferCountry(`${target.body} ${evidence}`);
-   target.tags=uniq([...(target.tags||[]),...guessTags(`${target.title} ${target.body} ${evidence}`,target.country,target.category)]);
-   await save();succeeded++;
-  }catch(e){
-   const message=String(e?.message||'失敗');failed.push(`第 ${photo.index+1} 張：${message}`);
-   if(/今日免費額度已用完|今日免費額度已達上限|429|請求過於頻繁|請求速度受限/.test(message))break;
+    }
+    // Suggestions are evidence-based. Products and exact locations require
+    // manual confirmation; never silently treat an AI guess as a verified fact.
+    const evidence=uniq([...(res.analysis?.visibleText||[]),...(res.analysis?.tags||[])]).join(' ');
+    if(target.categorySource!=='manual'&&target.category==='其他')target.category=inferCategory(`${target.body} ${evidence}`);
+    if(target.countrySource!=='manual'&&target.country==='其他')target.country=inferCountry(`${target.body} ${evidence}`);
+    target.tags=uniq([...(target.tags||[]),...guessTags(`${target.title} ${target.body} ${evidence}`,target.country,target.category)]);
+    target.vision.autoPending=allPendingPhotoIndexes(target).length>0;
+    await save();if(!target.vision.autoPending)render();
+   }catch(e){
+    const target=data.items.find(x=>x.id===id);
+    if(target){
+     const issue=visionFailInfo(e);
+     target.vision=target.vision||{entries:[],updatedAt:0};
+     const old=visionFailureFor(target,photo.key);const attempts=(old?.attempts||0)+1;
+     let nextAt=Date.now()+issue.wait;
+     const permanent=issue.type==='unavailable'||(issue.type==='temporary'&&attempts>=2);
+     if(issue.type==='quota'){nextAt=visionPauseAllForQuota();setLimitWarning('ai','Workers AI 今日免費額度已達上限；圖片辨識將於重置後繼續。')}
+     const failure={key:photo.key,attempts,nextAt:permanent?0:nextAt,permanent,reason:issue.message.slice(0,190)};
+     target.vision.failures=[...(target.vision.failures||[]).filter(x=>x.key!==photo.key),failure].slice(-30);
+     target.vision.autoPending=true;
+     await save();
+     if(issue.type==='quota'||issue.type==='rate'){
+      if(issue.type==='rate')scheduleVisionQueue(VISION_WAKE_MS);
+      break;
+     }
+    }
+   }finally{visionInFlight.delete(id);updateVisionDisplay(id)}
+   // Save each image before starting the next so interruptions can resume.
+   // Keep DOM updates restrained; do not reopen the detail modal.
+   if(detailIds[detailIndex]===id&&document.querySelector('#visionStatus'))updateVisionDisplay(id);
   }
+ }finally{
+  visionWorkBusy=false;
+  // Paused/failed images will be retried only when their cooldown has expired.
+  // A one-minute, foreground-only wakeup handles the next eligible photo.
  }
- visionInFlight.delete(id);
- const text=`已完成 ${succeeded} 張圖片辨識。${failed.length?'其餘未完成：'+failed.join('；'):''}`;
- if(detailIds[detailIndex]===id&&document.querySelector('#analyzePhotos')){
-   renderDetail();const status=$('#visionStatus');if(status)status.textContent=text;
- }else if(!opts.silent)alert(text);
- render();
+}
+function startAutoVisionTimer(){
+ if(window.__shijiVisionTimer)return;
+ window.__shijiVisionTimer=setInterval(()=>{if(document.visibilityState==='visible')startVisionQueue()},VISION_WAKE_MS);
+ startVisionQueue();
 }
 function applyVisionSuggestions(id){
  const item=data.items.find(x=>x.id===id);if(!item)return;
@@ -2242,10 +2375,11 @@ function openEditor(id=null){
    data.customCategories=uniq([...(data.customCategories||[]),category]);
    data.customCountries=uniq([...(data.customCountries||[]),country]);
    data.customTags=uniq([...(data.customTags||[]),...tags]);
+   const hasNewImages=uniqueArticleImages(images).some(src=>!(item.images||[]).some(prev=>articlePhotoKey(prev)===articlePhotoKey(src)));
    const manualContentChanged=body!==String(item.body||'')||JSON.stringify(uniqueArticleImages(images))!==JSON.stringify(item.images||[]);
    const obj=normalizeItem({...item,title,titleSource:'manual',body,sourceQuality:manualContentChanged&&body?'manual':item.sourceQuality,retryState:manualContentChanged?normalizeRetryState(null):item.retryState,city,country,category,categorySource:'manual',countrySource:'manual',placeName,address,products,images,productImages,tags,platform:$('#fPlatform').value,url:$('#fUrl').value.trim(),shoppingType:$('#fShoppingType').value.trim(),note:$('#fNote').value,summary:body.replace(/\s+/g,' ').slice(0,150),createdAt:item.createdAt});
    Object.assign(item,obj);await save();closeModal();render();
-   if(added.length&&cloudConfig)setTimeout(()=>analyzeArticlePhotos(item.id,{silent:true}),500)
+   if(hasNewImages&&cloudConfig)setTimeout(()=>analyzeArticlePhotos(item.id,{silent:true}),500)
   }catch(err){alert('儲存失敗：'+err.message)}finally{if(submit)submit.disabled=false}
  }
 }
@@ -2649,6 +2783,7 @@ async function cloudBoot(){
  await cloudRun();
  if(!cloudTimer)cloudTimer=setInterval(()=>{if(document.visibilityState==='visible')cloudRun({silent:true})},5000);
  startAutoRetryTimer();
+ startAutoVisionTimer();
 }
 async function cloudConnect(url,token){
  const config={url:cloudServerURL(url),token:String(token||'').trim()};
@@ -2672,7 +2807,7 @@ async function cloudConnect(url,token){
  try{localStorage.setItem(CLOUD_CONFIG_KEY,JSON.stringify(cloudConfig))}
  catch{throw new Error('此瀏覽器無法保存連線設定')}
  await writeStore(data);
- await cloudCommit();cloudConflict=false;render();
+ await cloudCommit();cloudConflict=false;render();startAutoVisionTimer();
  if(!cloudTimer)cloudTimer=setInterval(()=>{if(document.visibilityState==='visible')cloudRun({silent:true})},5000);
  startAutoRetryTimer();
  await cloudRun();return true;
@@ -2784,8 +2919,8 @@ function openCloudSettings(){
   cloudPendingItems=0;cloudMessage='尚未設定雲端';closeModal();cloudStatusUI()
  };
 }
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&cloudConfig)cloudRun({silent:true})});
-window.addEventListener('online',()=>{cloudStatusUI();if(cloudConfig)cloudRun({silent:true})});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&cloudConfig){cloudRun({silent:true});startVisionQueue()}});
+window.addEventListener('online',()=>{cloudStatusUI();if(cloudConfig){cloudRun({silent:true});startVisionQueue()}});
 window.addEventListener('offline',()=>cloudStatusUI());
 $('#cloudTopSettings').addEventListener('click',openCloudSettings);
 $('#cloudTopRefresh').addEventListener('click',async()=>{
