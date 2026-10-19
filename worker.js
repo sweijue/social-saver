@@ -1,5 +1,6 @@
+import puppeteer from '@cloudflare/puppeteer';
 /**
- * 拾集 Cloud API v1.8.14 — deploy as a Cloudflare Worker.
+ * 拾集 Cloud API v1.8.17 — deploy as a Cloudflare Worker.
  * Bind Cloudflare D1 database as DB; add Worker Secret SJ_TOKEN (min 32 chars).
  * Allowed browser origin is fixed to the user's GitHub Pages domain.
  * The secret must NOT be committed to GitHub or embedded in index.html.
@@ -205,6 +206,35 @@ function htmlAttrs(tag){
  while((m=reg.exec(tag)))ret[m[1].toLowerCase()]=htmlUnescape(m[2]??m[3]??m[4]??'');
  return ret;
 }
+// Only standard public JSON-LD fields, when actually supplied by the post page.
+// Do not treat arbitrary script text or unrelated media from the feed as a post.
+function publicStructuredPost(html){
+ const out={body:'',title:'',images:[]};
+ const addImage=value=>{
+  if(Array.isArray(value)){value.forEach(addImage);return}
+  if(value&&typeof value==='object'){addImage(value.url||value.contentUrl||'');return}
+  if(typeof value==='string'&&/^https:\/\//i.test(value)&&out.images.length<15)out.images.push(value);
+ };
+ for(const found of html.matchAll(/<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)){
+  let parsed;try{parsed=JSON.parse(htmlUnescape(found[1]))}catch{continue}
+  const objects=Array.isArray(parsed)?parsed:parsed?.['@graph']||[parsed];
+  for(const obj of objects){
+   if(!obj||typeof obj!=='object')continue;
+   const type=String(obj['@type']||'');
+   if(!/SocialMediaPosting|Article|BlogPosting|DiscussionForumPosting/i.test(type))continue;
+   if(!out.body)out.body=String(obj.articleBody||obj.text||obj.description||'').slice(0,9000);
+   if(!out.title)out.title=String(obj.headline||obj.name||'').slice(0,240);
+   addImage(obj.image||obj.associatedMedia);
+  }
+ }
+ return out;
+}
+function publicSentenceTitle(body){
+ const str=String(body||'').replace(/\s+/g,' ').trim();
+ if(str.length<7)return '';
+ const sentence=str.split(/(?<=[。！？!?])\s*|\s+[|｜]\s+/)[0].trim();
+ return (sentence||str).slice(0,72);
+}
 function readPublicPostMetadata(html,url){
  const found={};
  for(const match of html.matchAll(/<meta\b[^>]*>/gi)){
@@ -212,16 +242,17 @@ function readPublicPostMetadata(html,url){
   if(!key||!a.content)continue;(found[key]??=[]).push(a.content.trim());
  }
  const first=(...keys)=>{for(const k of keys){const s=(found[k]||[]).find(x=>x.trim());if(s)return s}return ''};
- const desc=first('og:description','twitter:description','description');
- const title=first('og:title','twitter:title');
+ const jsonPost=publicStructuredPost(html);
+ const desc=first('og:description','twitter:description','description')||jsonPost.body;
+ const title=first('og:title','twitter:title')||jsonPost.title;
  const looksBlocked=/this content isn.t available to everyone|thread not available|content isn.t available|log in to see (?:this|the) (?:post|content)|post is unavailable|此內容無法使用|貼文無法顯示/i;
  const validText=!(looksBlocked.test(desc)||looksBlocked.test(title));
- const body=validText?desc.slice(0,9000):'';
+ const body=validText?(jsonPost.body||desc).slice(0,9000):'';
  const images=[];
- for(const val of [...(found['og:image']||[]),...(found['twitter:image']||[])]){
+ for(const val of [...(found['og:image']||[]),...(found['twitter:image']||[]),...jsonPost.images]){
   try{const img=new URL(val);if(img.protocol==='https:'&&img.hostname.includes('.')&&!images.includes(img.href))images.push(img.href)}catch{}
  }
- return {ok:true,source:'threads-public-html',canonicalUrl:url,title:validText?title.slice(0,250):'',body,images:images.slice(0,12),found:!!(body||images.length||title&&!looksBlocked.test(title)&&title.toLowerCase()!=='threads'),reason:looksBlocked.test(html)&&!body&&!images.length?'threads-access-limited':'no-public-metadata'};
+ return {ok:true,source:'threads-public-html',canonicalUrl:url,title:validText?(publicSentenceTitle(body)||title).slice(0,250):'',body,images:curatedImages(images).slice(0,12),found:!!(body||images.length||title&&!looksBlocked.test(title)&&title.toLowerCase()!=='threads'),reason:looksBlocked.test(html)&&!body&&!images.length?'threads-access-limited':'no-public-metadata'};
 }
 async function fetchPublicResponse(url,method='GET'){
  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),9500);
@@ -381,6 +412,95 @@ function browserScrapeData(payload,canonicalUrl){
  return {ok:true,found,source:'browser-run',canonicalUrl,title:title.slice(0,250),body,images:imgs.slice(0,12),
    reason:found?'ok':'browser-no-readable-post',imagesComplete:false};
 }
+
+// Browser Run's Quick Action cannot click carousel controls. A single Puppeteer
+// session captures the currently visible post, then advances accessible NEXT
+// controls (at most 7 times) in the same thread. This is best-effort and public-only.
+async function puppeteerCarouselScrape(env,canonicalUrl,mode='auto'){
+ const launchedAt=Date.now(),maxMs=mode==='manual'?15500:10500;
+ let browser=null;
+ try{
+  browser=await puppeteer.launch(env.BROWSER);
+  const page=await browser.newPage();
+  await page.setViewport({width:430,height:920,deviceScaleFactor:1});
+  await page.goto(canonicalUrl,{waitUntil:'domcontentloaded',timeout:12000});
+  await new Promise(r=>setTimeout(r,650));
+  const covers=[],seen=new Set(),bodyTexts=[];
+  let title='',carouselSlidesVisited=0,hasCarouselControl=false,atEnd=false,blocked=false;
+  const remember=result=>{
+   if(!result)return;
+   const t=String(result.title||'').trim();if(!title&&t&&!/^(Threads|Log in)$/i.test(t))title=t;
+   const articleText=String(result.body||'').trim();
+   if(articleText&&!/this content isn.t available to everyone|thread not available|log in to see this/i.test(articleText)){
+    if(!bodyTexts.includes(articleText))bodyTexts.push(articleText);
+   }
+   blocked=blocked||!!result.blocked;
+   for(const val of result.images||[]){
+    const image=safeBrowserImage(val,canonicalUrl);if(!image)continue;
+    const key=metaMediaKey(image);if(seen.has(key))continue;seen.add(key);covers.push(image);
+   }
+  };
+  // Runs within the browser. Never reads cookies, session state, or unrelated feeds.
+  const snap=async()=>page.evaluate(()=>{
+   const getMeta=(key)=>document.querySelector(`meta[property="${key}"],meta[name="${key}"]`)?.getAttribute('content')||'';
+   const root=document.querySelector('article,[role="article"]')||document.querySelector('main');
+   const text=(root?.innerText||'').trim().slice(0,9000);
+   const blocked=/this content isn.t available to everyone|thread not available|log in to see this|content isn't available/i.test(text);
+   const title=getMeta('og:title')||getMeta('twitter:title');
+   const fromMeta=getMeta('og:description')||getMeta('twitter:description');
+   const articleRoot=!!root?.matches?.('article,[role=article]');
+   const mainBody=fromMeta&&!/this content isn.t available to everyone|thread not available/i.test(fromMeta)?fromMeta:(articleRoot&&text.length>25&&!blocked?text:'');
+   const images=[];
+   function push(x){if(x&&typeof x==='string'&&!images.includes(x))images.push(x)}
+   push(getMeta('og:image'));
+   if(root){
+    const imgs=[...root.querySelectorAll('img')];
+    for(const im of imgs){
+     const rect=im.getBoundingClientRect();
+     if((rect.width>0&&rect.width<115)||(rect.height>0&&rect.height<100))continue;
+     if(/avatar|profile (?:picture|photo)|user icon/i.test(im.alt||''))continue;
+     const srcset=im.getAttribute('srcset')||'';
+     const sources=srcset.split(',').map(x=>x.trim().split(/\s+/)[0]).filter(Boolean);
+     push(sources.at(-1)||im.currentSrc||im.getAttribute('src')||im.getAttribute('data-src'));
+    }
+    for(const source of root.querySelectorAll('picture source')){
+     const list=(source.getAttribute('srcset')||'').split(',').map(x=>x.trim().split(/\s+/)[0]).filter(Boolean);
+     push(list.at(-1));
+    }
+   }
+   const clickable=[...((root||document).querySelectorAll('button,[role="button"]'))].filter(el=>{
+     const label=(el.getAttribute('aria-label')||el.getAttribute('title')||el.getAttribute('data-testid')||'').trim();
+     const rect=el.getBoundingClientRect();
+     return /^(next|next photo|next image|next slide|下一張|下一页|下一頁|下一個|下一步|次へ|다음|다음 사진)(?:\b|\s|$)/i.test(label)&&rect.width>0&&rect.height>0&&!el.disabled&&el.getAttribute('aria-disabled')!=='true';
+   });
+   return {title,body:mainBody,blocked,images,hasNext:clickable.length>0};
+  });
+  let data=await snap();remember(data);hasCarouselControl=data.hasNext;
+  const steps=mode==='manual'?7:4;
+  for(let i=0;i<steps&&data.hasNext&&Date.now()-launchedAt<maxMs-1000;i++){
+   const clicked=await page.evaluate(()=>{
+     const root=document.querySelector('article,[role="article"]')||document.querySelector('main')||document;
+     const buttons=[...root.querySelectorAll('button,[role="button"]')];
+     const button=buttons.find(el=>{
+       const label=(el.getAttribute('aria-label')||el.getAttribute('title')||el.getAttribute('data-testid')||'').trim();
+       const box=el.getBoundingClientRect();
+       return /^(next|next photo|next image|next slide|下一張|下一页|下一頁|下一個|下一步|次へ|다음|다음 사진)(?:\b|\s|$)/i.test(label)&&box.width>0&&box.height>0&&!el.disabled&&el.getAttribute('aria-disabled')!=='true';
+     });
+     if(!button)return false;button.click();return true;
+   });
+   if(!clicked){atEnd=true;break}
+   carouselSlidesVisited++;
+   await new Promise(r=>setTimeout(r,600));
+   data=await snap();remember(data);
+   if(!data.hasNext)atEnd=true;
+  }
+  const articleBody=bodyTexts.sort((a,b)=>b.length-a.length)[0]||'';
+  const found=!!(articleBody||covers.length);
+  return {ok:true,found,source:'puppeteer-carousel',canonicalUrl,title:publicSentenceTitle(articleBody)||title,body:articleBody,
+   images:covers.slice(0,12),carouselSlidesVisited,carouselAttempted:hasCarouselControl,
+   imagesComplete:false,carouselReachedVisibleEnd:hasCarouselControl&&atEnd,reason:found?'ok':blocked?'threads-access-limited':'browser-no-readable-post'};
+ }finally{if(browser)try{await browser.close()}catch{}}
+}
 async function extractBrowserThreads(env,body){
  const canonical=safeThreadsURL(body.url);
  if(!/^\/@[a-zA-Z0-9._]+\/post\/[a-zA-Z0-9_-]+\/?$/.test(canonical.pathname))return {ok:true,found:false,source:'browser-run',canonicalUrl:canonical.href,reason:'browser-needs-original-url'};
@@ -390,7 +510,13 @@ async function extractBrowserThreads(env,body){
  if(!slot.allowed)return {ok:true,found:false,source:'browser-run',canonicalUrl:canonical.href,reason:slot.reason};
  let extracted=null,status='ok',reportedMs=null;
  try{
-  const result=await env.BROWSER.quickAction('scrape',{
+  try{
+  const advanced=await puppeteerCarouselScrape(env,canonical.href,mode);
+  extracted=advanced;status=advanced.found?'ok':advanced.reason;return advanced;
+ }catch(advancedError){
+  // Fall back to the existing no-dependency Quick Action if launching Puppeteer fails.
+  if(/browser.*quota|time.limit|429|too.many.requests|daily|rate.limit/i.test(String(advancedError.message||advancedError)))throw advancedError;
+  try{const result=await env.BROWSER.quickAction('scrape',{
    url:canonical.href,
    elements:[{selector:'meta[property="og:title"]'},
      {selector:'meta[property="og:description"]'},
@@ -417,13 +543,15 @@ async function extractBrowserThreads(env,body){
   extracted=browserScrapeData(payload,canonical.href);
   status=extracted.found?'ok':'browser-no-readable-post';
   return extracted;
+  }catch(fallbackError){throw fallbackError}
+  }
  }catch(e){
   status=browserQuotaReason(e.message);
   return {ok:true,found:false,source:'browser-run',canonicalUrl:canonical.href,reason:status};
  }finally{await completeBrowser(env.DB,slot,status,extracted,reportedMs)}
 }
 
-// ----- v1.8.14: enrich new shares in Cloudflare without requiring the app to open -----
+// ----- v1.8.17: enrich new shares in Cloudflare without requiring the app to open -----
 function usableArticleText(value){
  const text=String(value||'').trim();
  return /this content isn.t available to everyone|thread not available|log in to see|content isn.t available|post unavailable|貼文無法顯示|內容無法使用/i.test(text)?'':text;
@@ -443,7 +571,7 @@ function curatedImages(list){
 function contentUseful(meta){return !!(usableArticleText(meta.body)||curatedImages(meta.images).length||meta.title&&meta.title.toLowerCase()!=='threads')}
 function blendEnrichment(into,other){
  if(!other)return into;
- if(!into.title&&other.title&&!/^threads$/i.test(other.title))into.title=String(other.title).slice(0,240);
+ if((!into.title||/^(?:.+\bon Threads|threads)$/i.test(into.title))&&(other.body||other.title))into.title=(publicSentenceTitle(other.body)||String(other.title||'')).slice(0,240);
  if(!into.body&&usableArticleText(other.body))into.body=usableArticleText(other.body).slice(0,8500);
  if(other.resolvedUrl&&!into.resolvedUrl)into.resolvedUrl=other.resolvedUrl;
  into.images=curatedImages([...(into.images||[]),...(other.images||[])]);
@@ -488,7 +616,7 @@ async function enrichIncomingBookmark(env,inboxId,url){
   if(isThreads&&browserBound(env)&&(!meta.body||meta.images.length<2)&&Date.now()-began<8500){
    try{
     const b=await extractBrowserThreads(env,{url:meta.resolvedUrl||url,mode:'auto'});
-    if(b.found)blendEnrichment(meta,{title:b.title,body:b.body,images:b.images,resolvedUrl:b.canonicalUrl});
+    if(b.found){blendEnrichment(meta,{title:b.title,body:b.body,images:b.images,resolvedUrl:b.canonicalUrl});meta.carouselVisited=b.carouselSlidesVisited||0;meta.imagesComplete=!!b.imagesComplete;meta.carouselReachedVisibleEnd=!!b.carouselReachedVisibleEnd;}
     else if(b.reason)issue=b.reason;
    }catch(e){issue='雲端瀏覽器暫時不可用'}
   }
@@ -519,7 +647,7 @@ export default {
       return new Response(null,{status:204,headers:headersFor(origin)});
     }
     const pathname=new URL(request.url).pathname.replace(/\/+$/,'')||'/';
-    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.14',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env)},200,origin);
+    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.17',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env)},200,origin);
     if(!env.DB||!env.SJ_TOKEN||String(env.SJ_TOKEN).length<32)return reply({error:'server-not-configured'},503,origin);
     try{
       let body=null;

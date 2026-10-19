@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="拾集">
-<title>拾集 v1.8.16</title>
+<title>拾集 v1.8.17</title>
 <style>
 :root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#6e6e68;--line:#e4e4de;--soft:#efefe9;--shadow:0 10px 28px rgba(0,0,0,.07);--r:20px;--navh:74px}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif;font-size:17px}body{min-height:100vh;padding-bottom:calc(var(--navh) + env(safe-area-inset-bottom) + 18px)}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
@@ -510,7 +510,7 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 #quotaToast.visible{opacity:1;transform:translateY(0)}
 </style>
 <style>
-/* v1.8.16: read-only cloud status and matching controls; swiping never starts a sync. */
+/* v1.8.17: read-only cloud status and matching controls; swiping never starts a sync. */
 .fixedAppHeader{
  display:grid!important;
  grid-template-columns:minmax(0,1fr) auto auto;
@@ -581,7 +581,7 @@ main{padding-top:calc(116px + env(safe-area-inset-top))!important}
 
 <script>
 
-const VERSION="1.8.16", STORE="socialSaver_data";
+const VERSION="1.8.17", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -931,7 +931,7 @@ function normalizeItem(i){
   category:i.category||inferCategory(`${i.title||''} ${i.body||''}`),country:i.country||inferCountry(`${i.title||''} ${i.body||''} ${i.city||''}`),categorySource:i.categorySource||'auto',countrySource:i.countrySource||'auto',
   city:i.city||findRegion(`${i.title||''} ${safeBody}`),shoppingType:i.shoppingType||'',address:i.address||extractAddress(safeBody),placeName:i.placeName||findPlaceName(safeBody,i.title||''),products,
   tags:Array.isArray(i.tags)?i.tags:[],terms:makeSearchTerms({placeName:i.placeName||findPlaceName(safeBody,i.title||''),address:i.address||extractAddress(safeBody),products,body:safeBody,country:i.country}),images,productImages,
-  vision,
+  vision,imageSummary:typeof i.imageSummary==='string'?i.imageSummary.slice(0,260):'',
   summary:(badPreviewBody||isPlatformUnavailableText(i.summary))?'':typeof i.summary==='string'?i.summary:'',note:i.note||'',
   sourceQuality:badPreviewBody&&!images.length?'linkOnly':(i.sourceQuality||'manual'),sourceCapturedAt:i.sourceCapturedAt||null,
   retryState:normalizeRetryState(i.retryState),titleSource:i.titleSource||'auto',previewAttempts:i.previewAttempts||0,previewError:badPreviewBody?'來源僅回傳存取限制提示，請再次擷取或貼上內文':(i.previewError||''),previewCheckedAt:i.previewCheckedAt||null,
@@ -1251,7 +1251,7 @@ function renderDetail(){
  <div class="detailBody">
    <h2 class="detailTitle">${esc(i.title)}</h2>
    <div class="detailMeta">${esc(i.platform)} · ${esc(i.category)} · ${esc(i.country)}${i.city?` · ${esc(i.city)}`:''}</div><div class="detailSaved">收藏於 ${formatSavedAt(i.createdAt)}</div>
-   ${i.url?`<div class="detailSection"><div class="fetchActionRow"><a class="linkPill uiBtn" href="${esc(i.url)}" target="_blank" rel="noopener noreferrer">↗ 原文章</a><button type="button" class="linkPill uiBtn" id="retryArticle" ${refetchBusy?'disabled aria-busy="true"':''}>${refetchBusy?fetchSpinnerHTML()+' 擷取中…':icon('expand',14)+' 再次擷取'}</button><button type="button" class="linkPill uiBtn pasteContentBtn" id="pasteArticleText">${icon('image',14)} 手機補充文字／截圖</button></div><div class="fetchFeedback" id="retryArticleStatus" role="status" data-kind="${refetchInfo?.kind||''}">${refetchInfo?esc(refetchInfo.text):i.previewError?`上次擷取未成功：${esc(i.previewError)}；可以稍後重試。`:i.sourceQuality==='linkOnly'?'只有文章連結，點「再次擷取」可重新嘗試取得標題、內文與圖片。':'公開資料依來源限制取得，若缺內容可以再次擷取。'}</div>${retryStatusText(i)?`<div class="retryPolicyStatus" role="status">${esc(retryStatusText(i))}</div>`:''}</div>`:''}${i.browserNotice?`<div class="fetchFeedback" role="status">${esc(i.browserNotice)}</div>`:''}${i.url&&['preview','shared','linkOnly'].includes(i.sourceQuality)?`<div class="photoLimit">目前取得 ${i.images?.length||0} 張不同圖片（已排除重複封面）。如果原貼文是多圖輪播，但平台未載入其他張，雲端擷取仍無法保證抓齊。</div>`:''}
+   ${i.url?`<div class="detailSection"><div class="fetchActionRow"><a class="linkPill uiBtn" href="${esc(i.url)}" target="_blank" rel="noopener noreferrer">↗ 原文章</a><button type="button" class="linkPill uiBtn" id="retryArticle" ${refetchBusy?'disabled aria-busy="true"':''}>${refetchBusy?fetchSpinnerHTML()+' 擷取中…':icon('expand',14)+' 再次擷取'}</button><button type="button" class="linkPill uiBtn pasteContentBtn" id="pasteArticleText">${icon('image',14)} 手機補充文字／截圖</button></div><div class="fetchFeedback" id="retryArticleStatus" role="status" data-kind="${refetchInfo?.kind||''}">${refetchInfo?esc(refetchInfo.text):i.previewError?`上次擷取未成功：${esc(i.previewError)}；可以稍後重試。`:i.sourceQuality==='linkOnly'?'只有文章連結，點「再次擷取」可重新嘗試取得標題、內文與圖片。':'公開資料依來源限制取得，若缺內容可以再次擷取。'}</div>${retryStatusText(i)?`<div class="retryPolicyStatus" role="status">${esc(retryStatusText(i))}</div>`:''}</div>`:''}${i.browserNotice?`<div class="fetchFeedback" role="status">${esc(i.browserNotice)}</div>`:''}${i.url&&['preview','shared','linkOnly'].includes(i.sourceQuality)?`<div class="photoLimit">目前取得 ${i.images?.length||0} 張不同圖片（已排除重複封面）。新版會嘗試操作輪播下一張；若 Threads 不開放讀取，仍可能有缺圖，張數不代表已完整。</div>`:''}
    ${i.images?.length?`<div class="detailSection visionSection">
     <div class="visionHead"><h4>圖片內容辨識</h4><button type="button" class="smallBtn uiBtn" id="analyzePhotos">${icon('search',15)} ${((i.vision?.entries||[]).length?'辨識其餘圖片／重試':'開始辨識')}</button></div>
     <p class="visionDesc">AI 讀取已收藏的圖片，提取可見文字、商品與地點線索。辨識結果可能有誤，確認後才套用到文章。</p>
@@ -1266,6 +1266,7 @@ function renderDetail(){
     ${(i.vision?.entries||[]).length?`<div class="visionActions"><button type="button" class="ghost uiBtn" id="applyVision">確認並套用圖片線索</button></div>`:''}
   </div>`:''}
    <div class="detailSection"><h4>${i.sourceQuality==='preview'?'文章預覽（非全文）':i.sourceQuality==='linkOnly'?'文章內容未擷取':'原始文章內容'}</h4><div class="bodyText originalBody">${esc(i.body||'此平台未提供可讀取的內文，可透過「原文章」查看，或編輯卡片補充。')}</div></div>
+   ${i.imageSummary?`<div class="detailSection"><h4>圖片 AI 描述（非作者原文）</h4><div class="bodyText">${esc(i.imageSummary)}</div><p class="autoTagNote">根據已取得的圖片產生，可能有辨識錯誤；不是社群作者原文。</p></div>`:''}
    ${insights.length?`<div class="detailSection"><h4>文章重點</h4><div class="insightList">${insights.map(x=>`<div class="insightRow"><strong>${esc(x.label)}</strong><span>${esc(x.value)}</span></div>`).join('')}</div></div>`:showSummary?`<div class="detailSection"><h4>整理重點</h4><div class="bodyText">${esc(i.summary)}</div></div>`:''}
    ${i.category==='購物'&&!(i.products||[]).length&&i.images?.length?`<div class="detailSection"><h4>商品資訊</h4><div class="locationNote">目前公開文字沒有明確商品名稱。若品名只在包裝上，請使用上方「圖片內容辨識」產生候選商品，再確認套用。</div></div>`:''}
    ${i.products?.length?`<div class="detailSection">
@@ -1661,8 +1662,8 @@ function mergePublicPreview(item,meta){
  if(!item||!meta)return false;
  const old=JSON.stringify([item.title,item.body,item.images,item.category,item.country,item.placeName,item.address,item.browserNotice]);
  const autoTitle=readableTitle(item.url,item.body||meta.body,meta.title);
- if(item.titleSource!=='manual'&&(isWeakSavedTitle(item.title,item.platform,item.url)||item.title===quickFallbackTitle(item.url))){
-   if(autoTitle)item.title=autoTitle;
+ if(item.titleSource!=='manual'&&(item.titleSource==='image-ai'||isWeakSavedTitle(item.title,item.platform,item.url)||item.title===quickFallbackTitle(item.url))){
+   if(autoTitle){item.title=autoTitle;if(item.titleSource==='image-ai'&&meta.body)item.titleSource='auto';}
  }
  if(!item.body&&meta.body&&!isPlatformUnavailableText(meta.body))item.body=meta.body;
  if(meta.resolvedUrl)item.resolvedUrl=meta.resolvedUrl;
@@ -2138,6 +2139,16 @@ async function analyzeArticlePhotos(id,opts={}){
    target.vision.entries=Array.isArray(target.vision.entries)?target.vision.entries:[];
    target.vision.entries.push({...res.analysis,index:photo.index,key:photo.key});
    target.vision.updatedAt=Date.now();
+   // When the publisher did not provide text, show an explicitly AI-labeled
+   // description of an available photo. Never store it as the author's body.
+   const imageDescription=String(res.analysis?.summary||'').trim();
+   if(!target.body&&imageDescription){
+     if(!target.imageSummary)target.imageSummary=imageDescription.slice(0,240);
+     if(target.titleSource!=='manual'&&(isWeakSavedTitle(target.title,target.platform,target.url)||target.titleSource==='image-ai')){
+       target.title='圖片辨識：'+imageDescription.slice(0,38);
+       target.titleSource='image-ai';
+     }
+   }
    // Only derive obvious metadata from visible words, never auto-apply product/place identity.
    const evidence=uniq([...(res.analysis.visibleText||[]),...(res.analysis.tags||[])]).join(' ');
    if(target.categorySource!=='manual'&&target.category==='其他')target.category=inferCategory(`${target.body} ${evidence}`);

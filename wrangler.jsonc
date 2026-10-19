@@ -1,19 +1,15 @@
 {
   "name": "shiji-sync",
   "main": "worker.js",
-  "compatibility_date": "2026-10-14",
-  "workers_dev": true,
-  "browser": {
-    "binding": "BROWSER"
-  },
-  "ai": {
-    "binding": "AI"
-  },
+  "compatibility_date": "2026-10-19",
+  "compatibility_flags": ["nodejs_compat"],
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "shiji-db",
       "database_id": "d39f773f-a550-479f-ac48-6584893b6c9e"
     }
-  ]
+  ],
+  "ai": {"binding": "AI"},
+  "browser": {"binding": "BROWSER"}
 }

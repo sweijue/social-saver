@@ -1,0 +1,15 @@
+{
+  "name": "shiji-sync",
+  "private": true,
+  "version": "1.8.17",
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@cloudflare/puppeteer": "1.4.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.45.0"
+  }
+}
