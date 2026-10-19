@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="拾集">
-<title>拾集 v1.8.19 安全回退版</title>
+<title>拾集 v1.8.19 安全回退版（多圖修正 .2）</title>
 <style>
 :root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#6e6e68;--line:#e4e4de;--soft:#efefe9;--shadow:0 10px 28px rgba(0,0,0,.07);--r:20px;--navh:74px}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif;font-size:17px}body{min-height:100vh;padding-bottom:calc(var(--navh) + env(safe-area-inset-bottom) + 18px)}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
@@ -581,7 +581,7 @@ main{padding-top:calc(116px + env(safe-area-inset-top))!important}
 
 <script>
 
-const VERSION="1.8.19-rollback.1", STORE="socialSaver_data";
+const VERSION="1.8.19-rollback.2", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -1548,22 +1548,14 @@ async function fetchPublicMetadata(url,options={}){
   }catch(e){reason=e.status===404?'Worker \u5c1a\u672a\u5347\u7d1a\u64f7\u53d6\u529f\u80fd':e.message||''}
  }
  let merged=direct&&hasUsefulPreview(direct)?{...direct}:null;
- // Skip a redundant public preview call if full text and multiple photos are already present.
- if(!(merged?.body&&merged?.images?.length>=2)){
-  try{
-   preview=await fetchMicrolinkMetadata(canonical||url);
-   if(merged){merged={...preview,title:merged.title||preview.title,body:merged.body||preview.body,
-      images:uniqueArticleImages([...(merged.images||[]),...(preview.images||[])]),resolvedUrl:canonical||'',source:'Threads \u516c\u958b\u7db2\u9801\u8207\u9810\u89bd'};}
-   else merged={...preview,resolvedUrl:canonical||''};
-  }catch(e){previewError=e.message||'Preview unavailable';previewLimited=!!e.previewRateLimited||!!e.previewCooldown;}
- }
+ let browserFailureNote='';
  // Automatic browser fallback is deliberately limited on the server; manual retry
  // is allowed more often. One-cover posts may be multi-photo carousels, so try once.
  const incomplete=!!(threads&&(!merged?.body||!merged?.images?.length||merged.images.length===1));
  if(threads&&cloudConfig&&browserMode!=='off'&&(browserMode==='manual'||incomplete)){
   try{
    const result=await cloudRequest('POST','/api/browser-extract',{url:canonical||url,mode:browserMode==='manual'?'manual':'auto'});
-   const note=browserReasonText(result?.reason||'');
+   const note=browserReasonText(result?.reason||'')+(result?.retryAfterSeconds?('（約 '+Math.ceil(result.retryAfterSeconds/60)+' 分鐘後可再試）'):'');
    // Diagnose whether the browser truly operated the carousel or silently fell back.
    let carouselNote='';
    if(result?.executionMode==='puppeteer'){
@@ -1590,7 +1582,7 @@ async function fetchPublicMetadata(url,options={}){
        {...fresh,browserNotice:combinedNote};
     clearLimitWarning('browser');
    }else{
-    if(note||carouselNote){const info=[carouselNote,note].filter(Boolean).join(' ');if(merged)merged.browserNotice=info;else reason=[reason,info].filter(Boolean).join('\uff1b')}
+    if(note||carouselNote){const info=[carouselNote,note].filter(Boolean).join(' ');browserFailureNote=info;if(merged)merged.browserNotice=info;else reason=[reason,info].filter(Boolean).join('\uff1b')}
     if(['browser-cloudflare-daily-limit','browser-local-daily-budget'].includes(result?.reason))
       setLimitWarning('browser','Cloudflare Browser Run \u4eca\u65e5\u53ef\u7528\u6642\u9593\u6216\u62fe\u96c6\u4fdd\u8b77\u984d\u5ea6\u5df2\u9054\u4e0a\u9650\uff1b\u53ef\u660e\u5929\u518d\u8a66\u3002');
     else if(result?.reason==='browser-rate-limit')
@@ -1601,6 +1593,19 @@ async function fetchPublicMetadata(url,options={}){
     if(merged)merged.browserNotice=note;else reason=[reason,note].filter(Boolean).join('\uff1b');
   }
  }
+ // If the browser yielded nothing, consult external public preview as fallback.
+ // Do not waste a Microlink call after successful multi-photo extraction.
+ if(!(merged?.body&&merged?.images?.length>=2)){
+  try{
+   preview=await fetchMicrolinkMetadata(canonical||url);
+   if(merged){
+    merged={...preview,...merged,title:merged.title||preview.title,body:merged.body||preview.body,
+      images:uniqueArticleImages([...(merged.images||[]),...(preview.images||[])]),
+      resolvedUrl:merged.resolvedUrl||canonical||'',source:merged.source||'公開網頁與預覽'};
+   }else merged={...preview,resolvedUrl:canonical||''};
+  }catch(e){previewError=e.message||'Preview unavailable';previewLimited=!!e.previewRateLimited||!!e.previewCooldown;}
+ }
+ if(merged&&browserFailureNote&&!merged.browserNotice)merged.browserNotice=browserFailureNote;
  if(merged&&hasUsefulPreview(merged)){
   // Recovered usable content: a Microlink 429 alone does not mean failure.
   clearLimitWarning('preview');
@@ -1619,7 +1624,7 @@ function browserReasonText(reason){
   'browser-cooldown':'\u700f\u89bd\u5668\u8acb\u6c42\u51b7\u537b\u4e2d\uff08\u6bcf 10 \u79d2\u6700\u591a\u4e00\u6b21\uff09\u3002',
   'browser-cooldown-or-budget':'\u700f\u89bd\u5668\u8acb\u6c42\u51b7\u537b\u4e2d\u6216\u4eca\u65e5\u4fdd\u8b77\u984d\u5ea6\u5df2\u9054\u4e0a\u9650\u3002',
   'browser-post-cooldown':'\u9019\u7bc7\u8cbc\u6587\u5df2\u5617\u8a66\u904e\u700f\u89bd\u5668\u88dc\u6293\uff0c\u8acb\u7a0d\u5f8c\u518d\u8a66\u3002',
-  'browser-needs-original-url':'\u8acb\u5148\u5c07 Threads \u5206\u4eab\u77ed\u9023\u7d50\u8f49\u6210\u539f\u59cb\u8cbc\u6587\u7db2\u5740\u3002',
+  'browser-needs-original-url':'Threads 分享短網址無法解析成原始貼文。請從 Threads 貼文的「複製連結」取得 @帳號/post/... 網址後再試。',
   'browser-no-readable-post':'\u96f2\u7aef\u700f\u89bd\u5668\u4e5f\u672a\u53d6\u5f97\u53ef\u8b80\u5167\u5bb9\uff0c\u53ef\u80fd\u53d7 Threads \u5b58\u53d6\u9650\u5236\u3002',
   'browser-page-blocked':'Threads \u963b\u64cb\u4e86\u96f2\u7aef\u700f\u89bd\u5668\u3002',
   'browser-timeout':'\u96f2\u7aef\u700f\u89bd\u5668\u8b80\u53d6\u903e\u6642\uff0c\u7a0d\u5f8c\u518d\u8a66\u3002',
@@ -1862,7 +1867,8 @@ function describeContentRefetch(before,item,meta,changed){
   const words=[addedTitle?'標題':'',addedText?'內文':'',addedImages?`${addedImages} 張圖片`:''].filter(Boolean);
   return {kind:'ok',text:words.length?`已補上：${words.join('、')}。`:'已更新公開文章資訊。'};
  }
- return {kind:'warn',text:`已重新檢查，但來源沒有提供比現有更多的內容（目前 ${item.images?.length||0} 張公開圖片）。可以之後重試或手動補充。`};
+ const reason=String(meta?.browserNotice||'').trim();
+ return {kind:'warn',text:`已重新檢查，目前 ${item.images?.length||0} 張公開圖片。${reason?reason+' ':''}來源沒有提供更多可用圖片；請勿立即連續重試，以免浪費免費額度。`};
 }
 async function retryItemMetadata(id){
  const target=data.items.find(i=>i.id===id);
@@ -1879,7 +1885,7 @@ async function retryItemMetadata(id){
   const changed=mergePublicPreview(latest,meta);
   const improved=recordFetchCheck(latest,original,meta);
   articleFetchFeedback.set(id,improved?describeContentRefetch(before,latest,meta,changed):
-   {kind:'warn',text:`沒有找到新增內容。${retryStatusText(latest)}`});
+   {kind:'warn',text:`${describeContentRefetch(before,latest,meta,changed).text} ${retryStatusText(latest)}`});
   await save();render();
  }catch(e){
   const latest=data.items.find(i=>i.id===id);
@@ -2071,7 +2077,7 @@ function openQuickAdd(prefill=''){
    const found=await fetchPublicMetadata(url);
    if(thisJob!==job)return;
    cached=found;status.dataset.state='ok';
-   status.textContent=`已取得公開預覽（目前 ${found.images.length} 張圖片，非完整相簿）；可展開補充欄位加入其他圖片。`;
+   status.textContent=`已取得 ${found.images.length} 張公開圖片${isThreadsURL(url)&&found.images.length===1?'；Threads 可能尚有未載入的輪播照片':''}。未能確認來源完整相簿；可以稍後在收藏內再次擷取。${found.browserNotice?' '+found.browserNotice:''}`;
    const p=quickItem(url,found);
    preview.classList.remove('hidden');
    preview.innerHTML=`${found.images?.[0]?`<img class="quickCover" src="${esc(found.images[0])}" alt="文章封面">`:''}<div><strong>${esc(p.title)}</strong><small>${esc(p.platform)} · ${esc(p.category)} · ${esc(p.country)}</small><p>${esc(p.body||'沒有公開摘要')}</p></div>`;

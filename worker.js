@@ -363,17 +363,74 @@ async function limitedPublicHTML(resp){
    out+=decoder.decode(value,{stream:true});
  }out+=decoder.decode();return out}finally{try{reader.releaseLock()}catch{}}
 }
-async function extractPublicThreads(input){
- let target=safeThreadsURL(input);
- if(target.pathname.startsWith('/share/')){
-  let res=await fetchPublicResponse(target.href,'HEAD');
-  if([405,501].includes(res.status))res=await fetchPublicResponse(target.href,'GET');
-  if([301,302,303,307,308].includes(res.status)){
-   const location=res.headers.get('location');if(!location)throw Object.assign(new Error('threads-share-no-location'),{status:422});
-   target=safeThreadsURL(new URL(location,target).href);
-  }else if(!res.ok){throw Object.assign(new Error('threads-share-unavailable'),{status:502})}
+// Short-share URLs may return 200 HTML rather than a single HTTP redirect.
+// Only a post URL from the share page's canonical/OG metadata is accepted.
+// Never follow arbitrary page/feed links or off-site redirects.
+function threadsPostFromCanonicalHTML(html, base){
+ const candidates=[];
+ for(const m of html.matchAll(/<link\b[^>]*>|<meta\b[^>]*>/gi)){
+  const attrs=htmlAttrs(m[0]);
+  const rel=String(attrs.rel||'').toLowerCase();
+  const key=String(attrs.property||attrs.name||'').toLowerCase();
+  if(rel.split(/\s+/).includes('canonical')&&attrs.href)candidates.push(attrs.href);
+  if((key==='og:url'||key==='twitter:url')&&attrs.content)candidates.push(attrs.content);
  }
- if(!target.pathname.match(/^\/@[^/]+\/post\/[^/]+\/?$/))return {ok:true,found:false,canonicalUrl:target.href,reason:'threads-post-url-unresolved',source:'threads-public-html'};
+ for(const raw of candidates){
+  try{
+   const url=safeThreadsURL(new URL(raw,base).href);
+   if(/^\/@[a-zA-Z0-9._]+\/post\/[a-zA-Z0-9_-]+\/?$/.test(url.pathname))return url;
+  }catch{}
+ }
+ return null;
+}
+async function resolveThreadsPostURL(input){
+ let target=safeThreadsURL(input);
+ if(!target.pathname.startsWith('/share/'))return {target,reason:''};
+ // At most two redirects, and a single HTML read on a 200 response.
+ for(let step=0;step<3;step++){
+  let response;
+  try{response=await fetchPublicResponse(target.href,step===0?'HEAD':'GET')}
+  catch{return {target,reason:'threads-share-unavailable'}}
+  if([405,501].includes(response.status)){
+   try{response=await fetchPublicResponse(target.href,'GET')}
+   catch{return {target,reason:'threads-share-unavailable'}}
+  }
+  if([301,302,303,307,308].includes(response.status)){
+   const location=response.headers.get('location');
+   if(!location)return {target,reason:'threads-share-no-location'};
+   try{target=safeThreadsURL(new URL(location,target).href)}
+   catch{return {target,reason:'threads-share-unresolved'}}
+   if(!target.pathname.startsWith('/share/'))return {target,reason:''};
+   continue;
+  }
+  if(!response.ok)return {target,reason:'threads-share-http-'+response.status};
+  // HEAD 200 has no HTML. Request the same public page once for its canonical URL.
+  if(step===0){
+   try{response=await fetchPublicResponse(target.href,'GET')}
+   catch{return {target,reason:'threads-share-unavailable'}}
+   if([301,302,303,307,308].includes(response.status)){
+    const location=response.headers.get('location');
+    if(!location)return {target,reason:'threads-share-no-location'};
+    try{target=safeThreadsURL(new URL(location,target).href)}
+    catch{return {target,reason:'threads-share-unresolved'}}
+    if(!target.pathname.startsWith('/share/'))return {target,reason:''};
+    continue;
+   }
+  }
+  if(!response.ok)return {target,reason:'threads-share-http-'+response.status};
+  try{
+   const html=await limitedPublicHTML(response);
+   const post=threadsPostFromCanonicalHTML(html,target);
+   if(post)return {target:post,reason:''};
+  }catch{}
+  break;
+ }
+ return {target,reason:'threads-post-url-unresolved'};
+}
+async function extractPublicThreads(input){
+ const {target,reason}=await resolveThreadsPostURL(input);
+ if(!/^\/@[a-zA-Z0-9._]+\/post\/[a-zA-Z0-9_-]+\/?$/.test(target.pathname))
+  return {ok:true,found:false,canonicalUrl:target.href,reason:reason||'threads-post-url-unresolved',source:'threads-public-html'};
  const resp=await fetchPublicResponse(target.href);
  if(!resp.ok)return {ok:true,found:false,canonicalUrl:target.href,reason:'threads-html-http-'+resp.status,source:'threads-public-html'};
  const html=await limitedPublicHTML(resp);
@@ -409,7 +466,7 @@ async function reserveBrowser(db,url,mode){
  if(isAuto&&((Number(row?.auto_attempts)||0)>=5||(Number(row?.estimated_ms)||0)+BROWSER_RESERVE_MS>BROWSER_AUTO_DAILY_BUDGET_MS))return {allowed:false,reason:'browser-auto-budget'};
  const recent=await db.prepare('SELECT last_at FROM browser_post_attempts WHERE canonical_url=?').bind(url).first();
  const wait=isAuto?6*60*60*1000:60*1000;
- if(recent&&(Number(recent.last_at)||0)>now-wait)return {allowed:false,reason:'browser-post-cooldown'};
+ if(recent&&(Number(recent.last_at)||0)>now-wait)return {allowed:false,reason:'browser-post-cooldown',retryAfterSeconds:Math.max(1,Math.ceil((wait-(now-Number(recent.last_at)))/1000))};
  // Atomic reserve also prevents accidental simultaneous browser launches from devices.
  const claim=await db.prepare(`UPDATE browser_usage_daily SET attempts=attempts+1,
     auto_attempts=auto_attempts+?,estimated_ms=estimated_ms+?,last_started_at=?,last_at=?,last_status='running'
@@ -619,18 +676,22 @@ async function puppeteerCarouselScrape(env,canonicalUrl,mode='auto'){
  }finally{if(browser)try{await browser.close()}catch{}}
 }
 async function extractBrowserThreads(env,body){
- const canonical=safeThreadsURL(body.url);
+ const {target:canonical}=await resolveThreadsPostURL(body.url);
  if(!/^\/@[a-zA-Z0-9._]+\/post\/[a-zA-Z0-9_-]+\/?$/.test(canonical.pathname))return {ok:true,found:false,source:'browser-run',canonicalUrl:canonical.href,reason:'browser-needs-original-url'};
  if(!browserBound(env))return {ok:true,found:false,source:'browser-run',canonicalUrl:canonical.href,reason:'browser-not-bound'};
  const mode=body.mode==='manual'?'manual':'auto';
  const slot=await reserveBrowser(env.DB,canonical.href,mode);
- if(!slot.allowed)return {ok:true,found:false,source:'browser-run',canonicalUrl:canonical.href,reason:slot.reason};
+ if(!slot.allowed)return {ok:true,found:false,source:'browser-run',canonicalUrl:canonical.href,reason:slot.reason,retryAfterSeconds:slot.retryAfterSeconds||null};
  let extracted=null,status='ok',reportedMs=null;
+ const browserStageStartedAt=Date.now();
  try{
   try{
   const advanced=await puppeteerCarouselScrape(env,canonical.href,mode);
   extracted=advanced;status=advanced.found?'ok':advanced.reason;return advanced;
  }catch(advancedError){
+  // Only use a non-carousel fallback if Puppeteer fails quickly.
+  // Avoid using up the request's background-execution window and free minutes.
+  if(Date.now()-browserStageStartedAt>(mode==='auto'?7000:10000))throw advancedError;
   // Fall back to the existing no-dependency Quick Action if launching Puppeteer fails.
   if(/browser.*quota|time.limit|429|too.many.requests|daily|rate.limit/i.test(String(advancedError.message||advancedError)))throw advancedError;
   try{const result=await env.BROWSER.quickAction('scrape',{
@@ -726,19 +787,24 @@ async function enrichIncomingBookmark(env,inboxId,url){
    try{const t=await extractPublicThreads(url);blendEnrichment(meta,{title:t.title,body:t.body,images:t.images,resolvedUrl:t.canonicalUrl});if(t.reason)issue=t.reason}
    catch(e){issue='公開貼文讀取失敗：'+String(e.message||e).slice(0,100)}
   }
-  if(!meta.body||meta.images.length<2){
-   const p=await previewEnrichment(env.DB,meta.resolvedUrl||url);
-   if(p.meta)blendEnrichment(meta,p.meta);
-   else if(p.reason)issue=p.reason;
-  }
-  // Cloudflare Browser is only a fallback, guarded by the existing daily/cooldown limits.
-  // Do not launch if earlier stages already used most of waitUntil's ~30s window.
-  if(isThreads&&browserBound(env)&&(!meta.body||meta.images.length<2)&&Date.now()-began<8500){
+  // On Threads carousel candidates, try a bounded Browser Run pass before
+  // spending the remaining waitUntil window on an external preview service.
+  // The existing daily, per-post and concurrency limits still apply.
+  if(isThreads&&browserBound(env)&&(!meta.body||meta.images.length<2)&&
+     /^https:\/\/www\.threads\.com\/@[^/]+\/post\/[^/]+\/?$/.test(meta.resolvedUrl||'')&&
+     Date.now()-began<6500){
    try{
     const b=await extractBrowserThreads(env,{url:meta.resolvedUrl||url,mode:'auto'});
     if(b.found){blendEnrichment(meta,{title:b.title,body:b.body,images:b.images,resolvedUrl:b.canonicalUrl});meta.carouselVisited=b.carouselSlidesVisited||0;meta.imagesComplete=!!b.imagesComplete;meta.carouselReachedVisibleEnd=!!b.carouselReachedVisibleEnd;}
     else if(b.reason)issue=b.reason;
    }catch(e){issue='雲端瀏覽器暫時不可用'}
+  }
+  // Retry public preview only when the carousel did not supply enough content.
+  // Avoid repeated preview calls for already recovered multi-image posts.
+  if((!meta.body||meta.images.length<2)&&Date.now()-began<21000){
+   const p=await previewEnrichment(env.DB,meta.resolvedUrl||url);
+   if(p.meta)blendEnrichment(meta,p.meta);
+   else if(p.reason)issue=p.reason;
   }
   status=contentUseful(meta)?'ready':'failed';
  }catch(e){issue=String(e?.message||e).slice(0,180)}
@@ -767,7 +833,7 @@ export default {
       return new Response(null,{status:204,headers:headersFor(origin)});
     }
     const pathname=new URL(request.url).pathname.replace(/\/+$/,'')||'/';
-    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.19-rollback.1',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env)},200,origin);
+    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.19-rollback.2',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env)},200,origin);
     if(!env.DB||!env.SJ_TOKEN||String(env.SJ_TOKEN).length<32)return reply({error:'server-not-configured'},503,origin);
     try{
       let body=null;
