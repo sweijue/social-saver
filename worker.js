@@ -1,6 +1,6 @@
 import puppeteer from '@cloudflare/puppeteer';
 /**
- * 拾集 Cloud API v1.8.20 — deploy as a Cloudflare Worker.
+ * 拾集 Cloud API v1.8.21 — deploy as a Cloudflare Worker.
  * Bind Cloudflare D1 database as DB; add Worker Secret SJ_TOKEN (min 32 chars).
  * Allowed browser origin is fixed to the user's GitHub Pages domain.
  * The secret must NOT be committed to GitHub or embedded in index.html.
@@ -10,9 +10,6 @@ const MAX_STATE_BYTES = 1_500_000;
 // Gemma 4 supports multilingual OCR and image input; no Meta Llama 3.2 agreement step.
 const VISION_MODEL = '@cf/google/gemma-4-26b-a4b-it';
 const encoder = new TextEncoder();
-const R2_APP_LIMIT_BYTES = 8_000_000_000; // App-side safety limit; verify official Cloudflare billing separately.
-const R2_SINGLE_IMAGE_LIMIT_BYTES = 4_500_000;
-const R2_ARCHIVE_BATCH_MAX = 3;
 const headersFor = origin => ({
   'Content-Type':'application/json; charset=utf-8',
   'Cache-Control':'no-store',
@@ -83,15 +80,166 @@ async function schema(db){
     last_at INTEGER NOT NULL DEFAULT 0,
     last_started_at INTEGER NOT NULL DEFAULT 0
   )`).run();
-  await db.prepare(`CREATE TABLE IF NOT EXISTS media_objects (
-    id TEXT PRIMARY KEY, hash TEXT UNIQUE NOT NULL, bytes INTEGER NOT NULL, mime TEXT NOT NULL, created_at INTEGER NOT NULL
-  )`).run();
   await db.prepare(`CREATE TABLE IF NOT EXISTS browser_post_attempts (
     canonical_url TEXT PRIMARY KEY,
     last_at INTEGER NOT NULL DEFAULT 0,
     found INTEGER NOT NULL DEFAULT 0,
     image_count INTEGER NOT NULL DEFAULT 0
   )`).run();
+  // V2 is additive. The old app_state row remains untouched as a rollback snapshot.
+  await db.prepare(`CREATE TABLE IF NOT EXISTS sync_control (
+    id INTEGER PRIMARY KEY CHECK(id=1),
+    active INTEGER NOT NULL DEFAULT 0,
+    revision INTEGER NOT NULL DEFAULT 0,
+    legacy_revision INTEGER NOT NULL DEFAULT -1,
+    migration_revision INTEGER NOT NULL DEFAULT -1,
+    migrated_at INTEGER NOT NULL DEFAULT 0
+  )`).run();
+  await db.prepare('INSERT OR IGNORE INTO sync_control(id) VALUES(1)').run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS sync_documents (
+    kind TEXT NOT NULL,
+    doc_id TEXT NOT NULL,
+    content TEXT NOT NULL DEFAULT '{}',
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    global_revision INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY(kind,doc_id)
+  )`).run();
+  // SQL triggers atomically update the global change revision with every write.
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS sync_documents_insert AFTER INSERT ON sync_documents BEGIN
+    UPDATE sync_control SET revision=revision+1 WHERE id=1;
+    UPDATE sync_documents SET global_revision=(SELECT revision FROM sync_control WHERE id=1)
+      WHERE kind=NEW.kind AND doc_id=NEW.doc_id;
+  END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS sync_documents_update AFTER UPDATE OF content, deleted ON sync_documents BEGIN
+    UPDATE sync_control SET revision=revision+1 WHERE id=1;
+    UPDATE sync_documents SET global_revision=(SELECT revision FROM sync_control WHERE id=1)
+      WHERE kind=NEW.kind AND doc_id=NEW.doc_id;
+  END`).run();
+}
+// V2 document sync uses individual records with optimistic per-record revisions.
+// Nothing in this module deletes the old JSON snapshot in app_state.
+const DOC_KINDS = new Set(['items','shoppingLists','travelPlans','meta']);
+const DOC_BODY_MAX = 1_350_000;
+function docName(kind,id){
+ const k=String(kind||''),v=String(id||'');
+ if(!DOC_KINDS.has(k)||!v||v.length>160||k==='meta'&&v!=='main')
+   throw Object.assign(new Error('invalid-document-id'),{status:400});
+ return {kind:k,id:v};
+}
+function legacyDocuments(data){
+ const src=data&&typeof data==='object'&&!Array.isArray(data)?data:{};
+ const docs=[];
+ for(const kind of ['items','shoppingLists','travelPlans']){
+  for(const item of Array.isArray(src[kind])?src[kind]:[]){
+   if(!item||typeof item!=='object'||typeof item.id!=='string'||!item.id||item.id.length>160)
+    throw Object.assign(new Error('legacy-document-has-invalid-id'),{status:422});
+   docs.push({kind,id:item.id,content:item});
+  }
+ }
+ const meta={...src};for(const key of ['items','shoppingLists','travelPlans','version','_savedAt'])delete meta[key];
+ docs.push({kind:'meta',id:'main',content:meta});
+ return docs;
+}
+async function syncStatus(db){
+ const [control,legacy]=await Promise.all([
+  db.prepare('SELECT * FROM sync_control WHERE id=1').first(),
+  db.prepare('SELECT revision FROM app_state WHERE id=1').first()
+ ]);
+ return {active:!!control?.active,revision:Number(control?.revision||0),
+  legacyRevision:Number(legacy?.revision||0),migratedLegacyRevision:Number(control?.legacy_revision??-1),
+  migrationRevision:Number(control?.migration_revision??-1),
+  legacyChanged:!!control?.active&&Number(legacy?.revision||0)!==Number(control?.legacy_revision||0),
+  legacyBackupPreserved:true};
+}
+async function migrateLegacyChunk(db,offset){
+ let status=await syncStatus(db);
+ if(status.active)return {...status,done:true};
+ const row=await db.prepare('SELECT revision,content FROM app_state WHERE id=1').first();
+ const version=Number(row?.revision||0);
+ let snapshot={};try{snapshot=JSON.parse(row?.content||'{}')}catch{
+  throw Object.assign(new Error('legacy-backup-is-invalid-json'),{status:422});
+ }
+ const docs=legacyDocuments(snapshot),total=docs.length;
+ if(new Set(docs.map(d=>d.kind+'\\0'+d.id)).size!==total)
+  throw Object.assign(new Error('legacy-duplicate-document-ids'),{status:422});
+ let start=Math.max(0,Number(offset)||0);
+ // A concurrent old-client write invalidates a partly completed migration.
+ if(status.migrationRevision!==version){
+  await db.batch([
+   db.prepare('DELETE FROM sync_documents'),
+   db.prepare('UPDATE sync_control SET migration_revision=?,revision=0 WHERE id=1').bind(version)
+  ]);
+  start=0;
+ }
+ if(start>total)start=0;
+ // Keep well under the 50 D1 queries per Worker invocation on the Free plan.
+ const chunk=docs.slice(start,start+18);
+ if(chunk.length){
+  const time=Date.now();
+  await db.batch(chunk.map(r=>db.prepare(`INSERT OR IGNORE INTO sync_documents
+   (kind,doc_id,content,version,deleted,global_revision,updated_at) VALUES(?,?,?,1,0,0,?)`)
+   .bind(r.kind,r.id,JSON.stringify(r.content),time)));
+ }
+ const end=start+chunk.length;
+ if(end>=total){
+  const latest=await db.prepare('SELECT revision FROM app_state WHERE id=1').first();
+  if(Number(latest?.revision||0)!==version)
+   return {active:false,done:false,restart:true,offset:0,total,reason:'legacy-changed-during-migration'};
+  // Protect against a truncated or incomplete import. Duplicated IDs are safely deduplicated.
+  const expected=new Set(docs.map(d=>d.kind+'\\0'+d.id)).size;
+  const counts=await db.prepare('SELECT COUNT(*) AS total FROM sync_documents').first();
+  if(Number(counts?.total||0)!==expected)
+   return {active:false,done:false,restart:true,offset:0,total,reason:'migration-count-mismatch'};
+  await db.prepare(`UPDATE sync_control SET active=1,legacy_revision=?,migrated_at=?
+    WHERE id=1 AND active=0 AND migration_revision=?`).bind(version,Date.now(),version).run();
+ }
+ status=await syncStatus(db);
+ return {...status,done:status.active,offset:end,total};
+}
+async function changesSince(db,since){
+ const n=Number(since);
+ if(!Number.isSafeInteger(n)||n<0)throw Object.assign(new Error('invalid-sync-cursor'),{status:400});
+ const records=await db.prepare(`SELECT kind,doc_id,content,version,deleted,global_revision
+  FROM sync_documents WHERE global_revision>? ORDER BY global_revision LIMIT 25`).bind(n).all();
+ const out=[];let used=0;
+ for(const row of records.results||[]){
+  const size=encoder.encode(row.content||'').length;
+  if(out.length&&used+size>950000)break;
+  used+=size;
+  out.push({kind:row.kind,id:row.doc_id,version:row.version,deleted:!!row.deleted,
+   seq:row.global_revision,content:row.deleted?null:JSON.parse(row.content)});
+ }
+ const cursor=out.length?out[out.length-1].seq:n;
+ const more=await db.prepare('SELECT global_revision FROM sync_documents WHERE global_revision>? ORDER BY global_revision LIMIT 1').bind(cursor).first();
+ return {records:out,nextSince:cursor,hasMore:!!more};
+}
+async function writeSyncDocument(db,body){
+ const {kind,id}=docName(body?.kind,body?.id);
+ const expected=Number(body?.expectedVersion);
+ if(!Number.isSafeInteger(expected)||expected<0)throw Object.assign(new Error('invalid-expected-version'),{status:400});
+ const deleted=!!body?.deleted;
+ if(kind==='meta'&&deleted)throw Object.assign(new Error('cannot-delete-metadata'),{status:400});
+ const content=deleted?'{}':JSON.stringify(body?.content);
+ if(!content||content==='undefined'||encoder.encode(content).length>DOC_BODY_MAX)
+  throw Object.assign(new Error('document-too-large'),{status:413});
+ const now=Date.now();let result;
+ if(expected===0){
+  if(deleted)return {ok:true,version:0,ignored:true};
+  result=await db.prepare(`INSERT OR IGNORE INTO sync_documents
+  (kind,doc_id,content,version,deleted,global_revision,updated_at) VALUES(?,?,?,1,0,0,?)`)
+  .bind(kind,id,content,now).run();
+ }else{
+  result=await db.prepare(`UPDATE sync_documents SET content=?,version=version+1,deleted=?,updated_at=?
+   WHERE kind=? AND doc_id=? AND version=?`).bind(content,deleted?1:0,now,kind,id,expected).run();
+ }
+ if(!Number(result.meta?.changes||0)){
+  const current=await db.prepare('SELECT version FROM sync_documents WHERE kind=? AND doc_id=?').bind(kind,id).first();
+  throw Object.assign(new Error('document-version-conflict'),{status:409,currentVersion:current?.version??0,kind,id});
+ }
+ const saved=await db.prepare('SELECT version,global_revision FROM sync_documents WHERE kind=? AND doc_id=?').bind(kind,id).first();
+ return {ok:true,version:saved.version,seq:saved.global_revision};
 }
 async function readJSON(request,limit=MAX_STATE_BYTES){
   const text=await request.text();
@@ -583,7 +731,7 @@ async function extractBrowserThreads(env,body){
  }finally{await completeBrowser(env.DB,slot,status,extracted,reportedMs)}
 }
 
-// ----- v1.8.20: enrich new shares in Cloudflare without requiring the app to open -----
+// ----- v1.8.18: enrich new shares in Cloudflare without requiring the app to open -----
 function usableArticleText(value){
  const text=String(value||'').trim();
  return /this content isn.t available to everyone|thread not available|log in to see|content isn.t available|post unavailable|貼文無法顯示|內容無法使用/i.test(text)?'':text;
@@ -652,19 +800,6 @@ async function enrichIncomingBookmark(env,inboxId,url){
     else if(b.reason)issue=b.reason;
    }catch(e){issue='雲端瀏覽器暫時不可用'}
   }
-  // Background best effort: back up first TWO photos without delaying the inbox if
-  // the browser fetch has already used the Worker waitUntil execution budget.
-  if(env.IMAGES&&meta.images.length&&Date.now()-began<14000){
-   try{
-    const originals={},out=[];
-    const archived=await archiveImageBatch(env,meta.images.slice(0,2),'https://shiji-sync.sweijue.workers.dev',2);
-    for(let j=0;j<meta.images.length;j++){
-     const photo=meta.images[j],saved=archived.find(x=>x.url===photo&&x.archivedUrl);
-     if(saved){out.push(saved.archivedUrl);originals[saved.archivedUrl]=photo}else out.push(photo)
-    }
-    meta.images=curatedImages(out);if(Object.keys(originals).length)meta.imageOriginals=originals;
-   }catch(_e){/* Never mark the user's bookmark as failed due to an image-backup error. */}
-  }
   status=contentUseful(meta)?'ready':'failed';
  }catch(e){issue=String(e?.message||e).slice(0,180)}
  // Only update the still-pending matching inbox row; repeated shares create new jobs.
@@ -683,78 +818,6 @@ function parseTextAIResponse(result){
  return {category:allowed.includes(category)?category:'',country:String(obj.country||'').slice(0,24),city:String(obj.city||'').slice(0,70),placeName:String(obj.placeName||'').slice(0,80),address:String(obj.address||'').slice(0,120),products:safeArray(obj.products,8),tags:safeArray(obj.tags,12),summary:String(obj.summary||'').slice(0,220)};
 }
 
-
-// v1.8.20: Save publicly accessible social-photo URLs into a PRIVATE R2 bucket.
-// Stable unpredictable capability URL: randomly generated 256-bit object ID.
-// Anyone WITH the final image link can view it; do not use this path for
-// private screenshots or documents. IDs survive rotation of SJ_TOKEN.
-function photoArchiveHost(url){
- let u;try{u=new URL(String(url||''))}catch{return null}
- if(u.protocol!=='https:'||u.username||u.password||u.port&&u.port!=='443'||u.href.length>3000)return null;
- const h=u.hostname.toLowerCase();
- const domains=['fbcdn.net','cdninstagram.com','instagram.com','threads.com','threads.net','pinimg.com','twimg.com','unsplash.com','imgur.com','xhscdn.com','xiaohongshu.com','byteimg.com','tiktokcdn.com','ytimg.com','googleusercontent.com'];
- if(!domains.some(d=>h===d||h.endsWith('.'+d)))return null;
- if(u.pathname.startsWith('/api/')||u.pathname.startsWith('/media/'))return null;
- return u;
-}
-function isArchivedUrl(url,workerOrigin){
- try{const u=new URL(url);return u.origin===workerOrigin&&/^\/media\/[a-f0-9]{64}$/.test(u.pathname)}catch{return false}
-}
-function toHex(bytes){return Array.from(bytes,x=>x.toString(16).padStart(2,'0')).join('')}
-async function photoContentDigest(bytes){return toHex(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)))}
-function randomMediaId(){return toHex(crypto.getRandomValues(new Uint8Array(32)))}
-async function mediaStats(db){
- const row=await db.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(bytes),0) AS bytes FROM media_objects').first();
- return {objects:Number(row?.n||0),bytes:Number(row?.bytes||0),safeLimitBytes:R2_APP_LIMIT_BYTES,officialUsage:false};
-}
-async function archivePhoto(env,src,origin){
- if(!env.IMAGES)return {url:src,error:'r2-not-configured'};
- if(isArchivedUrl(src,origin))return {url:src,archivedUrl:src};
- const u=photoArchiveHost(src);
- if(!u)return {url:src,error:'photo-host-not-supported'};
- const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),8000);
- try{
-  const resp=await fetch(u.href,{redirect:'manual',signal:ctrl.signal,headers:{Accept:'image/avif,image/webp,image/jpeg,image/png,image/gif'}});
-  if(!resp.ok)return {url:src,error:'source-http-'+resp.status};
-  const mime=String(resp.headers.get('content-type')||'').split(';')[0].trim().toLowerCase();
-  if(!['image/jpeg','image/png','image/webp','image/gif','image/avif'].includes(mime))return {url:src,error:'unsupported-image-content'};
-  const length=Number(resp.headers.get('content-length')||0);
-  if(length>R2_SINGLE_IMAGE_LIMIT_BYTES)return {url:src,error:'image-too-large'};
-  // Streaming cap protects Worker memory even if upstream omits content-length.
-  const reader=resp.body?.getReader();if(!reader)return {url:src,error:'empty-image'};
-  const chunks=[];let size=0;
-  try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;
-   if(size>R2_SINGLE_IMAGE_LIMIT_BYTES){await reader.cancel();return {url:src,error:'image-too-large'}}
-   chunks.push(value)} }finally{try{reader.releaseLock()}catch{}}
-  if(size<150)return {url:src,error:'empty-image'};
-  const bytes=new Uint8Array(size);let index=0;for(const chunk of chunks){bytes.set(chunk,index);index+=chunk.byteLength}
-  const digest=await photoContentDigest(bytes);
-  const existing=await env.DB.prepare('SELECT id FROM media_objects WHERE hash=?').bind(digest).first();
-  const id=existing?.id||randomMediaId(),key='images/'+id;
-  if(!existing){
-   const usage=await mediaStats(env.DB);
-   if(usage.bytes+size>R2_APP_LIMIT_BYTES)return {url:src,error:'app-storage-safety-limit'};
-   await env.IMAGES.put(key,bytes,{httpMetadata:{contentType:mime,cacheControl:'public, max-age=86400'},customMetadata:{source:'public-social',version:'1.8.20'}});
-   await env.DB.prepare('INSERT OR IGNORE INTO media_objects (id,hash,bytes,mime,created_at) VALUES (?,?,?,?,?)').bind(id,digest,size,mime,Date.now()).run();
-  }
-  return {url:src,archivedUrl:origin+'/media/'+id,bytes:size};
- }catch(e){return {url:src,error:e?.name==='AbortError'?'image-fetch-timeout':'image-archive-failed'}}
- finally{clearTimeout(timer)}
-}
-async function archiveImageBatch(env,images,origin,limit=R2_ARCHIVE_BATCH_MAX){
- const results=[];
- for(const src of (Array.isArray(images)?images:[]).slice(0,limit))results.push(await archivePhoto(env,String(src||''),origin));
- return results;
-}
-async function serveArchivedMedia(env,id){
- if(!env.IMAGES)return new Response('Not available',{status:404});
- const media=await env.IMAGES.get('images/'+id);
- if(!media)return new Response('Not found',{status:404});
- const ct=media.httpMetadata?.contentType||'application/octet-stream';
- if(!/^image\/(?:jpeg|png|webp|gif|avif)$/.test(ct))return new Response('Unsupported content',{status:415});
- return new Response(media.body,{status:200,headers:{'Content-Type':ct,'Cache-Control':'public, max-age=86400','X-Content-Type-Options':'nosniff','Cross-Origin-Resource-Policy':'cross-origin'}});
-}
-
 export default {
   async fetch(request,env,ctx){
     const origin=request.headers.get('Origin')||'';
@@ -764,28 +827,16 @@ export default {
       return new Response(null,{status:204,headers:headersFor(origin)});
     }
     const pathname=new URL(request.url).pathname.replace(/\/+$/,'')||'/';
-    const mediaMatch=pathname.match(/^\/media\/([a-f0-9]{64})$/);
-    if(mediaMatch&&request.method==='GET')return serveArchivedMedia(env,mediaMatch[1]);
-    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.20',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env),r2Configured:!!env.IMAGES,r2Bucket:"shiji-images"},200,origin);
+    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.21',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env),syncSchema:'per-record-v2',legacyBackupPreserved:true},200,origin);
     if(!env.DB||!env.SJ_TOKEN||String(env.SJ_TOKEN).length<32)return reply({error:'server-not-configured'},503,origin);
     try{
       let body=null;
-      if(['POST','PUT'].includes(request.method))body=await readJSON(request,pathname==='/api/state'?MAX_STATE_BYTES:(pathname==='/api/vision'?2_900_000:25_000));
+      if(['POST','PUT'].includes(request.method))body=await readJSON(request,pathname==='/api/state'?MAX_STATE_BYTES:(pathname==='/api/v2/record'?1_550_000:(pathname==='/api/vision'?2_900_000:25_000)));
       const provided=request.headers.get('Authorization')?.replace(/^Bearer\s+/i,'')
         ||request.headers.get('X-Shiji-Token')
         ||(pathname==='/api/collect'?body?.token:null);
       if(!await safeEquals(String(provided||''),String(env.SJ_TOKEN)))return reply({error:'unauthorized'},401,origin);
       await schema(env.DB);
-      if(pathname==='/api/media/status'&&request.method==='GET'){
-        return reply({ok:true,r2Configured:!!env.IMAGES,...await mediaStats(env.DB),note:'App-side estimates only. Billing and bucket totals are available in Cloudflare.'},200,origin);
-      }
-      if(pathname==='/api/media/archive'&&request.method==='POST'){
-        if(!env.IMAGES)return reply({error:'r2-not-configured'},503,origin);
-        const photos=Array.isArray(body?.images)?body.images:[];
-        if(!photos.length||photos.length>R2_ARCHIVE_BATCH_MAX)return reply({error:'images-1-to-3-required'},400,origin);
-        const results=await archiveImageBatch(env,photos,new URL(request.url).origin);
-        return reply({ok:true,results},200,origin);
-      }
       if(pathname==='/api/browser-extract'&&request.method==='POST'){
         if(!body?.url)return reply({error:'url-required'},400,origin);
         return reply(await extractBrowserThreads(env,body),200,origin);
@@ -842,11 +893,35 @@ export default {
           return reply({ok:true,model:VISION_MODEL,analysis:parseVisionModel(output)},200,origin);
         }catch(e){const problem=modelFailure(e);await recordAIUsage(env.DB,'vision',problem.reason);return reply(problem,problem.reason==='rate-limit'?429:502,origin)}
       }
+      if(pathname==='/api/v2/legacy-backup'&&request.method==='GET'){
+        const old=await env.DB.prepare('SELECT revision,content FROM app_state WHERE id=1').first();
+        return reply({ok:true,revision:old?.revision||0,data:JSON.parse(old?.content||'{}')},200,origin);
+      }
+      if(pathname==='/api/v2/status'&&request.method==='GET'){
+        return reply({ok:true,...await syncStatus(env.DB)},200,origin);
+      }
+      if(pathname==='/api/v2/migrate'&&request.method==='POST'){
+        return reply({ok:true,...await migrateLegacyChunk(env.DB,body?.offset)},200,origin);
+      }
+      if(pathname==='/api/v2/changes'&&request.method==='GET'){
+        const status=await syncStatus(env.DB);
+        if(!status.active)return reply({error:'v2-not-ready'},409,origin);
+        if(status.legacyChanged)return reply({error:'legacy-changed-after-migration'},409,origin);
+        return reply({ok:true,revision:status.revision,...await changesSince(env.DB,new URL(request.url).searchParams.get('since')||'0')},200,origin);
+      }
+      if(pathname==='/api/v2/record'&&request.method==='PUT'){
+        const status=await syncStatus(env.DB);
+        if(!status.active)return reply({error:'v2-not-ready'},409,origin);
+        if(status.legacyChanged)return reply({error:'legacy-changed-after-migration'},409,origin);
+        try{return reply(await writeSyncDocument(env.DB,body),200,origin)}
+        catch(e){return reply({error:e.message,currentVersion:e.currentVersion??null},e.status||500,origin)}
+      }
       if(pathname==='/api/state'&&request.method==='GET'){
         const r=await env.DB.prepare('SELECT revision,content,updated_at FROM app_state WHERE id=1').first();
         return reply({revision:r.revision,updatedAt:r.updated_at,data:r.revision?JSON.parse(r.content):null},200,origin);
       }
       if(pathname==='/api/state'&&request.method==='PUT'){
+        if((await syncStatus(env.DB)).active)return reply({error:'old-client-upgrade-required',note:'The legacy snapshot is read-only. Update every device to v1.8.21.'},409,origin);
         if(!Number.isInteger(body?.expectedRevision)||body.expectedRevision<0||typeof body?.data!=='object'||body.data===null||Array.isArray(body.data))return reply({error:'invalid-state'},400,origin);
         if(!Array.isArray(body.data.items)||!Array.isArray(body.data.shoppingLists)||!Array.isArray(body.data.travelPlans))return reply({error:'invalid-collections'},400,origin);
         const content=JSON.stringify(body.data);

@@ -2,9 +2,7 @@
   "name": "shiji-sync",
   "main": "worker.js",
   "compatibility_date": "2026-10-19",
-  "compatibility_flags": [
-    "nodejs_compat"
-  ],
+  "compatibility_flags": ["nodejs_compat"],
   "d1_databases": [
     {
       "binding": "DB",
@@ -12,16 +10,6 @@
       "database_id": "d39f773f-a550-479f-ac48-6584893b6c9e"
     }
   ],
-  "ai": {
-    "binding": "AI"
-  },
-  "browser": {
-    "binding": "BROWSER"
-  },
-  "r2_buckets": [
-    {
-      "binding": "IMAGES",
-      "bucket_name": "shiji-images"
-    }
-  ]
+  "ai": {"binding": "AI"},
+  "browser": {"binding": "BROWSER"}
 }

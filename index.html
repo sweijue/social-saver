@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="拾集">
-<title>拾集 v1.8.20</title>
+<title>拾集 v1.8.21</title>
 <style>
 :root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#6e6e68;--line:#e4e4de;--soft:#efefe9;--shadow:0 10px 28px rgba(0,0,0,.07);--r:20px;--navh:74px}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif;font-size:17px}body{min-height:100vh;padding-bottom:calc(var(--navh) + env(safe-area-inset-bottom) + 18px)}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
@@ -581,7 +581,7 @@ main{padding-top:calc(116px + env(safe-area-inset-top))!important}
 
 <script>
 
-const VERSION="1.8.20", STORE="socialSaver_data";
+const VERSION="1.8.21", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -931,7 +931,6 @@ function normalizeItem(i){
   category:i.category||inferCategory(`${i.title||''} ${i.body||''}`),country:i.country||inferCountry(`${i.title||''} ${i.body||''} ${i.city||''}`),categorySource:i.categorySource||'auto',countrySource:i.countrySource||'auto',
   city:i.city||findRegion(`${i.title||''} ${safeBody}`),shoppingType:i.shoppingType||'',address:i.address||extractAddress(safeBody),placeName:i.placeName||findPlaceName(safeBody,i.title||''),products,
   tags:Array.isArray(i.tags)?i.tags:[],terms:makeSearchTerms({placeName:i.placeName||findPlaceName(safeBody,i.title||''),address:i.address||extractAddress(safeBody),products,body:safeBody,country:i.country}),images,productImages,
-  imageOriginals:i.imageOriginals&&typeof i.imageOriginals==='object'&&!Array.isArray(i.imageOriginals)?i.imageOriginals:{},mediaBackupRequested:!!i.mediaBackupRequested,
   vision,imageSummary:typeof i.imageSummary==='string'?i.imageSummary.slice(0,260):'',
   summary:(badPreviewBody||isPlatformUnavailableText(i.summary))?'':typeof i.summary==='string'?i.summary:'',note:i.note||'',
   sourceQuality:badPreviewBody&&!images.length?'linkOnly':(i.sourceQuality||'manual'),sourceCapturedAt:i.sourceCapturedAt||null,
@@ -1679,26 +1678,11 @@ function mergePublicPreview(item,meta){
  }
  if(!item.body&&meta.body&&!isPlatformUnavailableText(meta.body))item.body=meta.body;
  if(meta.resolvedUrl)item.resolvedUrl=meta.resolvedUrl;
- if(meta.imageOriginals&&typeof meta.imageOriginals==='object'){
-  // Favor backed-up versions when the same photo already exists as an old CDN URL.
-  // Preserve AI/photo associations while avoiding two copies of one cover.
-  for(const [archived,original] of Object.entries(meta.imageOriginals)){
-   if(!r2ImageURL(archived)||!original)continue;
-   const existingSrc=(item.images||[]).find(src=>articlePhotoKey(src)===articlePhotoKey(original));
-   if(existingSrc&&existingSrc!==archived)replaceMediaSource(item,existingSrc,archived);
-  }
-  item.imageOriginals={...(item.imageOriginals||{}),...meta.imageOriginals};
- }
- 
  if(meta.browserNotice!==undefined)item.browserNotice=meta.browserNotice;
  const previousPhotoKeys=new Set((item.images||[]).map(articlePhotoKey));
- item.images=uniqueArticleImages([...(item.images||[]),...(meta.images||[])]).filter((src,index,arr)=>{
-  const key=articlePhotoKey(item.imageOriginals?.[src]||src);
-  return arr.findIndex(test=>articlePhotoKey(item.imageOriginals?.[test]||test)===key)===index;
- });
+ item.images=uniqueArticleImages([...(item.images||[]),...(meta.images||[])]);
  if(item.images.some(src=>!previousPhotoKeys.has(articlePhotoKey(src)))&&!item.isExample){
   item.vision=item.vision||{entries:[],updatedAt:0};item.vision.autoPending=true;
-  item.mediaBackupRequested=true;mediaQueueKick(2800);
   scheduleVisionQueue(1200);
  }
  if(!item.placeName)item.placeName=findPlaceName(item.body,item.title);
@@ -1893,7 +1877,6 @@ async function retryItemMetadata(id){
   const original=snapshotFetchContent(latest);
   const changed=mergePublicPreview(latest,meta);
   const improved=recordFetchCheck(latest,original,meta);
-  if(latest.images?.length){latest.mediaBackupRequested=true;mediaQueueKick(5500)}
   articleFetchFeedback.set(id,improved?describeContentRefetch(before,latest,meta,changed):
    {kind:'warn',text:`沒有找到新增內容。${retryStatusText(latest)}`});
   await save();render();
@@ -2046,7 +2029,7 @@ function quickItem(url,meta,fields={}){
  // Only user supplied one-to-one images qualify as mapped product images.
  if(fields.images?.length && fields.images.length===products.length)products.forEach((p,idx)=>productImages[p]=fields.images[idx]);
  const quality=fields.body?'manual':meta?'preview':'linkOnly';const placeName=fields.placeName||findPlaceName(body,title);const address=fields.address||extractAddress(body);const city=findRegion(`${title} ${body}`);
- return normalizeItem({id:uid(),title,platform,url,resolvedUrl:meta?.resolvedUrl||'',body,category,country,city,products,images:articleImages,imageOriginals:meta?.imageOriginals||{},productImages,
+ return normalizeItem({id:uid(),title,platform,url,resolvedUrl:meta?.resolvedUrl||'',body,category,country,city,products,images:articleImages,productImages,
   tags:uniq([...guessTags(content,country,category),...(fields.tags||[])]),address,placeName,
   terms:makeSearchTerms({placeName,address,products,body,country}),
   summary:'',titleSource:fields.title?'manual':'auto',previewAttempts:meta?1:0,previewError:'',previewCheckedAt:meta?Date.now():null,
@@ -2107,9 +2090,7 @@ function openQuickAdd(prefill=''){
    if(duplicate){status.textContent='這篇網址已收藏過，可回到原卡片編輯。';return}
    const item=quickItem(url,cached,fields);
    if(!item.isExample){data.items=data.items.filter(x=>!x.isExample);data.examplesInitialized=true}
-   if(item.images?.length)item.mediaBackupRequested=true;
    data.items.unshift(item);await save();closeModal();view='library';render();
-   if(item.mediaBackupRequested)mediaQueueKick(4500);
    if(item.images?.length&&cloudConfig)setTimeout(()=>analyzeArticlePhotos(item.id,{silent:true}),650);
  };
  if(prefill){lookupPromise=runLookup()}else inp.focus();
@@ -2144,7 +2125,7 @@ function editorHTML(item){
 }
 
 // Vision runs only when Cloudflare AI is bound; never put an AI key in public HTML.
-// v1.8.20: Queue ALL unanalysed images, save each result immediately, and resume
+// v1.8.21: Queue ALL unanalysed images, save each result immediately, and resume
 // foreground work after reconnect/reopen. The global queue is SERIAL to avoid
 // unnecessary AI rate limiting, with persisted pauses for quota/errors.
 const visionInFlight=new Set();
@@ -2275,8 +2256,8 @@ async function drainVisionQueue(){
     // an AI request was in progress.
     const keys=visionDoneKeys(target);
     if(!keys.has(photo.key)){
-     const actualIndex=(target.images||[]).findIndex(src=>photoSourceKey(src)===photo.key||photoSourceKey(target.imageOriginals?.[src])===photo.key);
-     if(actualIndex>=0){target.vision.entries.push({...res.analysis,index:actualIndex,key:photoSourceKey(target.images[actualIndex])});target.vision.entries.sort((a,b)=>a.index-b.index)}
+     const actualIndex=(target.images||[]).findIndex(src=>photoSourceKey(src)===photo.key);
+     if(actualIndex>=0){target.vision.entries.push({...res.analysis,index:actualIndex,key:photo.key});target.vision.entries.sort((a,b)=>a.index-b.index)}
     }
     target.vision.updatedAt=Date.now();
     target.vision.failures=(target.vision.failures||[]).filter(x=>x.key!==photo.key);
@@ -2511,11 +2492,6 @@ function imageFallbackData(label='圖片',originalUrl=''){
 document.addEventListener('error',e=>{
  const im=e.target;
  if(im?.tagName!=='IMG'||im.dataset.imageFallbackApplied)return;
- const r2src=im.getAttribute('src')||'';
- if(r2ImageURL(r2src)&&!im.dataset.r2Fallback){
-  const old=data.items.map(item=>item.imageOriginals?.[r2src]).find(Boolean);
-  if(old){im.dataset.r2Fallback='1';im.src=old;return;}
- }
  im.dataset.imageFallbackApplied='1';
  const source=im.currentSrc||im.src||'';
  const title=im.getAttribute('alt')||im.closest('.card')?.querySelector('.title')?.textContent||'收藏圖片';
@@ -2544,91 +2520,184 @@ const CLOUD_META_KEY = 'shiji_cloud_meta_v1';
 function readCloudJson(key, fallback){try{return JSON.parse(localStorage.getItem(key)||'null')||fallback}catch{return fallback}}
 let cloudConfig=readCloudJson(CLOUD_CONFIG_KEY,null);
 let cloudMeta=readCloudJson(CLOUD_META_KEY,{revision:null,dirty:false,wasConnected:false});
+// Per-record v2 synchronization. Only signatures and per-record revision numbers
+// are stored here; article content stays in existing IndexedDB/localStorage.
+const CLOUD_V2_KEY='shiji_cloud_doc_baseline_v1821';
+let cloudV2=readCloudJson(CLOUD_V2_KEY,null);
+function v2SaveBaseline(){
+ try{localStorage.setItem(CLOUD_V2_KEY,JSON.stringify(cloudV2))}
+ catch(e){throw new Error('無法安全儲存分筆同步版本資訊；請先匯出備份並釋放瀏覽器空間。')}
+}
+function v2Hash(value){
+ const s=JSON.stringify(value);
+ let h=2166136261,h2=2246822519;
+ for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);h=Math.imul(h^c,16777619);h2=Math.imul(h2^c,3266489917)}
+ return s.length.toString(36)+':'+(h>>>0).toString(36)+':'+(h2>>>0).toString(36);
+}
+function v2Key(kind,id){return kind+'|'+id}
+function v2Docs(source){
+ const out=new Map();
+ for(const kind of ['items','shoppingLists','travelPlans']){
+  for(const record of (source?.[kind]||[]))if(record?.id)out.set(v2Key(kind,record.id),{kind,id:String(record.id),content:record});
+ }
+ const meta={...source};
+ for(const k of ['items','shoppingLists','travelPlans','_savedAt','version'])delete meta[k];
+ out.set(v2Key('meta','main'),{kind:'meta',id:'main',content:meta});
+ return out;
+}
+function v2ToState(rows){
+ const state={items:[],shoppingLists:[],travelPlans:[]};
+ for(const rec of rows.values()){
+  if(rec.deleted)continue;
+  if(rec.kind==='meta')Object.assign(state,rec.content||{});
+  else if(Array.isArray(state[rec.kind]))state[rec.kind].push(rec.content);
+ }
+ return state;
+}
+function v2LocalDirty(base=cloudV2){
+ if(!base?.entries)return true;
+ const docs=v2Docs(data);
+ for(const [key,doc] of docs)if(base.entries[key]?.hash!==v2Hash(doc.content))return true;
+ for(const key of Object.keys(base.entries))if(!docs.has(key)&&base.entries[key].hash!=='@deleted')return true;
+ return false;
+}
+function v2SetRecord(record){
+ if(record.kind==='meta'){
+  const m={...record.content};
+  for(const k of ['items','shoppingLists','travelPlans','_savedAt','version'])delete m[k];
+  for(const k of Object.keys(data))if(!['items','shoppingLists','travelPlans','_savedAt','version'].includes(k))delete data[k];
+  Object.assign(data,m);
+  return;
+ }
+ if(!['items','shoppingLists','travelPlans'].includes(record.kind))return;
+ const arr=data[record.kind];if(!Array.isArray(arr))return;
+ const index=arr.findIndex(x=>x.id===record.id);
+ if(record.deleted){if(index!==-1)arr.splice(index,1);return}
+ const value=record.kind==='items'?normalizeItem(record.content):record.content;
+ if(index===-1){if(record.kind==='items')arr.unshift(value);else arr.push(value)}
+ else arr[index]=value;
+}
+async function v2EnsureMigrated(settings=cloudConfig){
+ let state=await cloudRequest('GET','/api/v2/status',undefined,settings);
+ if(state.active)return state;
+ cloudMessage='首次升級雲端分筆儲存中，舊資料保持不變…';cloudStatusUI();
+ let offset=0;
+ for(let tries=0;tries<600;tries++){
+  const result=await cloudRequest('POST','/api/v2/migrate',{offset},settings);
+  if(result.done){state=await cloudRequest('GET','/api/v2/status',undefined,settings);if(state.active)return state}
+  if(result.restart)offset=0;
+  else offset=Number(result.offset||0);
+  cloudMessage=`首次升級雲端資料：${Math.min(offset,result.total||0)} / ${result.total||'?'} 筆（舊資料保留）`;
+  cloudStatusUI();
+ }
+ throw new Error('雲端資料移轉未能完成；舊收藏仍保留，請稍後再試。');
+}
+async function v2ReadChanges(since=0,settings=cloudConfig){
+ const records=[];let cursor=since;
+ for(let page=0;page<2000;page++){
+  const r=await cloudRequest('GET','/api/v2/changes?since='+cursor,undefined,settings);
+  const rows=Array.isArray(r.records)?r.records:[];
+  records.push(...rows);
+  if(r.hasMore&&(!rows.length||Number(r.nextSince)<=cursor))throw new Error('雲端分筆資料游標異常；已停止同步保護資料。');
+  cursor=Number(r.nextSince||cursor);
+  if(!r.hasMore)return {records,since:cursor};
+ }
+ throw new Error('雲端資料過多，需要分批繼續下載；已停止此次同步以保護資料。');
+}
+async function v2Initialize(status,{firstConnect=false,settings=cloudConfig}={}){
+ const pulled=await v2ReadChanges(0,settings);
+ const rows=new Map();
+ for(const r of pulled.records)rows.set(v2Key(r.kind,r.id),r);
+ if(!rows.has(v2Key('meta','main')))throw new Error('雲端遷移缺少設定資料；不會覆蓋手機收藏。');
+ const rawState=v2ToState(rows);
+ const remoteData=loadData(rawState);
+ const docs=v2Docs(remoteData),baseline={since:pulled.since,entries:{},legacyRevision:status.migratedLegacyRevision};
+ for(const [key,r] of rows)baseline.entries[key]={version:r.version,hash:r.deleted?'@deleted':v2Hash(docs.get(key)?.content??r.content)};
+ // Old cloud revision tells us whether pending local changes were based on this backup.
+ // Never resolve an unrelated remote revision by guessing which device is authoritative.
+ const hadCloud=!!cloudMeta.wasConnected&&cloudMeta.revision!==null;
+ if(hadCloud&&cloudMeta.dirty&&Number(cloudMeta.revision)!==Number(status.migratedLegacyRevision)){
+  throw new Error('移轉前有不同版本的未同步變更；手機資料未覆蓋。請先匯出本機備份。');
+ }
+ const localBefore=data;
+ if(firstConnect||!hadCloud){
+  // If a first-time connection has conflicting values for the same ID, stop.
+  // A blind merge would discard a manually edited local note.
+  const remoteDocs=v2Docs(remoteData),localDocs=v2Docs(localBefore);
+  for(const [key,localDoc] of localDocs){
+   if(key===v2Key('meta','main'))continue; // merge harmless preference differences
+   const remoteDoc=remoteDocs.get(key);
+   if(remoteDoc&&v2Hash(remoteDoc.content)!==v2Hash(localDoc.content)){
+    throw new Error('首次連線時發現同一筆收藏在本機與雲端內容不同。已保留兩邊資料，請先匯出本機備份，再處理差異。');
+   }
+  }
+  data=loadData(cloudMerge(remoteData,localBefore));
+ }else if(!cloudMeta.dirty){
+  data=remoteData;
+ } // If local was dirty and based on the migrated revision, keep exact local edits/deletions.
+ await writeStore(data);
+ cloudV2=baseline;v2SaveBaseline();
+ cloudMeta.wasConnected=true;
+ cloudMeta.revision=status.migratedLegacyRevision;
+ cloudMeta.dirty=v2LocalDirty();persistCloud();
+ render();
+}
+async function v2Pull(settings=cloudConfig){
+ const batch=await v2ReadChanges(cloudV2.since,settings);
+ let changed=false;
+ for(const r of batch.records){
+  const key=v2Key(r.kind,r.id),baseline=cloudV2.entries[key];
+  const local=v2Docs(data).get(key);
+  const localHash=local?v2Hash(local.content):'@deleted';
+  const localChanged=baseline?baseline.hash!==localHash:!!local;
+  // A concurrent edit of the same document must stop instead of silently replacing it.
+  const remoteHash=r.deleted?'@deleted':v2Hash(r.content);
+  if(localChanged&&remoteHash!==localHash){
+   cloudConflict=true;
+   throw new Error('同一篇文章或清單在不同裝置都有修改。請先匯出本機備份，暫停同步以避免覆蓋。');
+  }
+  if(remoteHash!==localHash){v2SetRecord(r);changed=true}
+  const effective=v2Docs(data).get(key);
+  cloudV2.entries[key]={version:r.version,hash:r.deleted?'@deleted':v2Hash(effective?.content??r.content)};
+ }
+ if(changed){await writeStore(data);render()}
+ cloudV2.since=batch.since;
+ v2SaveBaseline();
+}
+async function v2Push(settings=cloudConfig){
+ const current=v2Docs(data),changes=[];
+ for(const [key,doc] of current){
+  const hash=v2Hash(doc.content),prev=cloudV2.entries[key];
+  if(!prev||prev.hash!==hash)changes.push({...doc,key,expectedVersion:prev?.version||0,hash,deleted:false});
+ }
+ for(const [key,prev] of Object.entries(cloudV2.entries))if(!current.has(key)&&prev.hash!=='@deleted'){
+  const sep=key.indexOf('|');changes.push({kind:key.slice(0,sep),id:key.slice(sep+1),key,expectedVersion:prev.version,hash:'@deleted',deleted:true});
+ }
+ if(!changes.length){cloudMeta.dirty=false;persistCloud();return 0}
+ let count=0;
+ for(const doc of changes){
+  const result=await cloudRequest('PUT','/api/v2/record',{kind:doc.kind,id:doc.id,expectedVersion:doc.expectedVersion,deleted:doc.deleted,...(doc.deleted?{}:{content:doc.content})},settings);
+  cloudV2.entries[doc.key]={version:result.version,hash:doc.hash};
+  v2SaveBaseline();count++;
+ }
+ cloudMeta.dirty=v2LocalDirty();persistCloud();
+ return count;
+}
+async function cloudV2Sync({firstConnect=false,settings=cloudConfig}={}){
+ const status=await v2EnsureMigrated(settings);
+ if(status.legacyChanged)throw new Error('偵測到舊版裝置曾修改雲端備份；請更新所有裝置並先匯出備份，避免資料衝突。');
+ if(!cloudV2?.entries||Number(cloudV2.legacyRevision)!==Number(status.migratedLegacyRevision)){
+  await v2Initialize(status,{firstConnect,settings});
+ }else{
+  await v2Pull(settings);
+ }
+ const sent=await v2Push(settings);
+ cloudMeta.wasConnected=true;persistCloud();
+ return sent;
+}
+
 let cloudBusy=false,cloudConflict=false,cloudMessage='尚未設定雲端',cloudTimer=null,cloudSaveTimer=null;
 let cloudLastSuccess=0; // session-only: never claim that an unverified stale session is currently connected
-
-// v1.8.20: R2 backup of already-publicly-visible remote photos.
-// DO NOT auto-upload a user's private screenshots or data URLs. The R2 bucket
-// is private but each archived image has an unguessable READ link, shareable
-// by anyone with the exact URL. The source URL remains as fallback metadata.
-const MEDIA_QUEUE_GAP_MS=2200,MEDIA_RETRY_KEY='shiji_media_retry_1820';
-let mediaQueueBusy=false,mediaQueueTimer=null,mediaQueueDue=0,mediaSessionDisabled=false,mediaRetryAt=0;
-function r2ImageURL(url){try{const u=new URL(url),worker=new URL(cloudConfig?.url||'https://invalid.example');return u.origin===worker.origin&&/^\/media\/[a-f0-9]{64}$/.test(u.pathname)}catch{return false}}
-function eligibleMediaSrc(src){
- if(typeof src!=='string'||!src.startsWith('https://')||r2ImageURL(src))return false;
- try{const u=new URL(src),h=u.hostname.toLowerCase();return ['fbcdn.net','cdninstagram.com','instagram.com','threads.com','threads.net','pinimg.com','twimg.com','unsplash.com','imgur.com','xhscdn.com','xiaohongshu.com','byteimg.com','tiktokcdn.com','ytimg.com','googleusercontent.com'].some(d=>h===d||h.endsWith('.'+d))}catch{return false}
-}
-function pendingMediaImages(item){return (item.images||[]).filter(eligibleMediaSrc)}
-function archivedMediaCount(){return data.items.reduce((n,i)=>n+(i.images||[]).filter(r2ImageURL).length,0)}
-function mediaQueueKick(delay=1500){
- if(mediaQueueTimer){if(mediaQueueDue<=Date.now()+delay)return;clearTimeout(mediaQueueTimer)}
- mediaQueueDue=Date.now()+delay;
- mediaQueueTimer=setTimeout(()=>{mediaQueueTimer=null;mediaQueueDue=0;processMediaArchiveQueue().catch(()=>{})},delay);
-}
-function replaceMediaSource(item,oldSrc,newSrc){
- const oldKey=articlePhotoKey(oldSrc),newKey=articlePhotoKey(newSrc);
- if(!item.imageOriginals||typeof item.imageOriginals!=='object')item.imageOriginals={};
- item.imageOriginals[newSrc]=oldSrc;
- item.images=(item.images||[]).map(x=>x===oldSrc?newSrc:x);
- if(item.productImages)for(const k of Object.keys(item.productImages)){if(item.productImages[k]===oldSrc)item.productImages[k]=newSrc}
- const v=item.vision;
- if(v){for(const e of v.entries||[])if(e.key===oldKey||articlePhotoKey(e.key)===oldKey)e.key=newKey;
- for(const f of v.failures||[])if(f.key===oldKey||articlePhotoKey(f.key)===oldKey)f.key=newKey;}
- for(const list of data.shoppingLists||[])for(const entry of list.items||[]){if(entry.articleId===item.id&&entry.image===oldSrc)entry.image=newSrc}
-}
-async function processMediaArchiveQueue(){
- if(mediaQueueBusy||mediaSessionDisabled||Date.now()<mediaRetryAt||!cloudConfig||!cloudMeta.wasConnected||cloudBusy||cloudConflict||document.visibilityState!=='visible'||navigator.onLine===false)return;
- if(visionWorkBusy){mediaQueueKick(10000);return}
- mediaQueueBusy=true;
- try{
-  // Only newly arrived articles (or articles explicitly selected for backup)
-  // are automatically processed. No mass migration on every version update.
-  const candidates=data.items.filter(i=>!i.isExample&&i.mediaBackupRequested&&pendingMediaImages(i).length);
-  for(const item of candidates){
-   if(document.visibilityState!=='visible'||navigator.onLine===false||cloudConflict)break;
-   const imgs=pendingMediaImages(item).slice(0,3);
-   if(!imgs.length){item.mediaBackupRequested=false;continue}
-   let response;
-   try{response=await cloudRequest('POST','/api/media/archive',{images:imgs})}
-   catch(e){
-    // An absent R2 binding is not a reason to interrupt app sync or AI.
-    mediaSessionDisabled=/r2-not-configured|503|404/.test(String(e.message));
-    mediaRetryAt=Date.now()+15*60*1000;
-    break;
-   }
-   let updated=false;
-   for(const m of response.results||[]){
-    if(m.archivedUrl&&item.images?.includes(m.url)){
-     replaceMediaSource(item,m.url,m.archivedUrl);updated=true;
-    }
-   }
-   // Unavailable URLs will be kept as original URLs, not repeatedly retried
-   // during this session. User can manually request again later.
-   if(updated){await save();render();if(detailIds[detailIndex]===item.id)renderDetail()}
-   if((response.results||[]).some(x=>x.error==='app-storage-safety-limit')){
-    mediaSessionDisabled=true;break;
-   }
-   if(!(response.results||[]).some(x=>x.archivedUrl)){
-    item.mediaBackupRequested=false;await save();continue;
-   }
-   if(!pendingMediaImages(item).length){item.mediaBackupRequested=false;await save()}
-   await new Promise(resolve=>setTimeout(resolve,MEDIA_QUEUE_GAP_MS));
-  }
- }finally{
-  mediaQueueBusy=false;
-  if(!mediaSessionDisabled&&Date.now()>=mediaRetryAt&&data.items.some(i=>i.mediaBackupRequested&&pendingMediaImages(i).length))mediaQueueKick(16000);
- }
-}
-async function backupExistingMedia(){
- if(!cloudConfig||!cloudMeta.wasConnected){alert('請先確認雲端已連線');return}
- const items=data.items.filter(i=>!i.isExample&&pendingMediaImages(i).length);
- if(!items.length){alert('目前沒有需要備份的外部圖片。');return}
- // A finite queue makes the manual action predictable. User can resume later.
- for(const item of items.slice(0,12))item.mediaBackupRequested=true;
- await save();mediaSessionDisabled=false;mediaRetryAt=0;mediaQueueKick(50);
- alert(`已將最多 12 篇收藏的圖片加入 R2 備份佇列（共 ${items.length} 篇可備份）。完成後可再執行一次繼續。`)
-}
-
 let cloudSilentCheck=false,cloudPendingItems=0; // quiet polling and active Worker jobs are distinct states
 function persistCloud(){try{localStorage.setItem(CLOUD_META_KEY,JSON.stringify(cloudMeta))}catch{}}
 function scheduleCloudWrite(){
@@ -2671,7 +2740,7 @@ function cloudServerURL(url){
 }
 async function cloudRequest(method,path,body,settings=cloudConfig){
  if(!settings)throw new Error('雲端尚未設定');
- const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),path==='/api/vision'?60000:path==='/api/browser-extract'?55000:path==='/api/media/archive'?39000:16000);
+ const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),path==='/api/vision'?60000:path==='/api/browser-extract'?55000:16000);
  try{
    const r=await fetch(cloudServerURL(settings.url)+path,{
     method,headers:{'Authorization':'Bearer '+settings.token,'Content-Type':'application/json'},
@@ -2708,7 +2777,7 @@ async function cloudRequest(method,path,body,settings=cloudConfig){
       else if(json.reason==='rate-limit')setLimitWarning('ai','Workers AI 請求速度受限（429），請過一段時間再重試，不等於已用完每日額度。');
       throw new Error(`${description}${suffix}`);
     }
-    const err=new Error(json.error==='unauthorized'?'密鑰不正確':json.error==='revision-conflict'?'雲端內容已被另一台裝置更新':json.error==='state-too-large'||r.status===413?'圖片或資料容量過大，無法上傳雲端。請先匯出備份並縮小圖片。':`雲端服務錯誤 ${r.status}：${json.error||'unknown'}`);
+    const err=new Error(json.error==='unauthorized'?'密鑰不正確':json.error==='revision-conflict'?'雲端內容已被另一台裝置更新':json.error==='document-version-conflict'?'同一篇文章已由其他裝置更新，已停止同步以保護修改。':json.error==='document-too-large'?'單篇文章包含過大的圖片資料，無法安全同步；請先匯出備份並縮小手動上傳的圖片。':json.error==='legacy-changed-after-migration'?'另有舊版裝置更新雲端，請先更新所有裝置並匯出備份。':json.error==='state-too-large'||r.status===413?'單筆圖片或資料容量過大，請先匯出備份並縮小圖片。':`雲端服務錯誤 ${r.status}：${json.error||'unknown'}`);
     err.status=r.status;throw err;
    }
    if((path==='/api/vision'||path==='/api/analyze-text')&&json.ok)clearLimitWarning('ai');
@@ -2736,6 +2805,7 @@ function cloudMerge(remote,local){
  return merged;
 }
 async function cloudCommit(){
+ if(cloudV2?.entries){await v2Push();cloudLastSuccess=Date.now();cloudMessage='雲端已同步';cloudStatusUI();return;}
  const before=Number(cloudMeta.revision||0);
  const stamp=Number(data._savedAt||0);
  const outgoing={expectedRevision:before,data:safeClone(data)};
@@ -2757,16 +2827,9 @@ async function cloudRun({silent=false}={}){
  if(!cloudSilentCheck)cloudMessage='同步中…';
  cloudStatusUI();
  try{
-  const latest=await cloudRequest('GET','/api/state');
-  if(cloudMeta.revision===null){cloudConflict=true;throw new Error('尚未完成首次連線，請到選單設定雲端')}
-  if(cloudMeta.dirty){
-   if(latest.revision!==cloudMeta.revision){cloudConflict=true;throw new Error('本機與雲端都已修改。請先匯出本機備份，再到雲端設定決定保留哪一份。')}
-   await cloudCommit();
-  }else if(latest.revision!==cloudMeta.revision){
-   cloudSilentCheck=false;cloudMessage='同步中…';cloudStatusUI();
-   if(latest.data){data=loadData(latest.data);await writeStore(data);render()}
-   cloudMeta.revision=latest.revision;persistCloud();
-  }
+  // V2 checks only a lightweight revision record while idle; changed articles are
+  // transferred individually. The legacy app_state snapshot remains read-only.
+  await cloudV2Sync();
   const inbox=await cloudRequest('GET','/api/inbox');
   const rows=Array.isArray(inbox.items)?inbox.items:[];
   if(rows.some(x=>x.fetchStatus!=='pending')){cloudSilentCheck=false;cloudMessage='同步中…';cloudStatusUI()}
@@ -2783,7 +2846,6 @@ async function cloudRun({silent=false}={}){
     item=quickItem(url,null,sharedText.length>8?{body:sharedText}:{});
     item.inboxId=msg.id;
     if(sharedText.length>8)item.sourceQuality='shared';
-    item.mediaBackupRequested=true;
     if(!item.isExample){data.items=data.items.filter(x=>!x.isExample);data.examplesInitialized=true}
     data.items.unshift(item);existing.set(url,item);added++;hasChanges=true;
    }
@@ -2804,7 +2866,6 @@ async function cloudRun({silent=false}={}){
       clearFetchRetry(item);
       if(item.images?.length&&!item.isExample)photoQueue.push(item.id);
      }
-     if(item.images?.length){item.mediaBackupRequested=true;scheduleMediaBackupQueue(3000)}
      if(changed){updated++;hasChanges=true}
     }
     ackIds.push(msg.id);
@@ -2834,8 +2895,7 @@ async function cloudRun({silent=false}={}){
     waiting?`雲端正在擷取 ${waiting} 篇，完成後自動套用`:'雲端已同步';cloudLastSuccess=Date.now();cloudStatusUI();
   if(hydrateQueue.length)setTimeout(()=>hydrateSharedArticles(hydrateQueue),50);
   for(const id of [...new Set(photoQueue)])setTimeout(()=>analyzeArticlePhotos(id,{silent:true}),700);
-  if(data.items.some(i=>i.mediaBackupRequested&&pendingMediaImages(i).length))mediaQueueKick(4000);
- }catch(e){cloudMessage=`同步失敗：${e.message}`;cloudStatusUI()}
+ }catch(e){if(e?.status===409||/衝突|不同版本|另有舊版裝置/.test(String(e?.message)))cloudConflict=true;cloudMessage=`同步失敗：${e.message}`;cloudStatusUI()}
  finally{cloudBusy=false;cloudSilentCheck=false;cloudStatusUI()}
 }
 async function hydrateSharedArticles(queue){
@@ -2849,7 +2909,6 @@ async function hydrateSharedArticles(queue){
    const before=snapshotFetchContent(target);
    mergePublicPreview(target,meta);
    recordFetchCheck(target,before,meta);
-   if(target.images?.length){target.mediaBackupRequested=true;mediaQueueKick(5500)}
    await save();render();
    if(target.images?.length&&cloudConfig&&!target.isExample)setTimeout(()=>analyzeArticlePhotos(target.id,{silent:true}),650);
   }catch(err){
@@ -2906,22 +2965,23 @@ async function cloudConnect(url,token){
   if(cloudMessage.startsWith('同步失敗'))throw new Error(cloudMessage);
   return true;
  }
- const remote=await cloudRequest('GET','/api/state',undefined,config);
- // Safe, non-destructive first connection: merge unique items, keep remote versions
- // on matching IDs and preserve local-only favorites/lists without a repeated prompt.
- if(remote.data?.items?.length||remote.data?.shoppingLists?.length||remote.data?.travelPlans?.length){
-  try{localStorage.setItem('shiji_before_first_cloud_merge_v1814',JSON.stringify(data))}catch{}
-  data=loadData(cloudMerge(remote.data,data));
- }
- cloudConfig=config;
- cloudMeta={revision:remote.revision,dirty:true,wasConnected:true};persistCloud();
- try{localStorage.setItem(CLOUD_CONFIG_KEY,JSON.stringify(cloudConfig))}
- catch{throw new Error('此瀏覽器無法保存連線設定')}
- await writeStore(data);
- await cloudCommit();cloudConflict=false;render();startAutoVisionTimer();
- if(!cloudTimer)cloudTimer=setInterval(()=>{if(document.visibilityState==='visible')cloudRun({silent:true})},5000);
- startAutoRetryTimer();
- await cloudRun();return true;
+ // Complete the additive D1 migration before switching any device to v2.
+ // Store a safe local snapshot in IndexedDB and retain the old server-side app_state.
+ const previousConfig=cloudConfig,previousMeta={...cloudMeta};
+ try{
+  const status=await v2EnsureMigrated(config);
+  cloudConfig=config;
+  cloudV2=null;
+  cloudMeta={revision:status.migratedLegacyRevision,dirty:false,wasConnected:false};
+  await cloudV2Sync({firstConnect:true,settings:config});
+  try{localStorage.setItem(CLOUD_CONFIG_KEY,JSON.stringify(cloudConfig))}
+  catch{throw new Error('無法儲存雲端設定，請確認 iPhone 儲存空間。')}
+  if(!cloudTimer)cloudTimer=setInterval(()=>{if(document.visibilityState==='visible')cloudRun({silent:true})},5000);
+  startAutoRetryTimer();startAutoVisionTimer();cloudConflict=false;
+  cloudMessage='雲端已連線，分筆同步已啟用';cloudLastSuccess=Date.now();render();cloudStatusUI();
+  await cloudRun({silent:true});return true;
+ }catch(e){cloudConfig=previousConfig;cloudMeta=previousMeta;persistCloud();throw e}
+
 }
 function formatUsageTime(ms){return ms?formatSavedAt(ms):'尚無紀錄'}
 function usageOverviewHtml(){
@@ -2978,7 +3038,7 @@ function openCloudSettings(){
   <label>私密同步密鑰<input type="password" id="cloudToken" autocomplete="off" placeholder="Worker Secret：SJ_TOKEN" value="${esc(cloudConfig?.token||'')}"></label>
   <p class="cloudHelp" id="cloudDialogStatus">${esc(cloudMessage)}</p>
   <div class="formActions cloudActions"><button type="button" class="ghost uiBtn" id="cancelCloud">取消</button><button type="button" class="primary uiBtn" id="connectCloud">${active?'重新連線':'開始連線'}</button></div>
-  ${active?`<div class="cloudDiagRow"><button type="button" class="ghost uiBtn" id="cloudR2Status">R2 圖片備份狀態</button><button type="button" class="ghost uiBtn" id="cloudBackupOld">備份現有文章圖片</button><p class="cloudHelp" id="cloudR2Info">R2 需另外建立 shiji-images 儲存桶並綁定 IMAGES；僅備份公開來源圖片，不上傳私人截圖。</p></div><div class="cloudDiagRow"><button type="button" class="ghost uiBtn" id="cloudUsageCheck">查看 AI／預覽／瀏覽器用量</button></div><div class="cloudDiagRow"><button type="button" class="ghost uiBtn" id="cloudDiagnose">檢查同步原因</button><p class="cloudHelp" id="cloudDiagResult">只檢查資料量與連線版本，不更動收藏，也不會公開密鑰。</p></div><div class="formActions"><button type="button" class="ghost uiBtn" id="syncCloudNow">立即同步</button><button type="button" class="ghost uiBtn" id="cloudPullForce">改用雲端資料</button><button type="button" class="ghost uiBtn" id="cloudPushForce">以本機覆蓋雲端</button><button type="button" class="ghost uiBtn" id="disconnectCloud">斷開</button></div>`:''}
+  ${active?`<div class="cloudDiagRow"><button type="button" class="ghost uiBtn" id="cloudUsageCheck">查看 AI／預覽／瀏覽器用量</button></div><div class="cloudDiagRow"><button type="button" class="ghost uiBtn" id="cloudDiagnose">檢查同步原因</button><p class="cloudHelp" id="cloudDiagResult">只檢查資料量與連線版本，不更動收藏，也不會公開密鑰。</p></div><div class="formActions"><button type="button" class="ghost uiBtn" id="syncCloudNow">立即同步</button><button type="button" class="ghost uiBtn" id="cloudBackupNow">匯出本機備份</button><button type="button" class="ghost uiBtn" id="cloudLegacyBackup">下載升級前雲端備份</button><button type="button" class="ghost uiBtn" id="disconnectCloud">斷開</button></div>`:''}
  </div>`);
  $('#closeCloud').onclick=$('#cancelCloud').onclick=closeModal;
  $('#connectCloud').onclick=async()=>{
@@ -2990,57 +3050,49 @@ function openCloudSettings(){
  };
  if(!active)return;
  $('#cloudUsageCheck').onclick=openUsageReport;
- $('#cloudBackupOld').onclick=backupExistingMedia;
- $('#cloudR2Status').onclick=async()=>{
-  const output=$('#cloudR2Info'),btn=$('#cloudR2Status');btn.disabled=true;output.textContent='正在檢查 R2 儲存桶…';
-  try{const s=await cloudRequest('GET','/api/media/status');
-   output.textContent=s.r2Configured?`R2 已連線，已有 ${s.objects} 張圖片、約 ${(s.bytes/1e6).toFixed(2)} MB。拾集保護上限 8 GB。正式帳單與總用量請以 Cloudflare 為準。`:'R2 尚未綁定。請先建立 shiji-images 儲存桶，再在 Worker 綁定 IMAGES。';
-  }catch(e){output.textContent='無法確認 R2 狀態：'+e.message}
-  finally{btn.disabled=false}
- };
-
  $('#cloudDiagnose').onclick=async()=>{
   const btn=$('#cloudDiagnose'),out=$('#cloudDiagResult');
   btn.disabled=true;btn.innerHTML=fetchSpinnerHTML()+' 檢查中…';out.textContent='正在確認雲端修訂與資料大小…';
   const size=new TextEncoder().encode(JSON.stringify({expectedRevision:Number(cloudMeta.revision||0),data})).length;
   const sizeText=(size/1_000_000).toFixed(2)+' MB';
   try{
-   const remote=await cloudRequest('GET','/api/state');
-   const msgs=[`雲端連線正常。這台裝置的收藏資料約 ${sizeText}（雲端上限 1.5 MB）。`];
-   if(size>=1_498_000)msgs.push('資料已超出同步大小限制，請先匯出備份；上傳圖片需要改用雲端圖庫，請勿直接覆蓋雲端。');
-   else if(size>1_200_000)msgs.push('資料量接近上限，之後加圖片可能造成同步失敗。');
-   if(cloudMeta.revision===null)msgs.push('本機尚未建立同步修訂，請重新檢查雲端連線設定。');
-   else if(remote.revision!==cloudMeta.revision&&cloudMeta.dirty)msgs.push(`偵測到版本衝突（本機 ${cloudMeta.revision}、雲端 ${remote.revision}），不要直接覆蓋；建議先匯出本機備份。`);
-   else if(remote.revision!==cloudMeta.revision)msgs.push(`雲端已有較新修訂 ${remote.revision}，可以先按「立即同步」取得更新。`);
-   else if(cloudMeta.dirty)msgs.push('本機有待同步變更，請按「立即同步」後查看結果。');
-   else msgs.push('目前未發現資料量或版本衝突問題。若仍失敗，請提供「同步失敗：」後面的錯誤訊息。');
+   const remote=await cloudRequest('GET','/api/v2/status');
+   const msgs=[`分筆同步 ${remote.active?'已啟用':'尚未啟用'}；本機整份備份大小約 ${sizeText}。`];
+   if(remote.active){
+    msgs.push(`雲端目前分筆修訂：${remote.revision}；D1 舊版備份仍保留。`);
+    if(remote.legacyChanged)msgs.push('偵測到舊版用戶端修改過備份，請先匯出資料並更新所有裝置。');
+    if(cloudConflict)msgs.push('目前存在分筆資料衝突，請先匯出本機備份，不會自動覆蓋。');
+    else if(v2LocalDirty())msgs.push('本機有部分文章或清單尚未同步；可按「立即同步」。');
+    else msgs.push('目前沒有待上傳的分筆變更。');
+   }else msgs.push('首次移轉尚未完成；可按立即同步繼續，舊資料不會刪除。');
    out.textContent=msgs.join('\n');
   }catch(e){out.textContent=`本機資料約 ${sizeText}。讀取雲端失敗：${e.message}`}
   finally{btn.disabled=false;btn.textContent='檢查同步原因'}
  };
  $('#syncCloudNow').onclick=async()=>{cloudConflict=false;closeModal();await cloudRun();if(cloudMessage.startsWith('同步失敗'))alert(cloudMessage)};
- $('#cloudPullForce').onclick=async()=>{
-  if(!confirm('將這台裝置目前的資料改為雲端版本。請先匯出本機備份，確定嗎？'))return;
-  try{const r=await cloudRequest('GET','/api/state');if(r.data){exportData();data=loadData(r.data);await writeStore(data);render()}
-   cloudMeta={revision:r.revision,dirty:false,wasConnected:true};persistCloud();cloudConflict=false;cloudLastSuccess=Date.now();cloudMessage='已從雲端取回';closeModal();cloudStatusUI()}
-  catch(e){alert(e.message)}
+ $('#cloudBackupNow').onclick=exportData;
+ $('#cloudLegacyBackup').onclick=async()=>{
+  const btn=$('#cloudLegacyBackup');btn.disabled=true;
+  try{
+   const old=await cloudRequest('GET','/api/v2/legacy-backup');
+   const blob=new Blob([JSON.stringify(old.data,null,2)],{type:'application/json'});
+   const url=URL.createObjectURL(blob),link=document.createElement('a');
+   link.href=url;link.download=`shiji-cloud-before-v1821-rev${old.revision}.json`;link.click();
+   setTimeout(()=>URL.revokeObjectURL(url),15000);
+  }catch(e){alert('下載舊版雲端備份失敗：'+e.message)}finally{btn.disabled=false}
  };
- $('#cloudPushForce').onclick=async()=>{
-  if(!confirm('這會用本機資料覆蓋其他裝置的雲端變更。建議先匯出備份。確定嗎？'))return;
-  try{const r=await cloudRequest('GET','/api/state');cloudMeta.revision=r.revision;cloudMeta.dirty=true;persistCloud();cloudConflict=false;await cloudCommit();closeModal()}
-  catch(e){alert(e.message)}
- };
+
  $('#disconnectCloud').onclick=()=>{
   if(!confirm('斷開雲端？本機資料會保留，但不再同步。'))return;
-  try{localStorage.removeItem(CLOUD_CONFIG_KEY);localStorage.removeItem(CLOUD_META_KEY)}catch{}
-  cloudConfig=null;cloudMeta={revision:null,dirty:false,wasConnected:false};cloudConflict=false;cloudLastSuccess=0;
+  try{localStorage.removeItem(CLOUD_CONFIG_KEY);localStorage.removeItem(CLOUD_META_KEY);localStorage.removeItem(CLOUD_V2_KEY)}catch{}
+  cloudConfig=null;cloudMeta={revision:null,dirty:false,wasConnected:false};cloudV2=null;cloudConflict=false;cloudLastSuccess=0;
   if(cloudTimer){clearInterval(cloudTimer);cloudTimer=null}
   if(autoRetryTimer){clearInterval(autoRetryTimer);autoRetryTimer=null}
   cloudPendingItems=0;cloudMessage='尚未設定雲端';closeModal();cloudStatusUI()
  };
 }
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&cloudConfig){cloudRun({silent:true});startVisionQueue();mediaQueueKick(5000)}});
-window.addEventListener('online',()=>{cloudStatusUI();if(cloudConfig){cloudRun({silent:true});startVisionQueue();mediaQueueKick(5000)}});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&cloudConfig){cloudRun({silent:true});startVisionQueue()}});
+window.addEventListener('online',()=>{cloudStatusUI();if(cloudConfig){cloudRun({silent:true});startVisionQueue()}});
 window.addEventListener('offline',()=>cloudStatusUI());
 $('#cloudTopSettings').addEventListener('click',openCloudSettings);
 $('#cloudTopRefresh').addEventListener('click',async()=>{
