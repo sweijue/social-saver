@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="拾集">
-<title>拾集 v1.8.15</title>
+<title>拾集 v1.8.16</title>
 <style>
 :root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#6e6e68;--line:#e4e4de;--soft:#efefe9;--shadow:0 10px 28px rgba(0,0,0,.07);--r:20px;--navh:74px}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif;font-size:17px}body{min-height:100vh;padding-bottom:calc(var(--navh) + env(safe-area-inset-bottom) + 18px)}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
@@ -510,11 +510,11 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 #quotaToast.visible{opacity:1;transform:translateY(0)}
 </style>
 <style>
-/* v1.8.15: always-visible real cloud sync state, all tabs. */
+/* v1.8.16: read-only cloud status and matching controls; swiping never starts a sync. */
 .fixedAppHeader{
  display:grid!important;
  grid-template-columns:minmax(0,1fr) auto auto;
- grid-template-rows:36px 33px;
+ grid-template-rows:36px 36px;
  column-gap:7px;row-gap:6px;
  padding:calc(9px + env(safe-area-inset-top)) 12px 8px;
  min-height:0!important;
@@ -523,11 +523,11 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 .fixedAppHeader .fixedTitle{grid-column:1;grid-row:1}
 .fixedAppHeader .fixedToolbar{grid-column:2;grid-row:1}
 .fixedAppHeader .menuBtn{grid-column:3;grid-row:1}
-.cloudTopBar{grid-column:1/-1;grid-row:2;display:flex;gap:7px;min-width:0;width:100%;height:33px;align-items:stretch}
-.cloudTopStatus{display:flex;align-items:center;justify-content:space-between;gap:7px;flex:1;min-width:0;
- border:1px solid #dcded7;border-radius:10px;background:#fff;padding:0 10px;min-height:33px;color:#373c36;
- font-size:12px;font-weight:850;text-align:left;box-shadow:none}
-.cloudTopStatus:focus-visible,.cloudTopSettings:focus-visible{outline:2px solid #5a816c;outline-offset:2px}
+.cloudTopBar{grid-column:1/-1;grid-row:2;display:flex;gap:7px;min-width:0;width:100%;height:36px;align-items:center}
+.cloudTopStatus{display:flex;align-items:center;min-width:0;flex:1;height:36px;
+ border:1px solid var(--ui-border);border-radius:var(--ui-radius);background:#fafaf8;
+ padding:0 11px;color:#4b4e49;font-size:12px;font-weight:750;
+ user-select:none;-webkit-user-select:none;cursor:default}
 .cloudTopStatusText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 .cloudStatusLeft{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
 .cloudStatusDot{height:8px;width:8px;flex:none;border-radius:50%;background:#a0a59f;box-shadow:0 0 0 2px #e9ebe6}
@@ -536,20 +536,29 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 .cloudTopBar[data-status="error"] .cloudStatusDot{background:#c4524d;box-shadow:0 0 0 2px #f9e8e7}
 .cloudTopBar[data-status="checking"] .cloudStatusDot,
 .cloudTopBar[data-status="syncing"] .cloudStatusDot{background:#6b8fa9;box-shadow:0 0 0 2px #e6eef5}
-.cloudTopReload{font-size:17px;font-weight:600;line-height:1;flex:none;color:#686e67}
-.cloudTopBar[data-status="syncing"] .cloudTopReload{animation:shijiFetchSpin .9s linear infinite}
-.cloudTopSettings{display:grid;place-items:center;flex:none;width:33px;height:33px;border:1px solid #dcded7;border-radius:10px;background:#fff;color:#484d47;font-size:17px}
-main{padding-top:calc(113px + env(safe-area-inset-top))!important}
+/* Both icons reuse the v1.5.1 unified 36px .iconBtn .uiBtn style. */
+.cloudTopAction.iconBtn.uiBtn{width:36px!important;height:36px!important;min-width:36px!important;
+ padding:0!important;border:1px solid var(--ui-border)!important;
+ border-radius:var(--ui-radius)!important;background:var(--ui-bg)!important;color:var(--ui-fg)!important;
+ box-shadow:none!important;flex:none}
+.cloudTopAction .uiSvg{width:18px;height:18px}
+.cloudTopBar[data-status="syncing"] #cloudTopRefresh .uiSvg{animation:shijiFetchSpin .9s linear infinite}
+main{padding-top:calc(116px + env(safe-area-inset-top))!important}
 @media(max-width:390px){.fixedAppHeader{column-gap:5px;padding-left:9px;padding-right:9px}.cloudTopStatus{padding:0 8px}}
 </style>
 </head>
 <body>
 <header class="fixedAppHeader" id="fixedAppHeader"><div class="fixedTitle" id="fixedTitle">拾集</div><div class="fixedToolbar" id="fixedToolbar"></div><button class="menuBtn" id="menuBtn" aria-label="選單">☰</button>
  <div class="cloudTopBar" id="cloudTopBar" data-status="unconfigured">
-  <button type="button" class="cloudTopStatus" id="cloudTopStatus" aria-label="雲端尚未設定，開啟雲端設定" title="點一下檢查連線或立即同步">
-   <span class="cloudStatusLeft"><span class="cloudStatusDot" aria-hidden="true"></span><span class="cloudTopStatusText" id="cloudTopStatusText" role="status" aria-live="polite">雲端尚未設定</span></span><span class="cloudTopReload" id="cloudTopReload" aria-hidden="true">↻</span>
+  <div class="cloudTopStatus" id="cloudTopStatus" title="連線狀態會自動更新，不必滑動或點擊">
+   <span class="cloudStatusLeft"><span class="cloudStatusDot" aria-hidden="true"></span><span class="cloudTopStatusText" id="cloudTopStatusText" role="status" aria-live="polite">雲端尚未設定</span></span>
+  </div>
+  <button type="button" class="iconBtn uiBtn cloudTopAction" id="cloudTopRefresh" aria-label="立即同步雲端" title="立即同步雲端">
+   <svg class="uiSvg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 1-2.5-5.7"/><path d="M20 4v6h-6"/></svg>
   </button>
-  <button type="button" class="cloudTopSettings" id="cloudTopSettings" aria-label="管理雲端連線設定" title="管理雲端連線設定">⚙</button>
+  <button type="button" class="iconBtn uiBtn cloudTopAction" id="cloudTopSettings" aria-label="管理雲端連線設定" title="管理雲端連線設定">
+   <svg class="uiSvg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M10 2h4l.35 2.05c.8.23 1.55.63 2.18 1.14l1.95-.72 2 3.46-1.6 1.34a8.6 8.6 0 0 1 0 2.46l1.6 1.34-2 3.46-1.95-.72c-.63.51-1.38.91-2.18 1.14L14 19h-4l-.35-2.05a8.5 8.5 0 0 1-2.18-1.14l-1.95.72-2-3.46 1.6-1.34a8.6 8.6 0 0 1 0-2.46l-1.6-1.34 2-3.46 1.95.72A8.5 8.5 0 0 1 9.65 4.05Z" transform="translate(0 1)"/></svg>
+  </button>
  </div>
 </header>
 <main><div id="pageContent"></div></main>
@@ -572,7 +581,7 @@ main{padding-top:calc(113px + env(safe-area-inset-top))!important}
 
 <script>
 
-const VERSION="1.8.15", STORE="socialSaver_data";
+const VERSION="1.8.16", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -2358,6 +2367,7 @@ let cloudConfig=readCloudJson(CLOUD_CONFIG_KEY,null);
 let cloudMeta=readCloudJson(CLOUD_META_KEY,{revision:null,dirty:false,wasConnected:false});
 let cloudBusy=false,cloudConflict=false,cloudMessage='尚未設定雲端',cloudTimer=null,cloudSaveTimer=null;
 let cloudLastSuccess=0; // session-only: never claim that an unverified stale session is currently connected
+let cloudSilentCheck=false,cloudPendingItems=0; // quiet polling and active Worker jobs are distinct states
 function persistCloud(){try{localStorage.setItem(CLOUD_META_KEY,JSON.stringify(cloudMeta))}catch{}}
 function scheduleCloudWrite(){
  if(!cloudConfig||!cloudMeta.wasConnected)return;
@@ -2373,23 +2383,24 @@ function cloudStatusUI(){
  const foot=document.querySelector('#cloudDrawerStatus');
  if(foot)foot.textContent=cloudMessage+(pending?'（本機尚有未上傳的變更）':'');
  const bar=document.querySelector('#cloudTopBar'),label=document.querySelector('#cloudTopStatusText');
- const action=document.querySelector('#cloudTopStatus');
+ const action=document.querySelector('#cloudTopRefresh');
  if(!bar||!label||!action)return;
  let state='unconfigured',short='雲端未設定';
  const ready=!!(cloudConfig?.url&&cloudConfig?.token);
  if(!ready){state='unconfigured';short='雲端未設定 · 點此連線'}
  else if(navigator.onLine===false){state='offline';short='目前無網路 · 等待連線'}
  else if(cloudConflict){state='error';short='雲端版本衝突 · 需處理'}
- else if(cloudBusy){state='syncing';short='雲端同步中…'}
+ else if(cloudBusy&&!cloudSilentCheck){state='syncing';short='雲端同步中…'}
  else if(cloudMessage.startsWith('同步失敗')){state='error';short='雲端同步失敗 · 點此重試'}
  else if(!cloudLastSuccess){state='checking';short='正在確認雲端連線…'}
  else if(pending){state='pending';short='雲端已連線 · 有待同步變更'}
+ else if(cloudPendingItems){state='pending';short=`雲端正在擷取 ${cloudPendingItems} 篇…`}
  else {state='connected';short='雲端已連線 · 已同步'}
  bar.dataset.status=state;label.textContent=short;
  const tooltip=ready?(cloudMessage+(pending?'；本機有未上傳的變更':'')+(cloudLastSuccess?'；上次成功同步 '+formatSavedAt(cloudLastSuccess):'')):'尚未設定雲端；點這裡開始連線';
- action.title=tooltip;
- action.setAttribute('aria-label',short+(ready?'。點擊立即檢查或同步':'。點擊開啟設定'));
- action.disabled=state==='syncing';
+ action.title=ready?'立即同步雲端 · '+tooltip:'尚未設定雲端 · 開啟設定';
+ action.setAttribute('aria-label',ready?'立即同步雲端':'開啟雲端設定');
+ action.disabled=!!cloudBusy;
 }
 function cloudServerURL(url){
  const u=new URL(String(url||'').trim());
@@ -2475,9 +2486,14 @@ async function cloudCommit(){
  cloudMeta.wasConnected=true;persistCloud();
  cloudLastSuccess=Date.now();cloudMessage='雲端已同步';cloudStatusUI();
 }
-async function cloudRun(){
+async function cloudRun({silent=false}={}){
  if(!cloudConfig||cloudBusy||cloudConflict)return;
- cloudBusy=true;cloudMessage='同步中…';cloudStatusUI();
+ cloudBusy=true;
+ // Every five seconds, check for new inbox results without flashing "同步中".
+ // Show activity only for an explicit refresh, local upload, or actual new data.
+ cloudSilentCheck=!!silent&&!cloudMeta.dirty&&!!cloudLastSuccess;
+ if(!cloudSilentCheck)cloudMessage='同步中…';
+ cloudStatusUI();
  try{
   const latest=await cloudRequest('GET','/api/state');
   if(cloudMeta.revision===null){cloudConflict=true;throw new Error('尚未完成首次連線，請到選單設定雲端')}
@@ -2485,11 +2501,13 @@ async function cloudRun(){
    if(latest.revision!==cloudMeta.revision){cloudConflict=true;throw new Error('本機與雲端都已修改。請先匯出本機備份，再到雲端設定決定保留哪一份。')}
    await cloudCommit();
   }else if(latest.revision!==cloudMeta.revision){
+   cloudSilentCheck=false;cloudMessage='同步中…';cloudStatusUI();
    if(latest.data){data=loadData(latest.data);await writeStore(data);render()}
    cloudMeta.revision=latest.revision;persistCloud();
   }
   const inbox=await cloudRequest('GET','/api/inbox');
   const rows=Array.isArray(inbox.items)?inbox.items:[];
+  if(rows.some(x=>x.fetchStatus!=='pending')){cloudSilentCheck=false;cloudMessage='同步中…';cloudStatusUI()}
   const existing=new Map(data.items.filter(i=>i.url).map(i=>[i.url,i]));
   let added=0,updated=0,hasChanges=false;
   const hydrateQueue=[],photoQueue=[],ackIds=[];
@@ -2547,12 +2565,13 @@ async function cloudRun(){
   // Only ACK when the cloud result was consumed. Pending rows remain for the next poll.
   if(ackIds.length)await cloudRequest('POST','/api/inbox/ack',{ids:ackIds});
   const waiting=rows.filter(msg=>msg.fetchStatus==='pending').length;
+  cloudPendingItems=waiting;
   cloudMessage=added||updated?`雲端已同步，新增 ${added} 篇、補上 ${updated} 篇${waiting?'；雲端仍在擷取 '+waiting+' 篇':''}`:
     waiting?`雲端正在擷取 ${waiting} 篇，完成後自動套用`:'雲端已同步';cloudLastSuccess=Date.now();cloudStatusUI();
   if(hydrateQueue.length)setTimeout(()=>hydrateSharedArticles(hydrateQueue),50);
   for(const id of [...new Set(photoQueue)])setTimeout(()=>analyzeArticlePhotos(id,{silent:true}),700);
  }catch(e){cloudMessage=`同步失敗：${e.message}`;cloudStatusUI()}
- finally{cloudBusy=false;cloudStatusUI()}
+ finally{cloudBusy=false;cloudSilentCheck=false;cloudStatusUI()}
 }
 async function hydrateSharedArticles(queue){
  for(const entry of queue){
@@ -2607,7 +2626,7 @@ async function cloudBoot(){
  if(!cloudConfig){cloudStatusUI();return}
  if(!cloudConfig.url||!cloudConfig.token){cloudConfig=null;cloudStatusUI();return}
  await cloudRun();
- if(!cloudTimer)cloudTimer=setInterval(()=>{if(document.visibilityState==='visible')cloudRun()},5000);
+ if(!cloudTimer)cloudTimer=setInterval(()=>{if(document.visibilityState==='visible')cloudRun({silent:true})},5000);
  startAutoRetryTimer();
 }
 async function cloudConnect(url,token){
@@ -2633,7 +2652,7 @@ async function cloudConnect(url,token){
  catch{throw new Error('此瀏覽器無法保存連線設定')}
  await writeStore(data);
  await cloudCommit();cloudConflict=false;render();
- if(!cloudTimer)cloudTimer=setInterval(()=>{if(document.visibilityState==='visible')cloudRun()},5000);
+ if(!cloudTimer)cloudTimer=setInterval(()=>{if(document.visibilityState==='visible')cloudRun({silent:true})},5000);
  startAutoRetryTimer();
  await cloudRun();return true;
 }
@@ -2741,14 +2760,14 @@ function openCloudSettings(){
   cloudConfig=null;cloudMeta={revision:null,dirty:false,wasConnected:false};cloudConflict=false;cloudLastSuccess=0;
   if(cloudTimer){clearInterval(cloudTimer);cloudTimer=null}
   if(autoRetryTimer){clearInterval(autoRetryTimer);autoRetryTimer=null}
-  cloudMessage='尚未設定雲端';closeModal();cloudStatusUI()
+  cloudPendingItems=0;cloudMessage='尚未設定雲端';closeModal();cloudStatusUI()
  };
 }
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&cloudConfig)cloudRun()});
-window.addEventListener('online',()=>{cloudStatusUI();if(cloudConfig)cloudRun()});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&cloudConfig)cloudRun({silent:true})});
+window.addEventListener('online',()=>{cloudStatusUI();if(cloudConfig)cloudRun({silent:true})});
 window.addEventListener('offline',()=>cloudStatusUI());
 $('#cloudTopSettings').addEventListener('click',openCloudSettings);
-$('#cloudTopStatus').addEventListener('click',async()=>{
+$('#cloudTopRefresh').addEventListener('click',async()=>{
  if(!cloudConfig||cloudConflict){openCloudSettings();return}
  if(cloudBusy)return;
  await cloudRun();
