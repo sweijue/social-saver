@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="拾集">
-<title>拾集 v1.8.12</title>
+<title>拾集 v1.8.14</title>
 <style>
 :root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#6e6e68;--line:#e4e4de;--soft:#efefe9;--shadow:0 10px 28px rgba(0,0,0,.07);--r:20px;--navh:74px}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif;font-size:17px}body{min-height:100vh;padding-bottom:calc(var(--navh) + env(safe-area-inset-bottom) + 18px)}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
@@ -532,7 +532,7 @@ main{padding-top:calc(69px + env(safe-area-inset-top))}
 
 <script>
 
-const VERSION="1.8.13", STORE="socialSaver_data";
+const VERSION="1.8.14", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -1855,7 +1855,6 @@ async function startMissingContentRefetch(){
   contentRefetchState.warning='目前沒有可自動重試的文章（已達停止門檻或仍在冷卻中的文章會略過）。可在單篇文章內手動重試。';
   updateContentRefetchProgress();return;
  }
- if(pending.length>20&&!confirm(`將依序重新檢查 ${pending.length} 篇文章，可能需要幾分鐘。確定開始嗎？`))return;
  Object.assign(contentRefetchState,{running:true,stop:false,done:false,total:pending.length,finished:0,updated:0,unchanged:0,failed:0,current:'',warning:''});
  updateContentRefetchProgress();render();
  for(const entry of pending){
@@ -2421,10 +2420,7 @@ async function cloudRun(){
  cloudBusy=true;cloudMessage='同步中…';cloudStatusUI();
  try{
   const latest=await cloudRequest('GET','/api/state');
-  if(cloudMeta.revision===null){
-    cloudConflict=true;
-    throw new Error('尚未完成首次連線，請到選單設定雲端');
-  }
+  if(cloudMeta.revision===null){cloudConflict=true;throw new Error('尚未完成首次連線，請到選單設定雲端')}
   if(cloudMeta.dirty){
    if(latest.revision!==cloudMeta.revision){cloudConflict=true;throw new Error('本機與雲端都已修改。請先匯出本機備份，再到雲端設定決定保留哪一份。')}
    await cloudCommit();
@@ -2434,36 +2430,78 @@ async function cloudRun(){
   }
   const inbox=await cloudRequest('GET','/api/inbox');
   const rows=Array.isArray(inbox.items)?inbox.items:[];
-  const already=new Set(data.items.map(i=>i.url).filter(Boolean));
-  let added=0;
-  const hydrateQueue=[];
+  const existing=new Map(data.items.filter(i=>i.url).map(i=>[i.url,i]));
+  let added=0,updated=0,hasChanges=false;
+  const hydrateQueue=[],photoQueue=[],ackIds=[];
   for(const msg of rows){
    const url=cleanExternalURL(msg.url);
-   if(!url||already.has(url))continue;
+   if(!url){ackIds.push(msg.id);continue}
    const rawText=String(msg.shared_text||'').replace(url,'').trim();
    const sharedText=isPlatformUnavailableText(rawText)?'':rawText;
-   const item=quickItem(url,null,sharedText.length>8?{body:sharedText}:{});
-   item.inboxId=msg.id;
-   if(sharedText.length>8)item.sourceQuality='shared'; // Share text is not confirmed full content.
-   if(!item.isExample){data.items=data.items.filter(x=>!x.isExample);data.examplesInitialized=true}
-   data.items.unshift(item);already.add(url);added++;
-   hydrateQueue.push({id:item.id,url});
+   let item=existing.get(url);
+   if(!item){
+    item=quickItem(url,null,sharedText.length>8?{body:sharedText}:{});
+    item.inboxId=msg.id;
+    if(sharedText.length>8)item.sourceQuality='shared';
+    if(!item.isExample){data.items=data.items.filter(x=>!x.isExample);data.examplesInitialized=true}
+    data.items.unshift(item);existing.set(url,item);added++;hasChanges=true;
+   }
+   const stage=String(msg.fetchStatus||'legacy');
+   if(stage==='pending'){
+    // Let the Worker finish even if the iPhone app opens immediately.
+    // An interrupted waitUntil is recovered by the frontend after two minutes.
+    if(Date.now()-Number(msg.fetchUpdatedAt||Date.now())>120000){
+     hydrateQueue.push({id:item.id,url});ackIds.push(msg.id);
+    }
+    continue;
+   }
+   if(stage==='ready'&&msg.metadata&&typeof msg.metadata==='object'){
+    if(item.sourceQuality!=='manual'){
+     const before=snapshotFetchContent(item);
+     const changed=mergePublicPreview(item,msg.metadata);
+     if(contentActuallyImproved(before,item)){
+      clearFetchRetry(item);
+      if(item.images?.length&&!item.isExample)photoQueue.push(item.id);
+     }
+     if(changed){updated++;hasChanges=true}
+    }
+    ackIds.push(msg.id);
+    continue;
+   }
+   if(stage==='failed'){
+    if(item.sourceQuality!=='manual'&&needsContentRefetch(item)){
+     markFetchRetry(item,String(msg.fetchError||'雲端未能取得公開內容'));
+     hasChanges=true;
+    }
+    ackIds.push(msg.id);
+    continue;
+   }
+   // Compatibility with older Worker versions that only deliver URLs.
+   // Existing cards also receive one best-effort enrichment rather than duplicates.
+   if(item.sourceQuality!=='manual')hydrateQueue.push({id:item.id,url});
+   ackIds.push(msg.id);
   }
-  if(added){await writeStore(data);cloudMeta.dirty=true;persistCloud();await cloudCommit();render()}
-  if(rows.length)await cloudRequest('POST','/api/inbox/ack',{ids:rows.map(x=>x.id)});
-  cloudMessage=added?`已同步，新增 ${added} 篇分享；正在補上公開資訊`:'雲端已同步';cloudStatusUI();
-  // Best-effort preview enrichment AFTER the new cards are already visible and cloud-persisted.
+  if(hasChanges){
+   await writeStore(data);cloudMeta.dirty=true;persistCloud();await cloudCommit();render();
+  }
+  // Only ACK when the cloud result was consumed. Pending rows remain for the next poll.
+  if(ackIds.length)await cloudRequest('POST','/api/inbox/ack',{ids:ackIds});
+  const waiting=rows.filter(msg=>msg.fetchStatus==='pending').length;
+  cloudMessage=added||updated?`雲端已同步，新增 ${added} 篇、補上 ${updated} 篇${waiting?'；雲端仍在擷取 '+waiting+' 篇':''}`:
+    waiting?`雲端正在擷取 ${waiting} 篇，完成後自動套用`:'雲端已同步';cloudStatusUI();
   if(hydrateQueue.length)setTimeout(()=>hydrateSharedArticles(hydrateQueue),50);
- }catch(e){cloudMessage=`同步失敗：${e.message}`;cloudStatusUI();}
+  for(const id of [...new Set(photoQueue)])setTimeout(()=>analyzeArticlePhotos(id,{silent:true}),700);
+ }catch(e){cloudMessage=`同步失敗：${e.message}`;cloudStatusUI()}
  finally{cloudBusy=false}
 }
 async function hydrateSharedArticles(queue){
  for(const entry of queue){
+  const current=data.items.find(x=>x.id===entry.id);
+  if(!current||current.sourceQuality==='manual'||!needsContentRefetch(current)||!retryBatchEligible(current))continue;
   try{
    const meta=await fetchPublicMetadata(entry.url);
    const target=data.items.find(x=>x.id===entry.id);
    if(!target||target.url!==entry.url||target.sourceQuality==='manual')continue;
-   // Merge into the same existing post ID; do not create a second card.
    const before=snapshotFetchContent(target);
    mergePublicPreview(target,meta);
    recordFetchCheck(target,before,meta);
@@ -2515,10 +2553,18 @@ async function cloudBoot(){
 async function cloudConnect(url,token){
  const config={url:cloudServerURL(url),token:String(token||'').trim()};
  if(config.token.length<32)throw new Error('請填至少 32 字元的 Worker 密鑰');
+ // Reconnecting with unchanged credentials must never repeat first-time data merging.
+ if(cloudConfig?.url===config.url&&cloudConfig?.token===config.token&&cloudMeta.revision!==null){
+  if(cloudConflict)throw new Error('雲端與本機版本有衝突。請先到「檢查同步原因」查看，不會自動覆蓋任何一邊。');
+  await cloudRun();
+  if(cloudMessage.startsWith('同步失敗'))throw new Error(cloudMessage);
+  return true;
+ }
  const remote=await cloudRequest('GET','/api/state',undefined,config);
- // Explicit initial merge keeps previously saved local favorites and lists.
+ // Safe, non-destructive first connection: merge unique items, keep remote versions
+ // on matching IDs and preserve local-only favorites/lists without a repeated prompt.
  if(remote.data?.items?.length||remote.data?.shoppingLists?.length||remote.data?.travelPlans?.length){
-  if(!confirm('雲端已有資料。要將這台裝置的收藏和清單加入雲端嗎？相同 ID 將以雲端為準。'))return false;
+  try{localStorage.setItem('shiji_before_first_cloud_merge_v1814',JSON.stringify(data))}catch{}
   data=loadData(cloudMerge(remote.data,data));
  }
  cloudConfig=config;
@@ -2581,7 +2627,7 @@ function openCloudSettings(){
  const active=!!cloudConfig;
  openModal(`<div class="sheetHead"><strong>雲端同步</strong><button class="iconBtn uiBtn" id="closeCloud" aria-label="關閉">${icon('close')}</button></div>
  <div class="form">
-  <p class="cloudHelp">手機分享捷徑直接送到 Worker；拾集開啟時自動讀取。密鑰只保存在你這台裝置，不寫入 GitHub。</p>
+  <p class="cloudHelp">手機分享捷徑送到 Worker 後，雲端會立即嘗試擷取並暫存結果；打開拾集會自動收取。雲端無法讀取的文章仍會保留網址。密鑰只存在這台裝置，不寫入 GitHub。</p>
   <label>Cloudflare Worker 網址<input type="url" id="cloudUrl" autocomplete="off" placeholder="https://shiji-sync.你的帳號.workers.dev" value="${esc(cloudConfig?.url||'')}"></label>
   <label>私密同步密鑰<input type="password" id="cloudToken" autocomplete="off" placeholder="Worker Secret：SJ_TOKEN" value="${esc(cloudConfig?.token||'')}"></label>
   <p class="cloudHelp" id="cloudDialogStatus">${esc(cloudMessage)}</p>

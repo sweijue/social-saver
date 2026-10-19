@@ -1,5 +1,5 @@
 /**
- * 拾集 Cloud API v1.8.12 — deploy as a Cloudflare Worker.
+ * 拾集 Cloud API v1.8.14 — deploy as a Cloudflare Worker.
  * Bind Cloudflare D1 database as DB; add Worker Secret SJ_TOKEN (min 32 chars).
  * Allowed browser origin is fixed to the user's GitHub Pages domain.
  * The secret must NOT be committed to GitHub or embedded in index.html.
@@ -40,6 +40,18 @@ async function schema(db){
     source TEXT NOT NULL DEFAULT 'shortcut',
     received_at INTEGER NOT NULL,
     delivered_at INTEGER DEFAULT NULL
+  )`).run();
+  // Separate table preserves every existing inbox row and requires no destructive migrations.
+  await db.prepare(`CREATE TABLE IF NOT EXISTS inbox_enrichment (
+    inbox_id INTEGER PRIMARY KEY,
+    status TEXT NOT NULL DEFAULT 'pending',
+    content TEXT NOT NULL DEFAULT '{}',
+    error TEXT NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL DEFAULT 0
+  )`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS preview_cooldown (
+    id INTEGER PRIMARY KEY CHECK(id=1),
+    retry_at INTEGER NOT NULL DEFAULT 0
   )`).run();
   await db.prepare("INSERT OR IGNORE INTO app_state (id,revision,content,updated_at) VALUES (1,0,'{}',0)").run();
   // AI request counts are diagnostic only: free quotas are billed in neurons, not in requests.
@@ -410,6 +422,84 @@ async function extractBrowserThreads(env,body){
   return {ok:true,found:false,source:'browser-run',canonicalUrl:canonical.href,reason:status};
  }finally{await completeBrowser(env.DB,slot,status,extracted,reportedMs)}
 }
+
+// ----- v1.8.14: enrich new shares in Cloudflare without requiring the app to open -----
+function usableArticleText(value){
+ const text=String(value||'').trim();
+ return /this content isn.t available to everyone|thread not available|log in to see|content isn.t available|post unavailable|貼文無法顯示|內容無法使用/i.test(text)?'':text;
+}
+function curatedImages(list){
+ const items=[],keys=new Set();
+ for(const v of Array.isArray(list)?list:[]){
+  if(items.length>=12)break;
+  const str=typeof v==='string'?v:v?.url;
+  try{const u=new URL(str);if(u.protocol!=='https:'||u.href.length>3000)continue;
+   const key=typeof metaMediaKey==='function'?metaMediaKey(u.href):u.href.split('?')[0];
+   if(keys.has(key))continue;keys.add(key);items.push(u.href);
+  }catch{}
+ }
+ return items;
+}
+function contentUseful(meta){return !!(usableArticleText(meta.body)||curatedImages(meta.images).length||meta.title&&meta.title.toLowerCase()!=='threads')}
+function blendEnrichment(into,other){
+ if(!other)return into;
+ if(!into.title&&other.title&&!/^threads$/i.test(other.title))into.title=String(other.title).slice(0,240);
+ if(!into.body&&usableArticleText(other.body))into.body=usableArticleText(other.body).slice(0,8500);
+ if(other.resolvedUrl&&!into.resolvedUrl)into.resolvedUrl=other.resolvedUrl;
+ into.images=curatedImages([...(into.images||[]),...(other.images||[])]);
+ return into;
+}
+async function previewEnrichment(db,url){
+ const now=Date.now();const limit=await db.prepare('SELECT retry_at FROM preview_cooldown WHERE id=1').first();
+ if(Number(limit?.retry_at||0)>now)return {reason:'公開預覽服務正在冷卻，稍後再試'};
+ const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),7500);
+ try{
+  const res=await fetch('https://api.microlink.io/?url='+encodeURIComponent(url),{signal:ctl.signal});
+  if(res.status===429){
+   const seconds=Math.min(3600,Math.max(900,Number(res.headers.get('Retry-After'))||900));
+   await db.prepare('INSERT INTO preview_cooldown(id,retry_at) VALUES (1,?) ON CONFLICT(id) DO UPDATE SET retry_at=excluded.retry_at').bind(now+seconds*1000).run();
+   return {reason:'公開預覽服務限流，已進入冷卻'};
+  }
+  if(!res.ok)return {reason:'公開預覽服務 HTTP '+res.status};
+  const json=await res.json(),d=json.data||{};
+  const title=String(d.title||'').trim(),body=usableArticleText(d.description);
+  const images=curatedImages([d.image?.url,...(d.images||[])]);
+  if(json.status!=='success'||!body&&!images.length&&(!title||/^threads$/i.test(title)))return {reason:'公開預覽未提供可讀內容'};
+  return {meta:{title:/^threads$/i.test(title)?'':title,body,images}};
+ }catch(e){return {reason:e.name==='AbortError'?'預覽逾時':'公開預覽暫時不可用'}}
+ finally{clearTimeout(timer)}
+}
+async function enrichIncomingBookmark(env,inboxId,url){
+ let status='failed',issue='來源沒有提供可讀取的公開內容';
+ const meta={title:'',body:'',images:[],resolvedUrl:''};
+ const began=Date.now(),isThreads=/^https:\/\/(?:www\.)?threads\.(?:com|net)\//i.test(url);
+ try{
+  if(isThreads){
+   try{const t=await extractPublicThreads(url);blendEnrichment(meta,{title:t.title,body:t.body,images:t.images,resolvedUrl:t.canonicalUrl});if(t.reason)issue=t.reason}
+   catch(e){issue='公開貼文讀取失敗：'+String(e.message||e).slice(0,100)}
+  }
+  if(!meta.body||meta.images.length<2){
+   const p=await previewEnrichment(env.DB,meta.resolvedUrl||url);
+   if(p.meta)blendEnrichment(meta,p.meta);
+   else if(p.reason)issue=p.reason;
+  }
+  // Cloudflare Browser is only a fallback, guarded by the existing daily/cooldown limits.
+  // Do not launch if earlier stages already used most of waitUntil's ~30s window.
+  if(isThreads&&browserBound(env)&&(!meta.body||meta.images.length<2)&&Date.now()-began<8500){
+   try{
+    const b=await extractBrowserThreads(env,{url:meta.resolvedUrl||url,mode:'auto'});
+    if(b.found)blendEnrichment(meta,{title:b.title,body:b.body,images:b.images,resolvedUrl:b.canonicalUrl});
+    else if(b.reason)issue=b.reason;
+   }catch(e){issue='雲端瀏覽器暫時不可用'}
+  }
+  status=contentUseful(meta)?'ready':'failed';
+ }catch(e){issue=String(e?.message||e).slice(0,180)}
+ // Only update the still-pending matching inbox row; repeated shares create new jobs.
+ const row=await env.DB.prepare('SELECT status FROM inbox_enrichment WHERE inbox_id=?').bind(inboxId).first();
+ if(row?.status!=='pending')return;
+ await env.DB.prepare('UPDATE inbox_enrichment SET status=?,content=?,error=?,updated_at=? WHERE inbox_id=? AND status=?')
+  .bind(status,JSON.stringify(meta),status==='failed'?String(issue).slice(0,240):'',Date.now(),inboxId,'pending').run();
+}
 function parseTextAIResponse(result){
  const content=result?.choices?.[0]?.message?.content??result?.response??result;
  const text=typeof content==='string'?content:Array.isArray(content)?content.map(x=>x.text||'').join(''):JSON.stringify(content||'');
@@ -421,7 +511,7 @@ function parseTextAIResponse(result){
 }
 
 export default {
-  async fetch(request,env){
+  async fetch(request,env,ctx){
     const origin=request.headers.get('Origin')||'';
     if(origin && origin!==ALLOWED_ORIGIN)return reply({error:'origin-not-allowed'},403,origin);
     if(request.method==='OPTIONS'){
@@ -429,7 +519,7 @@ export default {
       return new Response(null,{status:204,headers:headersFor(origin)});
     }
     const pathname=new URL(request.url).pathname.replace(/\/+$/,'')||'/';
-    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.12',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env)},200,origin);
+    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.14',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env)},200,origin);
     if(!env.DB||!env.SJ_TOKEN||String(env.SJ_TOKEN).length<32)return reply({error:'server-not-configured'},503,origin);
     try{
       let body=null;
@@ -520,11 +610,27 @@ export default {
           VALUES (?,?,'shortcut',?,NULL)
           ON CONFLICT(url) DO UPDATE SET shared_text=excluded.shared_text,received_at=excluded.received_at,delivered_at=NULL`)
           .bind(url,sharedText,Date.now()).run();
-        return reply({ok:true,message:'已收到，開啟拾集後將自動同步',url},200,origin);
+        const saved=await env.DB.prepare('SELECT id FROM inbox WHERE url=?').bind(url).first();
+        await env.DB.prepare(`INSERT INTO inbox_enrichment (inbox_id,status,content,error,updated_at)
+          VALUES (?,'pending','{}','',?)
+          ON CONFLICT(inbox_id) DO UPDATE SET status='pending',content='{}',error='',updated_at=excluded.updated_at`)
+          .bind(saved.id,Date.now()).run();
+        // Respond to the iPhone Shortcut immediately; continue fetching as a background task.
+        if(ctx?.waitUntil)ctx.waitUntil(enrichIncomingBookmark(env,saved.id,url).catch(()=>{}));
+        return reply({ok:true,message:'已收藏，雲端正在自動擷取文章內容',url,fetchStatus:'pending'},200,origin);
       }
       if(pathname==='/api/inbox'&&request.method==='GET'){
-        const result=await env.DB.prepare('SELECT id,url,shared_text,received_at FROM inbox WHERE delivered_at IS NULL ORDER BY id LIMIT 35').all();
-        return reply({items:result.results||[]},200,origin);
+        const result=await env.DB.prepare(`SELECT i.id,i.url,i.shared_text,i.received_at,
+          e.status AS fetch_status,e.content AS fetch_content,e.error AS fetch_error,e.updated_at AS fetch_updated_at
+          FROM inbox AS i LEFT JOIN inbox_enrichment AS e ON e.inbox_id=i.id
+          WHERE i.delivered_at IS NULL ORDER BY i.id LIMIT 35`).all();
+        return reply({items:(result.results||[]).map(row=>{
+          let metadata=null;
+          if(row.fetch_status==='ready')try{metadata=JSON.parse(row.fetch_content||'{}')}catch{}
+          return {id:row.id,url:row.url,shared_text:row.shared_text,received_at:row.received_at,
+            fetchStatus:row.fetch_status||'legacy',metadata,
+            fetchError:row.fetch_error||'',fetchUpdatedAt:row.fetch_updated_at||0};
+        })},200,origin);
       }
       if(pathname==='/api/inbox/ack'&&request.method==='POST'){
         const ids=Array.isArray(body?.ids)?body.ids.filter(x=>Number.isInteger(x)&&x>0).slice(0,35):[];
