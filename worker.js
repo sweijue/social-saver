@@ -1,6 +1,6 @@
 import puppeteer from '@cloudflare/puppeteer';
 /**
- * 拾集 Cloud API v1.8.21 — deploy as a Cloudflare Worker.
+ * 拾集 Cloud API v1.8.22 — deploy as a Cloudflare Worker.
  * Bind Cloudflare D1 database as DB; add Worker Secret SJ_TOKEN (min 32 chars).
  * Allowed browser origin is fixed to the user's GitHub Pages domain.
  * The secret must NOT be committed to GitHub or embedded in index.html.
@@ -118,6 +118,13 @@ async function schema(db){
       WHERE kind=NEW.kind AND doc_id=NEW.doc_id;
   END`).run();
 }
+// Reuse completed additive schema setup within a Worker isolate. This avoids
+// executing a dozen D1 DDL statements on every five-second inbox check.
+let schemaReadyPromise=null;
+function ensureSchema(db){
+ if(!schemaReadyPromise)schemaReadyPromise=schema(db).catch(e=>{schemaReadyPromise=null;throw e});
+ return schemaReadyPromise;
+}
 // V2 document sync uses individual records with optimistic per-record revisions.
 // Nothing in this module deletes the old JSON snapshot in app_state.
 const DOC_KINDS = new Set(['items','shoppingLists','travelPlans','meta']);
@@ -174,8 +181,8 @@ async function migrateLegacyChunk(db,offset){
   start=0;
  }
  if(start>total)start=0;
- // Keep well under the 50 D1 queries per Worker invocation on the Free plan.
- const chunk=docs.slice(start,start+18);
+ // Keep within the 50 D1 query limit including schema checks and trigger updates.
+ const chunk=docs.slice(start,start+8);
  if(chunk.length){
   const time=Date.now();
   await db.batch(chunk.map(r=>db.prepare(`INSERT OR IGNORE INTO sync_documents
@@ -827,7 +834,7 @@ export default {
       return new Response(null,{status:204,headers:headersFor(origin)});
     }
     const pathname=new URL(request.url).pathname.replace(/\/+$/,'')||'/';
-    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.21',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env),syncSchema:'per-record-v2',legacyBackupPreserved:true},200,origin);
+    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.22',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env),syncSchema:'per-record-v2',legacyBackupPreserved:true},200,origin);
     if(!env.DB||!env.SJ_TOKEN||String(env.SJ_TOKEN).length<32)return reply({error:'server-not-configured'},503,origin);
     try{
       let body=null;
@@ -836,7 +843,7 @@ export default {
         ||request.headers.get('X-Shiji-Token')
         ||(pathname==='/api/collect'?body?.token:null);
       if(!await safeEquals(String(provided||''),String(env.SJ_TOKEN)))return reply({error:'unauthorized'},401,origin);
-      await schema(env.DB);
+      await ensureSchema(env.DB);
       if(pathname==='/api/browser-extract'&&request.method==='POST'){
         if(!body?.url)return reply({error:'url-required'},400,origin);
         return reply(await extractBrowserThreads(env,body),200,origin);
@@ -921,7 +928,7 @@ export default {
         return reply({revision:r.revision,updatedAt:r.updated_at,data:r.revision?JSON.parse(r.content):null},200,origin);
       }
       if(pathname==='/api/state'&&request.method==='PUT'){
-        if((await syncStatus(env.DB)).active)return reply({error:'old-client-upgrade-required',note:'The legacy snapshot is read-only. Update every device to v1.8.21.'},409,origin);
+        if((await syncStatus(env.DB)).active)return reply({error:'old-client-upgrade-required',note:'The legacy snapshot is read-only. Update every device to v1.8.22.'},409,origin);
         if(!Number.isInteger(body?.expectedRevision)||body.expectedRevision<0||typeof body?.data!=='object'||body.data===null||Array.isArray(body.data))return reply({error:'invalid-state'},400,origin);
         if(!Array.isArray(body.data.items)||!Array.isArray(body.data.shoppingLists)||!Array.isArray(body.data.travelPlans))return reply({error:'invalid-collections'},400,origin);
         const content=JSON.stringify(body.data);

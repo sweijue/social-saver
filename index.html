@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="拾集">
-<title>拾集 v1.8.21</title>
+<title>拾集 v1.8.22</title>
 <style>
 :root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#6e6e68;--line:#e4e4de;--soft:#efefe9;--shadow:0 10px 28px rgba(0,0,0,.07);--r:20px;--navh:74px}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif;font-size:17px}body{min-height:100vh;padding-bottom:calc(var(--navh) + env(safe-area-inset-bottom) + 18px)}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
@@ -581,7 +581,7 @@ main{padding-top:calc(116px + env(safe-area-inset-top))!important}
 
 <script>
 
-const VERSION="1.8.21", STORE="socialSaver_data";
+const VERSION="1.8.22", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -2512,7 +2512,7 @@ try{const shared=new URL(location.href).searchParams.get('url');if(shared&&clean
 // iOS browser gesture scaling can distort this app layout; keep native vertical scrolling.
 document.addEventListener('gesturestart',e=>e.preventDefault(),{passive:false});
 document.addEventListener('gesturechange',e=>e.preventDefault(),{passive:false});
-// ----- 拾集雲端同步 v1.8.1 (Cloudflare Worker + D1) -----
+// ----- 拾集雲端同步 v1.8.22 (Cloudflare Worker + D1) -----
 // Keys, including the private token, are written only to the user's own browser storage.
 // Never hardcode the token into a public GitHub Pages HTML file.
 const CLOUD_CONFIG_KEY = 'shiji_cloud_config_v1';
@@ -2524,6 +2524,10 @@ let cloudMeta=readCloudJson(CLOUD_META_KEY,{revision:null,dirty:false,wasConnect
 // are stored here; article content stays in existing IndexedDB/localStorage.
 const CLOUD_V2_KEY='shiji_cloud_doc_baseline_v1821';
 let cloudV2=readCloudJson(CLOUD_V2_KEY,null);
+// A bounded migration must resume its cursor instead of restarting at zero
+// on every foreground polling cycle. Only the cursor is stored, not article data.
+const CLOUD_MIGRATION_KEY='shiji_cloud_migration_cursor_v1822';
+let cloudMigrationOffset=(()=>{try{return Math.max(0,Number(localStorage.getItem(CLOUD_MIGRATION_KEY))||0)}catch{return 0}})();
 function v2SaveBaseline(){
  try{localStorage.setItem(CLOUD_V2_KEY,JSON.stringify(cloudV2))}
  catch(e){throw new Error('無法安全儲存分筆同步版本資訊；請先匯出備份並釋放瀏覽器空間。')}
@@ -2577,20 +2581,23 @@ function v2SetRecord(record){
  if(index===-1){if(record.kind==='items')arr.unshift(value);else arr.push(value)}
  else arr[index]=value;
 }
-async function v2EnsureMigrated(settings=cloudConfig){
+async function v2EnsureMigrated(settings=cloudConfig,{maxChunks=4}={}){
  let state=await cloudRequest('GET','/api/v2/status',undefined,settings);
- if(state.active)return state;
- cloudMessage='首次升級雲端分筆儲存中，舊資料保持不變…';cloudStatusUI();
- let offset=0;
- for(let tries=0;tries<600;tries++){
+ if(state.active){cloudMigrationProgress='';cloudMigrationOffset=0;try{localStorage.removeItem(CLOUD_MIGRATION_KEY)}catch{}return state}
+ cloudMessage='正在安全整理原有雲端資料（舊版備份保留）…';cloudStatusUI();
+ let offset=Number(state.migrationRevision)===Number(state.legacyRevision)?cloudMigrationOffset:0;
+ for(let tries=0;tries<maxChunks;tries++){
   const result=await cloudRequest('POST','/api/v2/migrate',{offset},settings);
-  if(result.done){state=await cloudRequest('GET','/api/v2/status',undefined,settings);if(state.active)return state}
+  if(result.done){state=await cloudRequest('GET','/api/v2/status',undefined,settings);if(state.active){cloudMigrationProgress='';cloudMigrationOffset=0;try{localStorage.removeItem(CLOUD_MIGRATION_KEY)}catch{}return state}}
   if(result.restart)offset=0;
   else offset=Number(result.offset||0);
-  cloudMessage=`首次升級雲端資料：${Math.min(offset,result.total||0)} / ${result.total||'?'} 筆（舊資料保留）`;
+  cloudMigrationOffset=offset;
+  try{localStorage.setItem(CLOUD_MIGRATION_KEY,String(offset))}catch{}
+  cloudMigrationProgress=`${Math.min(offset,result.total||0)}/${result.total||'?'}`;
+  cloudMessage=`雲端舊資料安全整理中：${cloudMigrationProgress}，新收藏已先保留在手機，下一輪會自動續傳`;
   cloudStatusUI();
  }
- throw new Error('雲端資料移轉未能完成；舊收藏仍保留，請稍後再試。');
+ throw Object.assign(new Error(`雲端整理進行中 ${cloudMigrationProgress}；新收藏已優先保留在本機`),{deferred:true});
 }
 async function v2ReadChanges(since=0,settings=cloudConfig){
  const records=[];let cursor=since;
@@ -2620,22 +2627,32 @@ async function v2Initialize(status,{firstConnect=false,settings=cloudConfig}={})
   throw new Error('移轉前有不同版本的未同步變更；手機資料未覆蓋。請先匯出本機備份。');
  }
  const localBefore=data;
- if(firstConnect||!hadCloud){
-  // If a first-time connection has conflicting values for the same ID, stop.
-  // A blind merge would discard a manually edited local note.
-  const remoteDocs=v2Docs(remoteData),localDocs=v2Docs(localBefore);
-  for(const [key,localDoc] of localDocs){
-   if(key===v2Key('meta','main'))continue; // merge harmless preference differences
-   const remoteDoc=remoteDocs.get(key);
-   if(remoteDoc&&v2Hash(remoteDoc.content)!==v2Hash(localDoc.content)){
-    throw new Error('首次連線時發現同一筆收藏在本機與雲端內容不同。已保留兩邊資料，請先匯出本機備份，再處理差異。');
+ // Never replace the entire local library with the legacy cloud snapshot.
+ // Merge remote-only documents and local-only documents before creating the baseline.
+ // For a modified document present on both sides, require a proven pre-migration
+ // revision, otherwise stop and protect both copies instead of guessing.
+ const remoteDocs=v2Docs(remoteData),localDocs=v2Docs(localBefore);
+ const knownLocalEdits=hadCloud&&cloudMeta.dirty&&Number(cloudMeta.revision)===Number(status.migratedLegacyRevision);
+ const localOverrides=new Set();
+ for(const [key,localDoc] of localDocs){
+  if(key===v2Key('meta','main'))continue;
+  const remoteDoc=remoteDocs.get(key);
+  if(remoteDoc&&v2Hash(remoteDoc.content)!==v2Hash(localDoc.content)){
+   // Version 1 means the remote item has not been changed since the preserved
+   // legacy snapshot. A later version could contain another device's edits.
+   if(!knownLocalEdits||Number(rows.get(key)?.version)!==1){
+    throw new Error('同一筆收藏在本機與雲端內容不同；兩邊資料均保留，請先匯出本機備份，再確認差異。');
    }
+   localOverrides.add(key);
   }
-  data=loadData(cloudMerge(remoteData,localBefore));
- }else if(!cloudMeta.dirty){
-  data=remoteData;
- } // If local was dirty and based on the migrated revision, keep exact local edits/deletions.
- await writeStore(data);
+ }
+ const merged=cloudMerge(remoteData,localBefore);
+ for(const kind of ['items','shoppingLists','travelPlans']){
+  const replacements=new Map((localBefore[kind]||[]).filter(x=>localOverrides.has(v2Key(kind,x.id))).map(x=>[x.id,x]));
+  merged[kind]=merged[kind].map(x=>replacements.get(x.id)||x);
+ }
+ data=loadData(merged);
+ if(!await writeStore(data))throw new Error('本機儲存失敗；新資料未經確認，不會標記雲端收件完成。');
  cloudV2=baseline;v2SaveBaseline();
  cloudMeta.wasConnected=true;
  cloudMeta.revision=status.migratedLegacyRevision;
@@ -2675,10 +2692,13 @@ async function v2Push(settings=cloudConfig){
  }
  if(!changes.length){cloudMeta.dirty=false;persistCloud();return 0}
  let count=0;
- for(const doc of changes){
+ // Upload in short batches. Remaining records will resume on the next automatic poll.
+ for(const doc of changes.slice(0,8)){
   const result=await cloudRequest('PUT','/api/v2/record',{kind:doc.kind,id:doc.id,expectedVersion:doc.expectedVersion,deleted:doc.deleted,...(doc.deleted?{}:{content:doc.content})},settings);
   cloudV2.entries[doc.key]={version:result.version,hash:doc.hash};
   v2SaveBaseline();count++;
+  cloudMessage=`分筆上傳中：本輪 ${count} / ${Math.min(8,changes.length)} 筆，剩餘 ${changes.length-count} 筆`;
+  cloudStatusUI();
  }
  cloudMeta.dirty=v2LocalDirty();persistCloud();
  return count;
@@ -2698,6 +2718,7 @@ async function cloudV2Sync({firstConnect=false,settings=cloudConfig}={}){
 
 let cloudBusy=false,cloudConflict=false,cloudMessage='尚未設定雲端',cloudTimer=null,cloudSaveTimer=null;
 let cloudLastSuccess=0; // session-only: never claim that an unverified stale session is currently connected
+let cloudMigrationProgress=''; // An incomplete first-time conversion is not a successful full sync
 let cloudSilentCheck=false,cloudPendingItems=0; // quiet polling and active Worker jobs are distinct states
 function persistCloud(){try{localStorage.setItem(CLOUD_META_KEY,JSON.stringify(cloudMeta))}catch{}}
 function scheduleCloudWrite(){
@@ -2722,6 +2743,7 @@ function cloudStatusUI(){
  else if(navigator.onLine===false){state='offline';short='目前無網路 · 等待連線'}
  else if(cloudConflict){state='error';short='雲端版本衝突 · 需處理'}
  else if(cloudBusy&&!cloudSilentCheck){state='syncing';short='雲端同步中…'}
+ else if(cloudMigrationProgress){state='pending';short=`雲端整理中 ${cloudMigrationProgress} · 新文章先存本機`}
  else if(cloudMessage.startsWith('同步失敗')){state='error';short='雲端同步失敗 · 點此重試'}
  else if(!cloudLastSuccess){state='checking';short='正在確認雲端連線…'}
  else if(pending){state='pending';short='雲端已連線 · 有待同步變更'}
@@ -2819,22 +2841,22 @@ async function cloudCommit(){
  cloudLastSuccess=Date.now();cloudMessage='雲端已同步';cloudStatusUI();
 }
 async function cloudRun({silent=false}={}){
- if(!cloudConfig||cloudBusy||cloudConflict)return;
+ if(!cloudConfig||cloudBusy)return;
  cloudBusy=true;
  // Every five seconds, check for new inbox results without flashing "同步中".
  // Show activity only for an explicit refresh, local upload, or actual new data.
  cloudSilentCheck=!!silent&&!cloudMeta.dirty&&!!cloudLastSuccess;
  if(!cloudSilentCheck)cloudMessage='同步中…';
  cloudStatusUI();
+ let added=0,updated=0;
  try{
-  // V2 checks only a lightweight revision record while idle; changed articles are
-  // transferred individually. The legacy app_state snapshot remains read-only.
-  await cloudV2Sync();
+  // Always receive new shared articles first: a blocked migration must not hide
+  // an already-delivered iPhone Shortcut bookmark.
   const inbox=await cloudRequest('GET','/api/inbox');
   const rows=Array.isArray(inbox.items)?inbox.items:[];
   if(rows.some(x=>x.fetchStatus!=='pending')){cloudSilentCheck=false;cloudMessage='同步中…';cloudStatusUI()}
   const existing=new Map(data.items.filter(i=>i.url).map(i=>[i.url,i]));
-  let added=0,updated=0,hasChanges=false;
+  let hasChanges=false;
   const hydrateQueue=[],photoQueue=[],ackIds=[];
   for(const msg of rows){
    const url=cleanExternalURL(msg.url);
@@ -2885,17 +2907,32 @@ async function cloudRun({silent=false}={}){
    ackIds.push(msg.id);
   }
   if(hasChanges){
-   await writeStore(data);cloudMeta.dirty=true;persistCloud();await cloudCommit();render();
+   if(!await writeStore(data))throw new Error('本機儲存失敗，尚未確認收到文章；請先匯出備份。');
+   cloudMeta.dirty=true;persistCloud();render();
+   cloudMessage=`已先保存 ${added} 篇新文章於本機，正在處理雲端同步…`;cloudStatusUI();
   }
-  // Only ACK when the cloud result was consumed. Pending rows remain for the next poll.
-  if(ackIds.length)await cloudRequest('POST','/api/inbox/ack',{ids:ackIds});
-  const waiting=rows.filter(msg=>msg.fetchStatus==='pending').length;
-  cloudPendingItems=waiting;
-  cloudMessage=added||updated?`雲端已同步，新增 ${added} 篇、補上 ${updated} 篇${waiting?'；雲端仍在擷取 '+waiting+' 篇':''}`:
-    waiting?`雲端正在擷取 ${waiting} 篇，完成後自動套用`:'雲端已同步';cloudLastSuccess=Date.now();cloudStatusUI();
   if(hydrateQueue.length)setTimeout(()=>hydrateSharedArticles(hydrateQueue),50);
   for(const id of [...new Set(photoQueue)])setTimeout(()=>analyzeArticlePhotos(id,{silent:true}),700);
- }catch(e){if(e?.status===409||/衝突|不同版本|另有舊版裝置/.test(String(e?.message)))cloudConflict=true;cloudMessage=`同步失敗：${e.message}`;cloudStatusUI()}
+  // Pull and push follow inbox persistence. Never acknowledge an inbox item until
+  // its replacement copy is confirmed saved in per-record cloud storage.
+  if(cloudConflict)throw new Error('雲端資料版本衝突；新文章先保留在本機，收件匣不會被清除。');
+  await cloudV2Sync();
+  cloudMigrationProgress='';
+  // Short upload batches may leave documents pending. Never ACK the cloud
+  // inbox until all local changes, including freshly received links, are saved.
+  if(ackIds.length&&!cloudMeta.dirty)await cloudRequest('POST','/api/inbox/ack',{ids:ackIds});
+  const waiting=rows.filter(msg=>msg.fetchStatus==='pending').length;
+  cloudPendingItems=waiting;
+  cloudMessage=added||updated?`已接收 ${added} 篇、補上 ${updated} 篇${waiting?'；另有 '+waiting+' 篇擷取中':''}`:
+    waiting?`雲端正在擷取 ${waiting} 篇，完成後自動套用`:(cloudMeta.dirty?'雲端分筆上傳尚未完成，將自動續傳':'雲端已同步');
+  cloudLastSuccess=Date.now();cloudStatusUI();
+ }catch(e){
+  if(e?.deferred){cloudMessage=e.message;cloudStatusUI()}
+  else{
+   if(e?.status===409||/衝突|不同版本|另有舊版裝置/.test(String(e?.message)))cloudConflict=true;
+   cloudMessage=`同步失敗：${e.message}${added?'；已先在本機保存 '+added+' 篇新文章，請勿刪除 App':''}`;cloudStatusUI();
+  }
+ }
  finally{cloudBusy=false;cloudSilentCheck=false;cloudStatusUI()}
 }
 async function hydrateSharedArticles(queue){
@@ -2969,7 +3006,7 @@ async function cloudConnect(url,token){
  // Store a safe local snapshot in IndexedDB and retain the old server-side app_state.
  const previousConfig=cloudConfig,previousMeta={...cloudMeta};
  try{
-  const status=await v2EnsureMigrated(config);
+  const status=await v2EnsureMigrated(config,{maxChunks:600});
   cloudConfig=config;
   cloudV2=null;
   cloudMeta={revision:status.migratedLegacyRevision,dirty:false,wasConnected:false};
@@ -3057,7 +3094,10 @@ function openCloudSettings(){
   const sizeText=(size/1_000_000).toFixed(2)+' MB';
   try{
    const remote=await cloudRequest('GET','/api/v2/status');
-   const msgs=[`分筆同步 ${remote.active?'已啟用':'尚未啟用'}；本機整份備份大小約 ${sizeText}。`];
+   const inbox=await cloudRequest('GET','/api/inbox');
+   const items=Array.isArray(inbox.items)?inbox.items:[];
+   const msgs=[`分筆同步 ${remote.active?'已啟用':'尚未啟用'}；本機整份備份大小約 ${sizeText}。`,
+    `雲端收件匣：${items.length} 篇未確認（${items.filter(x=>x.fetchStatus==='pending').length} 篇擷取中）；本機收藏 ${data.items.filter(x=>!x.isExample).length} 篇。`];
    if(remote.active){
     msgs.push(`雲端目前分筆修訂：${remote.revision}；D1 舊版備份仍保留。`);
     if(remote.legacyChanged)msgs.push('偵測到舊版用戶端修改過備份，請先匯出資料並更新所有裝置。');
