@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="拾集">
-<title>拾集 v1.8.17</title>
+<title>拾集 v1.8.18</title>
 <style>
 :root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#6e6e68;--line:#e4e4de;--soft:#efefe9;--shadow:0 10px 28px rgba(0,0,0,.07);--r:20px;--navh:74px}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif;font-size:17px}body{min-height:100vh;padding-bottom:calc(var(--navh) + env(safe-area-inset-bottom) + 18px)}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
@@ -581,7 +581,7 @@ main{padding-top:calc(116px + env(safe-area-inset-top))!important}
 
 <script>
 
-const VERSION="1.8.17", STORE="socialSaver_data";
+const VERSION="1.8.18", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -1562,6 +1562,16 @@ async function fetchPublicMetadata(url,options={}){
   try{
    const result=await cloudRequest('POST','/api/browser-extract',{url:canonical||url,mode:browserMode==='manual'?'manual':'auto'});
    const note=browserReasonText(result?.reason||'');
+   // Diagnose whether the browser truly operated the carousel or silently fell back.
+   let carouselNote='';
+   if(result?.executionMode==='puppeteer'){
+     const n=Math.max(0,Number(result.carouselSlidesVisited)||0);
+     carouselNote=`雲端輪播實測：${n} 次切換，取得 ${uniqueArticleImages(result.images||[]).length} 張不同圖片`;
+     if(!n)carouselNote+='；未找到可操作的下一張按鈕（或頁面無輪播）。';
+   }else if(result?.executionMode==='quick-action-fallback'){
+     carouselNote='Puppeteer 輪播操作未能啟動，已改用靜態預覽；此模式無法逐張點開照片。';
+   }
+
    if(result?.found){
     const previousBody=String(merged?.body||'').trim();
     const previousImages=Array.isArray(merged?.images)?merged.images:[];
@@ -1571,14 +1581,14 @@ async function fetchPublicMetadata(url,options={}){
        resolvedUrl:cleanExternalURL(result.canonicalUrl)||canonical,source:'Cloudflare Browser Run'};
     const browserAdded=(!previousBody&&!!fresh.body.trim())||fresh.images.some(image=>!previousImages.some(old=>articlePhotoKey(old)===articlePhotoKey(image)))||(!merged&&!!fresh.title);
     const previewFallbackNote=previewLimited?(browserAdded?'預覽服務暫時限流；已由雲端瀏覽器補到內容。':'預覽服務暫時限流；雲端瀏覽器已檢查，但沒有新增內容。'):'';
-    const combinedNote=[previewFallbackNote,note].filter(Boolean).join(' ');
+    const combinedNote=[previewFallbackNote,carouselNote,note].filter(Boolean).join(' ');
     merged=merged?{...merged,title:merged.title||fresh.title,body:merged.body||fresh.body,
        images:uniqueArticleImages([...(merged.images||[]),...(fresh.images||[])]),
        resolvedUrl:fresh.resolvedUrl||merged.resolvedUrl,source:'公開網頁與雲端瀏覽器',browserNotice:combinedNote}:
        {...fresh,browserNotice:combinedNote};
     clearLimitWarning('browser');
    }else{
-    if(note){if(merged)merged.browserNotice=note;else reason=[reason,note].filter(Boolean).join('\uff1b')}
+    if(note||carouselNote){const info=[carouselNote,note].filter(Boolean).join(' ');if(merged)merged.browserNotice=info;else reason=[reason,info].filter(Boolean).join('\uff1b')}
     if(['browser-cloudflare-daily-limit','browser-local-daily-budget'].includes(result?.reason))
       setLimitWarning('browser','Cloudflare Browser Run \u4eca\u65e5\u53ef\u7528\u6642\u9593\u6216\u62fe\u96c6\u4fdd\u8b77\u984d\u5ea6\u5df2\u9054\u4e0a\u9650\uff1b\u53ef\u660e\u5929\u518d\u8a66\u3002');
     else if(result?.reason==='browser-rate-limit')

@@ -1,6 +1,6 @@
 import puppeteer from '@cloudflare/puppeteer';
 /**
- * 拾集 Cloud API v1.8.17 — deploy as a Cloudflare Worker.
+ * 拾集 Cloud API v1.8.18 — deploy as a Cloudflare Worker.
  * Bind Cloudflare D1 database as DB; add Worker Secret SJ_TOKEN (min 32 chars).
  * Allowed browser origin is fixed to the user's GitHub Pages domain.
  * The secret must NOT be committed to GitHub or embedded in index.html.
@@ -416,89 +416,112 @@ function browserScrapeData(payload,canonicalUrl){
 // Browser Run's Quick Action cannot click carousel controls. A single Puppeteer
 // session captures the currently visible post, then advances accessible NEXT
 // controls (at most 7 times) in the same thread. This is best-effort and public-only.
+// Public Threads carousel: collect *distinct* post media, and only click
+// controls visibly associated with that same photo gallery. No login bypass.
 async function puppeteerCarouselScrape(env,canonicalUrl,mode='auto'){
- const launchedAt=Date.now(),maxMs=mode==='manual'?15500:10500;
+ const launchedAt=Date.now(),maxMs=mode==='manual'?18000:12000;
  let browser=null;
  try{
   browser=await puppeteer.launch(env.BROWSER);
   const page=await browser.newPage();
   await page.setViewport({width:430,height:920,deviceScaleFactor:1});
   await page.goto(canonicalUrl,{waitUntil:'domcontentloaded',timeout:12000});
-  await new Promise(r=>setTimeout(r,650));
+  await new Promise(r=>setTimeout(r,1100));
   const covers=[],seen=new Set(),bodyTexts=[];
-  let title='',carouselSlidesVisited=0,hasCarouselControl=false,atEnd=false,blocked=false;
+  let title='',carouselSlidesVisited=0,hasCarouselControl=false,atEnd=false,blocked=false,noChange=0;
   const remember=result=>{
    if(!result)return;
-   const t=String(result.title||'').trim();if(!title&&t&&!/^(Threads|Log in)$/i.test(t))title=t;
+   const t=String(result.title||'').trim();
+   if(!title&&t&&!/^(Threads|Log in)$/i.test(t))title=t;
    const articleText=String(result.body||'').trim();
-   if(articleText&&!/this content isn.t available to everyone|thread not available|log in to see this/i.test(articleText)){
-    if(!bodyTexts.includes(articleText))bodyTexts.push(articleText);
-   }
+   if(articleText&&!/this content isn.t available to everyone|thread not available|log in to see this/i.test(articleText)&&!bodyTexts.includes(articleText))bodyTexts.push(articleText);
    blocked=blocked||!!result.blocked;
    for(const val of result.images||[]){
-    const image=safeBrowserImage(val,canonicalUrl);if(!image)continue;
-    const key=metaMediaKey(image);if(seen.has(key))continue;seen.add(key);covers.push(image);
+    const photo=safeBrowserImage(val,canonicalUrl);if(!photo)continue;
+    const key=metaMediaKey(photo);if(seen.has(key))continue;
+    seen.add(key);covers.push(photo);
    }
   };
-  // Runs within the browser. Never reads cookies, session state, or unrelated feeds.
+  // Inspect the post, including image buttons that are rendered as SVG-only icons.
+  // Prefer a labeled Next control, then an unlabeled arrow right beside a large photo.
   const snap=async()=>page.evaluate(()=>{
-   const getMeta=(key)=>document.querySelector(`meta[property="${key}"],meta[name="${key}"]`)?.getAttribute('content')||'';
-   const root=document.querySelector('article,[role="article"]')||document.querySelector('main');
+   const meta=key=>document.querySelector(`meta[property="${key}"],meta[name="${key}"]`)?.getAttribute('content')||'';
+   const articles=[...document.querySelectorAll('article,[role="article"]')];
+   const score=el=>{
+    const media=[...el.querySelectorAll('img')].filter(im=>{const r=im.getBoundingClientRect();return r.width>=160&&r.height>=140}).length;
+    return media*200+Math.min((el.innerText||'').length,500);
+   };
+   const root=articles.sort((a,b)=>score(b)-score(a))[0]||document.querySelector('main')||document.body;
    const text=(root?.innerText||'').trim().slice(0,9000);
    const blocked=/this content isn.t available to everyone|thread not available|log in to see this|content isn't available/i.test(text);
-   const title=getMeta('og:title')||getMeta('twitter:title');
-   const fromMeta=getMeta('og:description')||getMeta('twitter:description');
-   const articleRoot=!!root?.matches?.('article,[role=article]');
-   const mainBody=fromMeta&&!/this content isn.t available to everyone|thread not available/i.test(fromMeta)?fromMeta:(articleRoot&&text.length>25&&!blocked?text:'');
-   const images=[];
-   function push(x){if(x&&typeof x==='string'&&!images.includes(x))images.push(x)}
-   push(getMeta('og:image'));
-   if(root){
-    const imgs=[...root.querySelectorAll('img')];
-    for(const im of imgs){
-     const rect=im.getBoundingClientRect();
-     if((rect.width>0&&rect.width<115)||(rect.height>0&&rect.height<100))continue;
-     if(/avatar|profile (?:picture|photo)|user icon/i.test(im.alt||''))continue;
-     const srcset=im.getAttribute('srcset')||'';
-     const sources=srcset.split(',').map(x=>x.trim().split(/\s+/)[0]).filter(Boolean);
-     push(sources.at(-1)||im.currentSrc||im.getAttribute('src')||im.getAttribute('data-src'));
-    }
-    for(const source of root.querySelectorAll('picture source')){
-     const list=(source.getAttribute('srcset')||'').split(',').map(x=>x.trim().split(/\s+/)[0]).filter(Boolean);
-     push(list.at(-1));
-    }
-   }
-   const clickable=[...((root||document).querySelectorAll('button,[role="button"]'))].filter(el=>{
-     const label=(el.getAttribute('aria-label')||el.getAttribute('title')||el.getAttribute('data-testid')||'').trim();
-     const rect=el.getBoundingClientRect();
-     return /^(next|next photo|next image|next slide|下一張|下一页|下一頁|下一個|下一步|次へ|다음|다음 사진)(?:\b|\s|$)/i.test(label)&&rect.width>0&&rect.height>0&&!el.disabled&&el.getAttribute('aria-disabled')!=='true';
+   const title=meta('og:title')||meta('twitter:title');
+   const description=meta('og:description')||meta('twitter:description');
+   const body=description&&!/this content isn.t available to everyone|thread not available/i.test(description)?description:
+     (root?.matches?.('article,[role="article"]')&&text.length>25&&!blocked?text:'');
+   const images=[];const push=s=>{if(typeof s==='string'&&s&&!images.includes(s))images.push(s)};
+   // A public OpenGraph cover is valid even when the DOM gallery is blocked.
+   if(!blocked)push(meta('og:image'));
+   const mainPhotos=[...root.querySelectorAll('img')].filter(im=>{
+    const r=im.getBoundingClientRect();return r.width>=160&&r.height>=130&&!/avatar|profile photo|user icon/i.test(im.alt||'');
    });
-   return {title,body:mainBody,blocked,images,hasNext:clickable.length>0};
+   for(const im of mainPhotos){
+    const srcset=im.getAttribute('srcset')||'';
+    const list=srcset.split(',').map(x=>x.trim().split(/\s+/)[0]).filter(Boolean);
+    push(im.currentSrc||list.at(-1)||im.getAttribute('src')||im.getAttribute('data-src'));
+   }
+   for(const el of root.querySelectorAll('picture source')){
+    const list=(el.getAttribute('srcset')||'').split(',').map(x=>x.trim().split(/\s+/)[0]).filter(Boolean);push(list.at(-1));
+   }
+   const gallery=mainPhotos.map(x=>x.getBoundingClientRect()).sort((a,b)=>b.width*b.height-a.width*a.height)[0];
+   const isVisible=el=>{const r=el.getBoundingClientRect();return r.width>=12&&r.height>=12&&r.width<105&&r.height<105&&r.bottom>0&&r.top<window.innerHeight&&r.left<window.innerWidth};
+   const isNext=el=>{
+    if(!isVisible(el)||el.disabled||el.getAttribute('aria-disabled')==='true')return false;
+    const label=[el.getAttribute('aria-label'),el.getAttribute('title'),el.getAttribute('data-testid'),el.querySelector('svg')?.getAttribute('aria-label'),el.querySelector('svg title')?.textContent].filter(Boolean).join(' ').toLowerCase();
+    const match=/(?:^|\b)(?:next|carousel.next|forward|navigate.right|arrow.right|right.arrow)(?:\b|$)|下一張|下一张|下一頁|下一页|下一個|下一步|次へ|次の|다음|suivant|siguiente|prossima/i.test(label);
+    if(match)return !!(root.contains(el)||gallery&&Math.abs(el.getBoundingClientRect().top-gallery.top)<gallery.height+60);
+    // Icon-only carousel arrow near right edge of large post photo; never click random page navigation.
+    if(!gallery||!el.querySelector('svg')||el.querySelector('a')||el.closest('a'))return false;
+    const r=el.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;
+    return cx>gallery.right-65&&cx<gallery.right+42&&cy>gallery.top+gallery.height*0.15&&cy<gallery.bottom-gallery.height*0.15&&(!label||/arrow|right|carousel/i.test(label));
+   };
+   const options=[...document.querySelectorAll('button,[role="button"]')].filter(isNext);
+   return {title,body,blocked,images,hasNext:options.length>0,possibleNextButtons:options.length};
+  });
+  const clickNext=async()=>page.evaluate(()=>{
+   const roots=[...document.querySelectorAll('article,[role="article"]')];
+   const score=el=>[...el.querySelectorAll('img')].filter(im=>{const r=im.getBoundingClientRect();return r.width>=160&&r.height>=140}).length*200+Math.min((el.innerText||'').length,500);
+   const root=roots.sort((a,b)=>score(b)-score(a))[0]||document.querySelector('main')||document.body;
+   const photos=[...root.querySelectorAll('img')].map(im=>im.getBoundingClientRect()).filter(r=>r.width>=160&&r.height>=130).sort((a,b)=>b.width*b.height-a.width*a.height);
+   const gallery=photos[0];
+   const candidates=[...document.querySelectorAll('button,[role="button"]')].filter(el=>{
+    const r=el.getBoundingClientRect();if(r.width<12||r.height<12||r.width>=105||r.height>=105||r.bottom<=0||r.top>=window.innerHeight||el.disabled||el.getAttribute('aria-disabled')==='true')return false;
+    const label=[el.getAttribute('aria-label'),el.getAttribute('title'),el.getAttribute('data-testid'),el.querySelector('svg')?.getAttribute('aria-label'),el.querySelector('svg title')?.textContent].filter(Boolean).join(' ').toLowerCase();
+    if(/(?:^|\b)(?:next|carousel.next|forward|navigate.right|arrow.right|right.arrow)(?:\b|$)|下一張|下一张|下一頁|下一页|下一個|下一步|次へ|次の|다음|suivant|siguiente|prossima/i.test(label))return !!(root.contains(el)||gallery&&Math.abs(r.top-gallery.top)<gallery.height+60);
+    if(!gallery||!el.querySelector('svg')||el.closest('a'))return false;
+    const cx=r.left+r.width/2,cy=r.top+r.height/2;
+    return cx>gallery.right-65&&cx<gallery.right+42&&cy>gallery.top+gallery.height*0.15&&cy<gallery.bottom-gallery.height*0.15&&(!label||/arrow|right|carousel/i.test(label));
+   });
+   if(!candidates.length)return false;
+   candidates[0].click();return true;
   });
   let data=await snap();remember(data);hasCarouselControl=data.hasNext;
   const steps=mode==='manual'?7:4;
-  for(let i=0;i<steps&&data.hasNext&&Date.now()-launchedAt<maxMs-1000;i++){
-   const clicked=await page.evaluate(()=>{
-     const root=document.querySelector('article,[role="article"]')||document.querySelector('main')||document;
-     const buttons=[...root.querySelectorAll('button,[role="button"]')];
-     const button=buttons.find(el=>{
-       const label=(el.getAttribute('aria-label')||el.getAttribute('title')||el.getAttribute('data-testid')||'').trim();
-       const box=el.getBoundingClientRect();
-       return /^(next|next photo|next image|next slide|下一張|下一页|下一頁|下一個|下一步|次へ|다음|다음 사진)(?:\b|\s|$)/i.test(label)&&box.width>0&&box.height>0&&!el.disabled&&el.getAttribute('aria-disabled')!=='true';
-     });
-     if(!button)return false;button.click();return true;
-   });
-   if(!clicked){atEnd=true;break}
+  for(let i=0;i<steps&&data.hasNext&&Date.now()-launchedAt<maxMs-1200;i++){
+   const clicked=await clickNext();if(!clicked){atEnd=true;break}
    carouselSlidesVisited++;
-   await new Promise(r=>setTimeout(r,600));
+   const before=covers.length;
+   await new Promise(r=>setTimeout(r,800));
    data=await snap();remember(data);
+   if(covers.length===before){noChange++;if(noChange>=2)break}else noChange=0;
    if(!data.hasNext)atEnd=true;
   }
   const articleBody=bodyTexts.sort((a,b)=>b.length-a.length)[0]||'';
   const found=!!(articleBody||covers.length);
-  return {ok:true,found,source:'puppeteer-carousel',canonicalUrl,title:publicSentenceTitle(articleBody)||title,body:articleBody,
-   images:covers.slice(0,12),carouselSlidesVisited,carouselAttempted:hasCarouselControl,
-   imagesComplete:false,carouselReachedVisibleEnd:hasCarouselControl&&atEnd,reason:found?'ok':blocked?'threads-access-limited':'browser-no-readable-post'};
+  return {ok:true,found,source:'puppeteer-carousel',executionMode:'puppeteer',canonicalUrl,
+   title:publicSentenceTitle(articleBody)||title,body:articleBody,images:covers.slice(0,12),
+   carouselSlidesVisited,carouselAttempted:hasCarouselControl,imagesComplete:false,
+   carouselReachedVisibleEnd:hasCarouselControl&&atEnd,
+   reason:found?'ok':blocked?'threads-access-limited':'browser-no-readable-post'};
  }finally{if(browser)try{await browser.close()}catch{}}
 }
 async function extractBrowserThreads(env,body){
@@ -541,17 +564,20 @@ async function extractBrowserThreads(env,body){
   }else payload=result;
   if(payload?.success===false)throw new Error(JSON.stringify(payload?.errors||payload?.error||'browser action failed').slice(0,350));
   extracted=browserScrapeData(payload,canonical.href);
+  extracted.executionMode='quick-action-fallback';
+  extracted.fallbackReason=/navigation|goto|timeout/i.test(String(advancedError?.message||''))?'puppeteer-navigation-failed':'puppeteer-launch-or-dom-failed';
+  extracted.carouselSlidesVisited=0;extracted.carouselAttempted=false;
   status=extracted.found?'ok':'browser-no-readable-post';
   return extracted;
   }catch(fallbackError){throw fallbackError}
   }
  }catch(e){
   status=browserQuotaReason(e.message);
-  return {ok:true,found:false,source:'browser-run',canonicalUrl:canonical.href,reason:status};
+  return {ok:true,found:false,source:'browser-run',executionMode:'browser-error',canonicalUrl:canonical.href,reason:status};
  }finally{await completeBrowser(env.DB,slot,status,extracted,reportedMs)}
 }
 
-// ----- v1.8.17: enrich new shares in Cloudflare without requiring the app to open -----
+// ----- v1.8.18: enrich new shares in Cloudflare without requiring the app to open -----
 function usableArticleText(value){
  const text=String(value||'').trim();
  return /this content isn.t available to everyone|thread not available|log in to see|content isn.t available|post unavailable|貼文無法顯示|內容無法使用/i.test(text)?'':text;
@@ -647,7 +673,7 @@ export default {
       return new Response(null,{status:204,headers:headersFor(origin)});
     }
     const pathname=new URL(request.url).pathname.replace(/\/+$/,'')||'/';
-    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.17',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env)},200,origin);
+    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.18',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env)},200,origin);
     if(!env.DB||!env.SJ_TOKEN||String(env.SJ_TOKEN).length<32)return reply({error:'server-not-configured'},503,origin);
     try{
       let body=null;
