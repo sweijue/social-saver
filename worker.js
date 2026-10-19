@@ -302,8 +302,12 @@ function htmlAttrs(tag){
 }
 // Only standard public JSON-LD fields, when actually supplied by the post page.
 // Do not treat arbitrary script text or unrelated media from the feed as a post.
-function publicStructuredPost(html){
+function publicStructuredPost(html,expectedURL){
  const out={body:'',title:'',images:[]};
+ // An HTML page can embed JSON-LD for a feed as well as the requested post.
+ // Only metadata explicitly linked to this post is eligible for gallery images.
+ const targetPostId=String(new URL(expectedURL).pathname.match(/\/post\/([^/]+)/)?.[1]||'');
+ const entryPostId=value=>{try{return new URL(typeof value==='string'?value:value?.['@id']||value?.url||'',expectedURL).pathname.match(/\/post\/([^/]+)/)?.[1]||''}catch{return ''}};
  const addImage=value=>{
   if(Array.isArray(value)){value.forEach(addImage);return}
   if(value&&typeof value==='object'){addImage(value.url||value.contentUrl||'');return}
@@ -316,9 +320,11 @@ function publicStructuredPost(html){
    if(!obj||typeof obj!=='object')continue;
    const type=String(obj['@type']||'');
    if(!/SocialMediaPosting|Article|BlogPosting|DiscussionForumPosting/i.test(type))continue;
+   const identity=entryPostId(obj.url)||entryPostId(obj['@id'])||entryPostId(obj.mainEntityOfPage);
+   if(identity&&identity!==targetPostId)continue;
    if(!out.body)out.body=String(obj.articleBody||obj.text||obj.description||'').slice(0,9000);
    if(!out.title)out.title=String(obj.headline||obj.name||'').slice(0,240);
-   addImage(obj.image||obj.associatedMedia);
+   if(identity===targetPostId)addImage(obj.image||obj.associatedMedia);
   }
  }
  return out;
@@ -336,7 +342,7 @@ function readPublicPostMetadata(html,url){
   if(!key||!a.content)continue;(found[key]??=[]).push(a.content.trim());
  }
  const first=(...keys)=>{for(const k of keys){const s=(found[k]||[]).find(x=>x.trim());if(s)return s}return ''};
- const jsonPost=publicStructuredPost(html);
+ const jsonPost=publicStructuredPost(html,url);
  const desc=first('og:description','twitter:description','description')||jsonPost.body;
  const title=first('og:title','twitter:title')||jsonPost.title;
  const looksBlocked=/this content isn.t available to everyone|thread not available|content isn.t available|log in to see (?:this|the) (?:post|content)|post is unavailable|此內容無法使用|貼文無法顯示/i;
@@ -346,7 +352,7 @@ function readPublicPostMetadata(html,url){
  for(const val of [...(found['og:image']||[]),...(found['twitter:image']||[]),...jsonPost.images]){
   try{const img=new URL(val);if(img.protocol==='https:'&&img.hostname.includes('.')&&!images.includes(img.href))images.push(img.href)}catch{}
  }
- return {ok:true,source:'threads-public-html',canonicalUrl:url,title:validText?(publicSentenceTitle(body)||title).slice(0,250):'',body,images:curatedImages(images).slice(0,12),found:!!(body||images.length||title&&!looksBlocked.test(title)&&title.toLowerCase()!=='threads'),reason:looksBlocked.test(html)&&!body&&!images.length?'threads-access-limited':'no-public-metadata'};
+ return {ok:true,source:'threads-public-html',canonicalUrl:url,title:validText?(publicSentenceTitle(body)||title).slice(0,250):'',body,images:curatedImages(images),found:!!(body||images.length||title&&!looksBlocked.test(title)&&title.toLowerCase()!=='threads'),reason:looksBlocked.test(html)&&!body&&!images.length?'threads-access-limited':'no-public-metadata'};
 }
 async function fetchPublicResponse(url,method='GET'){
  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),9500);
@@ -440,6 +446,7 @@ async function extractPublicThreads(input){
 // Browser Run Quick Action: one sandboxed render, never authenticated or bypassed.
 // Free plan: 10 minutes/day (official account-wide usage); this app conservatively
 // stops earlier. The dashboard, not this counter, is the authoritative quota.
+const POST_IMAGE_SAFETY_CAP = 20; // Safety ceiling, not a target photo count.
 const BROWSER_RESERVE_MS = 30000;
 const BROWSER_APP_DAILY_BUDGET_MS = 420000; // conservative 7m vs. plan's 10m
 const BROWSER_AUTO_DAILY_BUDGET_MS = 180000;
@@ -543,24 +550,11 @@ function browserScrapeData(payload,canonicalUrl){
  };
  // OpenGraph cover comes first. Other DOM images are added only if genuinely different.
  if(!blockedPage)push(firstAttr('meta[property="og:image"]','content'));
- // Only choose substantial post photos, not user icons, navigation images, or advertisements.
- for(const sel of ['article img','[role="article"] img','main article img']){
-  for(const item of bySelector(sel)){
-   if(Number(item.width)>0&&Number(item.width)<110)continue;
-   if(Number(item.height)>0&&Number(item.height)<85)continue;
-   if(/avatar|profile picture|profile photo|user icon/i.test(attr(item,'alt')))continue;
-   // Responsive image URLs are often stored in srcset when src is a placeholder.
-   const current=attr(item,'currentSrc')||attr(item,'src')||attr(item,'data-src');
-   push(bestSourceFromSet(attr(item,'srcset')||attr(item,'data-srcset'))||current);
-  }
- }
- // Some carousel slides are present as <picture><source> before their <img> loads.
- for(const sel of ['article picture source','[role="article"] picture source']){
-  for(const item of bySelector(sel))push(bestSourceFromSet(attr(item,'srcset')||attr(item,'data-srcset')));
- }
+ // Do not harvest 'article img' selectors here: Quick Action cannot prove which
+ // article owns a photo. Return only the document's OpenGraph cover.
  // A screenshot or website metadata cannot reveal carousel slides Threads did not load.
  const found=!blockedPage&&!!(body.trim()||imgs.length);
- return {ok:true,found,source:'browser-run',canonicalUrl,title:title.slice(0,250),body,images:imgs.slice(0,12),
+ return {ok:true,found,source:'browser-run',canonicalUrl,title:title.slice(0,250),body,images:imgs.slice(0,POST_IMAGE_SAFETY_CAP),
    reason:found?'ok':'browser-no-readable-post',imagesComplete:false};
 }
 
@@ -593,68 +587,70 @@ async function puppeteerCarouselScrape(env,canonicalUrl,mode='auto'){
     seen.add(key);covers.push(photo);
    }
   };
-  // Inspect the post, including image buttons that are rendered as SVG-only icons.
-  // Prefer a labeled Next control, then an unlabeled arrow right beside a large photo.
-  const snap=async()=>page.evaluate(()=>{
+  // Reject other posts/recommendations. Never choose a root by number of images:
+  // the most image-rich article is often a recommended or quoted post.
+  const targetPostId=String(new URL(canonicalUrl).pathname.match(/\/post\/([^/]+)/)?.[1]||'');
+  const inspect=async click=>page.evaluate(({postId,click})=>{
+   const postIdInURL=value=>{try{return new URL(value,location.href).pathname.match(/\/post\/([^/]+)/)?.[1]||''}catch{return ''}};
    const meta=key=>document.querySelector(`meta[property="${key}"],meta[name="${key}"]`)?.getAttribute('content')||'';
-   const articles=[...document.querySelectorAll('article,[role="article"]')];
-   const score=el=>{
-    const media=[...el.querySelectorAll('img')].filter(im=>{const r=im.getBoundingClientRect();return r.width>=160&&r.height>=140}).length;
-    return media*200+Math.min((el.innerText||'').length,500);
-   };
-   const root=articles.sort((a,b)=>score(b)-score(a))[0]||document.querySelector('main')||document.body;
-   const text=(root?.innerText||'').trim().slice(0,9000);
-   const blocked=/this content isn.t available to everyone|thread not available|log in to see this|content isn't available/i.test(text);
+   const canonical=document.querySelector('link[rel="canonical"]')?.getAttribute('href')||meta('og:url');
+   const currentPostId=postIdInURL(location.href),headPostId=postIdInURL(canonical);
+   const pageVerified=currentPostId===postId&&(!headPostId||headPostId===postId);
+   if(!pageVerified)return click?false:{title:'',body:'',images:[],hasNext:false,blocked:true,postVerified:false};
+   const allArticles=[...document.querySelectorAll('article,[role="article"]')];
+   const linksIn=el=>[...el.querySelectorAll('a[href]')].map(a=>postIdInURL(a.getAttribute('href'))).filter(Boolean);
+   const owned=allArticles.filter(a=>!a.parentElement?.closest('article,[role="article"]'));
+   const matching=owned.filter(a=>linksIn(a).includes(postId));
+   // A single article without another post permalink is acceptable on the verified
+   // post URL. If the page has multiple articles and none links to the target,
+   // prefer no DOM images over importing recommended-post media.
+   const root=matching[0]||(owned.length===1&&linksIn(owned[0]).every(id=>id===postId)?owned[0]:null);
+   const inTarget=el=>!!root&&el.closest('article,[role="article"]')===root;
+   const blockedText=/this content isn.t available to everyone|thread not available|log in to see this|content isn't available/i;
    const title=meta('og:title')||meta('twitter:title');
    const description=meta('og:description')||meta('twitter:description');
-   const body=description&&!/this content isn.t available to everyone|thread not available/i.test(description)?description:
-     (root?.matches?.('article,[role="article"]')&&text.length>25&&!blocked?text:'');
+   const bodyText=(root?.innerText||'').trim().slice(0,9000);
+   const blocked=blockedText.test(description)||blockedText.test(bodyText);
+   const body=description&&!blockedText.test(description)?description:root&&bodyText.length>25&&!blocked?bodyText:'';
    const images=[];const push=s=>{if(typeof s==='string'&&s&&!images.includes(s))images.push(s)};
-   // A public OpenGraph cover is valid even when the DOM gallery is blocked.
    if(!blocked)push(meta('og:image'));
-   const mainPhotos=[...root.querySelectorAll('img')].filter(im=>{
+   const photos=root?[...root.querySelectorAll('img')].filter(im=>{
+    if(!inTarget(im))return false;
+    const enclosing=im.closest('a[href]');if(enclosing){const foreign=postIdInURL(enclosing.getAttribute('href'));if(foreign&&foreign!==postId)return false}
     const r=im.getBoundingClientRect();return r.width>=160&&r.height>=130&&!/avatar|profile photo|user icon/i.test(im.alt||'');
-   });
-   for(const im of mainPhotos){
+   }):[];
+   const gallery=photos.map(x=>x.getBoundingClientRect()).sort((a,b)=>b.width*b.height-a.width*a.height)[0];
+   for(const im of photos){
+    const r=im.getBoundingClientRect();
+    // Keep only nearby media inside this post's principal gallery, not a second
+    // quoted card lower on the same article or unrelated feed recommendations.
+    if(gallery&&Math.abs(r.top-gallery.top)>Math.max(400,gallery.height*1.5))continue;
     const srcset=im.getAttribute('srcset')||'';
     const list=srcset.split(',').map(x=>x.trim().split(/\s+/)[0]).filter(Boolean);
     push(im.currentSrc||list.at(-1)||im.getAttribute('src')||im.getAttribute('data-src'));
    }
-   for(const el of root.querySelectorAll('picture source')){
-    const list=(el.getAttribute('srcset')||'').split(',').map(x=>x.trim().split(/\s+/)[0]).filter(Boolean);push(list.at(-1));
+   if(root)for(const picture of root.querySelectorAll('picture')){
+    if(!inTarget(picture))continue;
+    const r=picture.getBoundingClientRect();if(r.width<160||r.height<130)continue;
+    if(gallery&&Math.abs(r.top-gallery.top)>Math.max(400,gallery.height*1.5))continue;
+    for(const src of picture.querySelectorAll('source[srcset]')){
+     const list=(src.getAttribute('srcset')||'').split(',').map(x=>x.trim().split(/\s+/)[0]).filter(Boolean);
+     push(list.at(-1));
+    }
    }
-   const gallery=mainPhotos.map(x=>x.getBoundingClientRect()).sort((a,b)=>b.width*b.height-a.width*a.height)[0];
-   const isVisible=el=>{const r=el.getBoundingClientRect();return r.width>=12&&r.height>=12&&r.width<105&&r.height<105&&r.bottom>0&&r.top<window.innerHeight&&r.left<window.innerWidth};
-   const isNext=el=>{
-    if(!isVisible(el)||el.disabled||el.getAttribute('aria-disabled')==='true')return false;
-    const label=[el.getAttribute('aria-label'),el.getAttribute('title'),el.getAttribute('data-testid'),el.querySelector('svg')?.getAttribute('aria-label'),el.querySelector('svg title')?.textContent].filter(Boolean).join(' ').toLowerCase();
-    const match=/(?:^|\b)(?:next|carousel.next|forward|navigate.right|arrow.right|right.arrow)(?:\b|$)|下一張|下一张|下一頁|下一页|下一個|下一步|次へ|次の|다음|suivant|siguiente|prossima/i.test(label);
-    if(match)return !!(root.contains(el)||gallery&&Math.abs(el.getBoundingClientRect().top-gallery.top)<gallery.height+60);
-    // Icon-only carousel arrow near right edge of large post photo; never click random page navigation.
-    if(!gallery||!el.querySelector('svg')||el.querySelector('a')||el.closest('a'))return false;
-    const r=el.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;
-    return cx>gallery.right-65&&cx<gallery.right+42&&cy>gallery.top+gallery.height*0.15&&cy<gallery.bottom-gallery.height*0.15&&(!label||/arrow|right|carousel/i.test(label));
-   };
-   const options=[...document.querySelectorAll('button,[role="button"]')].filter(isNext);
-   return {title,body,blocked,images,hasNext:options.length>0,possibleNextButtons:options.length};
-  });
-  const clickNext=async()=>page.evaluate(()=>{
-   const roots=[...document.querySelectorAll('article,[role="article"]')];
-   const score=el=>[...el.querySelectorAll('img')].filter(im=>{const r=im.getBoundingClientRect();return r.width>=160&&r.height>=140}).length*200+Math.min((el.innerText||'').length,500);
-   const root=roots.sort((a,b)=>score(b)-score(a))[0]||document.querySelector('main')||document.body;
-   const photos=[...root.querySelectorAll('img')].map(im=>im.getBoundingClientRect()).filter(r=>r.width>=160&&r.height>=130).sort((a,b)=>b.width*b.height-a.width*a.height);
-   const gallery=photos[0];
-   const candidates=[...document.querySelectorAll('button,[role="button"]')].filter(el=>{
+   const nexts=root&&gallery?[...root.querySelectorAll('button,[role="button"]')].filter(el=>{
     const r=el.getBoundingClientRect();if(r.width<12||r.height<12||r.width>=105||r.height>=105||r.bottom<=0||r.top>=window.innerHeight||el.disabled||el.getAttribute('aria-disabled')==='true')return false;
     const label=[el.getAttribute('aria-label'),el.getAttribute('title'),el.getAttribute('data-testid'),el.querySelector('svg')?.getAttribute('aria-label'),el.querySelector('svg title')?.textContent].filter(Boolean).join(' ').toLowerCase();
-    if(/(?:^|\b)(?:next|carousel.next|forward|navigate.right|arrow.right|right.arrow)(?:\b|$)|下一張|下一张|下一頁|下一页|下一個|下一步|次へ|次の|다음|suivant|siguiente|prossima/i.test(label))return !!(root.contains(el)||gallery&&Math.abs(r.top-gallery.top)<gallery.height+60);
-    if(!gallery||!el.querySelector('svg')||el.closest('a'))return false;
+    const named=/(?:^|\b)(?:next|carousel.next|forward|navigate.right|arrow.right|right.arrow)(?:\b|$)|下一張|下一张|下一頁|下一页|下一個|下一步|次へ|次の|다음|suivant|siguiente|prossima/i.test(label);
     const cx=r.left+r.width/2,cy=r.top+r.height/2;
-    return cx>gallery.right-65&&cx<gallery.right+42&&cy>gallery.top+gallery.height*0.15&&cy<gallery.bottom-gallery.height*0.15&&(!label||/arrow|right|carousel/i.test(label));
-   });
-   if(!candidates.length)return false;
-   candidates[0].click();return true;
-  });
+    const nearGallery=cx>gallery.right-65&&cx<gallery.right+42&&cy>gallery.top+gallery.height*0.15&&cy<gallery.bottom-gallery.height*0.15;
+    return nearGallery&&(named||!!el.querySelector('svg')&&(!label||/arrow|right|carousel/i.test(label)))&&!el.closest('a');
+   }):[];
+   if(click){if(!nexts?.length)return false;nexts[0].click();return true}
+   return {title,body,blocked,images,hasNext:!!nexts?.length,postVerified:!!root,pageVerified};
+  },{postId:targetPostId,click});
+  const snap=async()=>inspect(false);
+  const clickNext=async()=>inspect(true);
   let data=await snap();remember(data);hasCarouselControl=data.hasNext;
   const steps=mode==='manual'?7:4;
   for(let i=0;i<steps&&data.hasNext&&Date.now()-launchedAt<maxMs-1200;i++){
@@ -669,9 +665,10 @@ async function puppeteerCarouselScrape(env,canonicalUrl,mode='auto'){
   const articleBody=bodyTexts.sort((a,b)=>b.length-a.length)[0]||'';
   const found=!!(articleBody||covers.length);
   return {ok:true,found,source:'puppeteer-carousel',executionMode:'puppeteer',canonicalUrl,
-   title:publicSentenceTitle(articleBody)||title,body:articleBody,images:covers.slice(0,12),
+   title:publicSentenceTitle(articleBody)||title,body:articleBody,images:covers.slice(0,POST_IMAGE_SAFETY_CAP),
    carouselSlidesVisited,carouselAttempted:hasCarouselControl,imagesComplete:false,
    carouselReachedVisibleEnd:hasCarouselControl&&atEnd,
+   postVerified:!!data?.postVerified,
    reason:found?'ok':blocked?'threads-access-limited':'browser-no-readable-post'};
  }finally{if(browser)try{await browser.close()}catch{}}
 }
@@ -740,7 +737,7 @@ function usableArticleText(value){
 function curatedImages(list){
  const items=[],keys=new Set();
  for(const v of Array.isArray(list)?list:[]){
-  if(items.length>=12)break;
+  if(items.length>=POST_IMAGE_SAFETY_CAP)break;
   const str=typeof v==='string'?v:v?.url;
   try{const u=new URL(str);if(u.protocol!=='https:'||u.href.length>3000)continue;
    const key=typeof metaMediaKey==='function'?metaMediaKey(u.href):u.href.split('?')[0];
@@ -772,7 +769,7 @@ async function previewEnrichment(db,url){
   if(!res.ok)return {reason:'公開預覽服務 HTTP '+res.status};
   const json=await res.json(),d=json.data||{};
   const title=String(d.title||'').trim(),body=usableArticleText(d.description);
-  const images=curatedImages([d.image?.url,...(d.images||[])]);
+  const images=curatedImages(/threads\.(?:com|net)/i.test(url)?[d.image?.url]:[d.image?.url,...(d.images||[])]);
   if(json.status!=='success'||!body&&!images.length&&(!title||/^threads$/i.test(title)))return {reason:'公開預覽未提供可讀內容'};
   return {meta:{title:/^threads$/i.test(title)?'':title,body,images}};
  }catch(e){return {reason:e.name==='AbortError'?'預覽逾時':'公開預覽暫時不可用'}}
@@ -792,7 +789,7 @@ async function enrichIncomingBookmark(env,inboxId,url){
   // The existing daily, per-post and concurrency limits still apply.
   if(isThreads&&browserBound(env)&&(!meta.body||meta.images.length<2)&&
      /^https:\/\/www\.threads\.com\/@[^/]+\/post\/[^/]+\/?$/.test(meta.resolvedUrl||'')&&
-     Date.now()-began<6500){
+     Date.now()-began<18000){
    try{
     const b=await extractBrowserThreads(env,{url:meta.resolvedUrl||url,mode:'auto'});
     if(b.found){blendEnrichment(meta,{title:b.title,body:b.body,images:b.images,resolvedUrl:b.canonicalUrl});meta.carouselVisited=b.carouselSlidesVisited||0;meta.imagesComplete=!!b.imagesComplete;meta.carouselReachedVisibleEnd=!!b.carouselReachedVisibleEnd;}
@@ -801,7 +798,7 @@ async function enrichIncomingBookmark(env,inboxId,url){
   }
   // Retry public preview only when the carousel did not supply enough content.
   // Avoid repeated preview calls for already recovered multi-image posts.
-  if((!meta.body||meta.images.length<2)&&Date.now()-began<21000){
+  if((!meta.body||!meta.images.length)&&Date.now()-began<26000){
    const p=await previewEnrichment(env.DB,meta.resolvedUrl||url);
    if(p.meta)blendEnrichment(meta,p.meta);
    else if(p.reason)issue=p.reason;
@@ -833,7 +830,7 @@ export default {
       return new Response(null,{status:204,headers:headersFor(origin)});
     }
     const pathname=new URL(request.url).pathname.replace(/\/+$/,'')||'/';
-    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.19-rollback.2',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env)},200,origin);
+    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.19-rollback.3',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env)},200,origin);
     if(!env.DB||!env.SJ_TOKEN||String(env.SJ_TOKEN).length<32)return reply({error:'server-not-configured'},503,origin);
     try{
       let body=null;
