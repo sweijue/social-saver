@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="拾集">
-<title>拾集 v1.8.19</title>
+<title>拾集 v1.8.20</title>
 <style>
 :root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#6e6e68;--line:#e4e4de;--soft:#efefe9;--shadow:0 10px 28px rgba(0,0,0,.07);--r:20px;--navh:74px}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif;font-size:17px}body{min-height:100vh;padding-bottom:calc(var(--navh) + env(safe-area-inset-bottom) + 18px)}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
@@ -581,7 +581,7 @@ main{padding-top:calc(116px + env(safe-area-inset-top))!important}
 
 <script>
 
-const VERSION="1.8.19", STORE="socialSaver_data";
+const VERSION="1.8.20", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -931,6 +931,7 @@ function normalizeItem(i){
   category:i.category||inferCategory(`${i.title||''} ${i.body||''}`),country:i.country||inferCountry(`${i.title||''} ${i.body||''} ${i.city||''}`),categorySource:i.categorySource||'auto',countrySource:i.countrySource||'auto',
   city:i.city||findRegion(`${i.title||''} ${safeBody}`),shoppingType:i.shoppingType||'',address:i.address||extractAddress(safeBody),placeName:i.placeName||findPlaceName(safeBody,i.title||''),products,
   tags:Array.isArray(i.tags)?i.tags:[],terms:makeSearchTerms({placeName:i.placeName||findPlaceName(safeBody,i.title||''),address:i.address||extractAddress(safeBody),products,body:safeBody,country:i.country}),images,productImages,
+  imageOriginals:i.imageOriginals&&typeof i.imageOriginals==='object'&&!Array.isArray(i.imageOriginals)?i.imageOriginals:{},mediaBackupRequested:!!i.mediaBackupRequested,
   vision,imageSummary:typeof i.imageSummary==='string'?i.imageSummary.slice(0,260):'',
   summary:(badPreviewBody||isPlatformUnavailableText(i.summary))?'':typeof i.summary==='string'?i.summary:'',note:i.note||'',
   sourceQuality:badPreviewBody&&!images.length?'linkOnly':(i.sourceQuality||'manual'),sourceCapturedAt:i.sourceCapturedAt||null,
@@ -1678,11 +1679,26 @@ function mergePublicPreview(item,meta){
  }
  if(!item.body&&meta.body&&!isPlatformUnavailableText(meta.body))item.body=meta.body;
  if(meta.resolvedUrl)item.resolvedUrl=meta.resolvedUrl;
+ if(meta.imageOriginals&&typeof meta.imageOriginals==='object'){
+  // Favor backed-up versions when the same photo already exists as an old CDN URL.
+  // Preserve AI/photo associations while avoiding two copies of one cover.
+  for(const [archived,original] of Object.entries(meta.imageOriginals)){
+   if(!r2ImageURL(archived)||!original)continue;
+   const existingSrc=(item.images||[]).find(src=>articlePhotoKey(src)===articlePhotoKey(original));
+   if(existingSrc&&existingSrc!==archived)replaceMediaSource(item,existingSrc,archived);
+  }
+  item.imageOriginals={...(item.imageOriginals||{}),...meta.imageOriginals};
+ }
+ 
  if(meta.browserNotice!==undefined)item.browserNotice=meta.browserNotice;
  const previousPhotoKeys=new Set((item.images||[]).map(articlePhotoKey));
- item.images=uniqueArticleImages([...(item.images||[]),...(meta.images||[])]);
+ item.images=uniqueArticleImages([...(item.images||[]),...(meta.images||[])]).filter((src,index,arr)=>{
+  const key=articlePhotoKey(item.imageOriginals?.[src]||src);
+  return arr.findIndex(test=>articlePhotoKey(item.imageOriginals?.[test]||test)===key)===index;
+ });
  if(item.images.some(src=>!previousPhotoKeys.has(articlePhotoKey(src)))&&!item.isExample){
   item.vision=item.vision||{entries:[],updatedAt:0};item.vision.autoPending=true;
+  item.mediaBackupRequested=true;mediaQueueKick(2800);
   scheduleVisionQueue(1200);
  }
  if(!item.placeName)item.placeName=findPlaceName(item.body,item.title);
@@ -1877,6 +1893,7 @@ async function retryItemMetadata(id){
   const original=snapshotFetchContent(latest);
   const changed=mergePublicPreview(latest,meta);
   const improved=recordFetchCheck(latest,original,meta);
+  if(latest.images?.length){latest.mediaBackupRequested=true;mediaQueueKick(5500)}
   articleFetchFeedback.set(id,improved?describeContentRefetch(before,latest,meta,changed):
    {kind:'warn',text:`沒有找到新增內容。${retryStatusText(latest)}`});
   await save();render();
@@ -2029,7 +2046,7 @@ function quickItem(url,meta,fields={}){
  // Only user supplied one-to-one images qualify as mapped product images.
  if(fields.images?.length && fields.images.length===products.length)products.forEach((p,idx)=>productImages[p]=fields.images[idx]);
  const quality=fields.body?'manual':meta?'preview':'linkOnly';const placeName=fields.placeName||findPlaceName(body,title);const address=fields.address||extractAddress(body);const city=findRegion(`${title} ${body}`);
- return normalizeItem({id:uid(),title,platform,url,resolvedUrl:meta?.resolvedUrl||'',body,category,country,city,products,images:articleImages,productImages,
+ return normalizeItem({id:uid(),title,platform,url,resolvedUrl:meta?.resolvedUrl||'',body,category,country,city,products,images:articleImages,imageOriginals:meta?.imageOriginals||{},productImages,
   tags:uniq([...guessTags(content,country,category),...(fields.tags||[])]),address,placeName,
   terms:makeSearchTerms({placeName,address,products,body,country}),
   summary:'',titleSource:fields.title?'manual':'auto',previewAttempts:meta?1:0,previewError:'',previewCheckedAt:meta?Date.now():null,
@@ -2090,7 +2107,9 @@ function openQuickAdd(prefill=''){
    if(duplicate){status.textContent='這篇網址已收藏過，可回到原卡片編輯。';return}
    const item=quickItem(url,cached,fields);
    if(!item.isExample){data.items=data.items.filter(x=>!x.isExample);data.examplesInitialized=true}
+   if(item.images?.length)item.mediaBackupRequested=true;
    data.items.unshift(item);await save();closeModal();view='library';render();
+   if(item.mediaBackupRequested)mediaQueueKick(4500);
    if(item.images?.length&&cloudConfig)setTimeout(()=>analyzeArticlePhotos(item.id,{silent:true}),650);
  };
  if(prefill){lookupPromise=runLookup()}else inp.focus();
@@ -2125,7 +2144,7 @@ function editorHTML(item){
 }
 
 // Vision runs only when Cloudflare AI is bound; never put an AI key in public HTML.
-// v1.8.19: Queue ALL unanalysed images, save each result immediately, and resume
+// v1.8.20: Queue ALL unanalysed images, save each result immediately, and resume
 // foreground work after reconnect/reopen. The global queue is SERIAL to avoid
 // unnecessary AI rate limiting, with persisted pauses for quota/errors.
 const visionInFlight=new Set();
@@ -2256,8 +2275,8 @@ async function drainVisionQueue(){
     // an AI request was in progress.
     const keys=visionDoneKeys(target);
     if(!keys.has(photo.key)){
-     const actualIndex=(target.images||[]).findIndex(src=>photoSourceKey(src)===photo.key);
-     if(actualIndex>=0){target.vision.entries.push({...res.analysis,index:actualIndex,key:photo.key});target.vision.entries.sort((a,b)=>a.index-b.index)}
+     const actualIndex=(target.images||[]).findIndex(src=>photoSourceKey(src)===photo.key||photoSourceKey(target.imageOriginals?.[src])===photo.key);
+     if(actualIndex>=0){target.vision.entries.push({...res.analysis,index:actualIndex,key:photoSourceKey(target.images[actualIndex])});target.vision.entries.sort((a,b)=>a.index-b.index)}
     }
     target.vision.updatedAt=Date.now();
     target.vision.failures=(target.vision.failures||[]).filter(x=>x.key!==photo.key);
@@ -2492,6 +2511,11 @@ function imageFallbackData(label='圖片',originalUrl=''){
 document.addEventListener('error',e=>{
  const im=e.target;
  if(im?.tagName!=='IMG'||im.dataset.imageFallbackApplied)return;
+ const r2src=im.getAttribute('src')||'';
+ if(r2ImageURL(r2src)&&!im.dataset.r2Fallback){
+  const old=data.items.map(item=>item.imageOriginals?.[r2src]).find(Boolean);
+  if(old){im.dataset.r2Fallback='1';im.src=old;return;}
+ }
  im.dataset.imageFallbackApplied='1';
  const source=im.currentSrc||im.src||'';
  const title=im.getAttribute('alt')||im.closest('.card')?.querySelector('.title')?.textContent||'收藏圖片';
@@ -2522,6 +2546,89 @@ let cloudConfig=readCloudJson(CLOUD_CONFIG_KEY,null);
 let cloudMeta=readCloudJson(CLOUD_META_KEY,{revision:null,dirty:false,wasConnected:false});
 let cloudBusy=false,cloudConflict=false,cloudMessage='尚未設定雲端',cloudTimer=null,cloudSaveTimer=null;
 let cloudLastSuccess=0; // session-only: never claim that an unverified stale session is currently connected
+
+// v1.8.20: R2 backup of already-publicly-visible remote photos.
+// DO NOT auto-upload a user's private screenshots or data URLs. The R2 bucket
+// is private but each archived image has an unguessable READ link, shareable
+// by anyone with the exact URL. The source URL remains as fallback metadata.
+const MEDIA_QUEUE_GAP_MS=2200,MEDIA_RETRY_KEY='shiji_media_retry_1820';
+let mediaQueueBusy=false,mediaQueueTimer=null,mediaQueueDue=0,mediaSessionDisabled=false,mediaRetryAt=0;
+function r2ImageURL(url){try{const u=new URL(url),worker=new URL(cloudConfig?.url||'https://invalid.example');return u.origin===worker.origin&&/^\/media\/[a-f0-9]{64}$/.test(u.pathname)}catch{return false}}
+function eligibleMediaSrc(src){
+ if(typeof src!=='string'||!src.startsWith('https://')||r2ImageURL(src))return false;
+ try{const u=new URL(src),h=u.hostname.toLowerCase();return ['fbcdn.net','cdninstagram.com','instagram.com','threads.com','threads.net','pinimg.com','twimg.com','unsplash.com','imgur.com','xhscdn.com','xiaohongshu.com','byteimg.com','tiktokcdn.com','ytimg.com','googleusercontent.com'].some(d=>h===d||h.endsWith('.'+d))}catch{return false}
+}
+function pendingMediaImages(item){return (item.images||[]).filter(eligibleMediaSrc)}
+function archivedMediaCount(){return data.items.reduce((n,i)=>n+(i.images||[]).filter(r2ImageURL).length,0)}
+function mediaQueueKick(delay=1500){
+ if(mediaQueueTimer){if(mediaQueueDue<=Date.now()+delay)return;clearTimeout(mediaQueueTimer)}
+ mediaQueueDue=Date.now()+delay;
+ mediaQueueTimer=setTimeout(()=>{mediaQueueTimer=null;mediaQueueDue=0;processMediaArchiveQueue().catch(()=>{})},delay);
+}
+function replaceMediaSource(item,oldSrc,newSrc){
+ const oldKey=articlePhotoKey(oldSrc),newKey=articlePhotoKey(newSrc);
+ if(!item.imageOriginals||typeof item.imageOriginals!=='object')item.imageOriginals={};
+ item.imageOriginals[newSrc]=oldSrc;
+ item.images=(item.images||[]).map(x=>x===oldSrc?newSrc:x);
+ if(item.productImages)for(const k of Object.keys(item.productImages)){if(item.productImages[k]===oldSrc)item.productImages[k]=newSrc}
+ const v=item.vision;
+ if(v){for(const e of v.entries||[])if(e.key===oldKey||articlePhotoKey(e.key)===oldKey)e.key=newKey;
+ for(const f of v.failures||[])if(f.key===oldKey||articlePhotoKey(f.key)===oldKey)f.key=newKey;}
+ for(const list of data.shoppingLists||[])for(const entry of list.items||[]){if(entry.articleId===item.id&&entry.image===oldSrc)entry.image=newSrc}
+}
+async function processMediaArchiveQueue(){
+ if(mediaQueueBusy||mediaSessionDisabled||Date.now()<mediaRetryAt||!cloudConfig||!cloudMeta.wasConnected||cloudBusy||cloudConflict||document.visibilityState!=='visible'||navigator.onLine===false)return;
+ if(visionWorkBusy){mediaQueueKick(10000);return}
+ mediaQueueBusy=true;
+ try{
+  // Only newly arrived articles (or articles explicitly selected for backup)
+  // are automatically processed. No mass migration on every version update.
+  const candidates=data.items.filter(i=>!i.isExample&&i.mediaBackupRequested&&pendingMediaImages(i).length);
+  for(const item of candidates){
+   if(document.visibilityState!=='visible'||navigator.onLine===false||cloudConflict)break;
+   const imgs=pendingMediaImages(item).slice(0,3);
+   if(!imgs.length){item.mediaBackupRequested=false;continue}
+   let response;
+   try{response=await cloudRequest('POST','/api/media/archive',{images:imgs})}
+   catch(e){
+    // An absent R2 binding is not a reason to interrupt app sync or AI.
+    mediaSessionDisabled=/r2-not-configured|503|404/.test(String(e.message));
+    mediaRetryAt=Date.now()+15*60*1000;
+    break;
+   }
+   let updated=false;
+   for(const m of response.results||[]){
+    if(m.archivedUrl&&item.images?.includes(m.url)){
+     replaceMediaSource(item,m.url,m.archivedUrl);updated=true;
+    }
+   }
+   // Unavailable URLs will be kept as original URLs, not repeatedly retried
+   // during this session. User can manually request again later.
+   if(updated){await save();render();if(detailIds[detailIndex]===item.id)renderDetail()}
+   if((response.results||[]).some(x=>x.error==='app-storage-safety-limit')){
+    mediaSessionDisabled=true;break;
+   }
+   if(!(response.results||[]).some(x=>x.archivedUrl)){
+    item.mediaBackupRequested=false;await save();continue;
+   }
+   if(!pendingMediaImages(item).length){item.mediaBackupRequested=false;await save()}
+   await new Promise(resolve=>setTimeout(resolve,MEDIA_QUEUE_GAP_MS));
+  }
+ }finally{
+  mediaQueueBusy=false;
+  if(!mediaSessionDisabled&&Date.now()>=mediaRetryAt&&data.items.some(i=>i.mediaBackupRequested&&pendingMediaImages(i).length))mediaQueueKick(16000);
+ }
+}
+async function backupExistingMedia(){
+ if(!cloudConfig||!cloudMeta.wasConnected){alert('請先確認雲端已連線');return}
+ const items=data.items.filter(i=>!i.isExample&&pendingMediaImages(i).length);
+ if(!items.length){alert('目前沒有需要備份的外部圖片。');return}
+ // A finite queue makes the manual action predictable. User can resume later.
+ for(const item of items.slice(0,12))item.mediaBackupRequested=true;
+ await save();mediaSessionDisabled=false;mediaRetryAt=0;mediaQueueKick(50);
+ alert(`已將最多 12 篇收藏的圖片加入 R2 備份佇列（共 ${items.length} 篇可備份）。完成後可再執行一次繼續。`)
+}
+
 let cloudSilentCheck=false,cloudPendingItems=0; // quiet polling and active Worker jobs are distinct states
 function persistCloud(){try{localStorage.setItem(CLOUD_META_KEY,JSON.stringify(cloudMeta))}catch{}}
 function scheduleCloudWrite(){
@@ -2564,7 +2671,7 @@ function cloudServerURL(url){
 }
 async function cloudRequest(method,path,body,settings=cloudConfig){
  if(!settings)throw new Error('雲端尚未設定');
- const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),path==='/api/vision'?60000:path==='/api/browser-extract'?55000:16000);
+ const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),path==='/api/vision'?60000:path==='/api/browser-extract'?55000:path==='/api/media/archive'?39000:16000);
  try{
    const r=await fetch(cloudServerURL(settings.url)+path,{
     method,headers:{'Authorization':'Bearer '+settings.token,'Content-Type':'application/json'},
@@ -2676,6 +2783,7 @@ async function cloudRun({silent=false}={}){
     item=quickItem(url,null,sharedText.length>8?{body:sharedText}:{});
     item.inboxId=msg.id;
     if(sharedText.length>8)item.sourceQuality='shared';
+    item.mediaBackupRequested=true;
     if(!item.isExample){data.items=data.items.filter(x=>!x.isExample);data.examplesInitialized=true}
     data.items.unshift(item);existing.set(url,item);added++;hasChanges=true;
    }
@@ -2696,6 +2804,7 @@ async function cloudRun({silent=false}={}){
       clearFetchRetry(item);
       if(item.images?.length&&!item.isExample)photoQueue.push(item.id);
      }
+     if(item.images?.length){item.mediaBackupRequested=true;scheduleMediaBackupQueue(3000)}
      if(changed){updated++;hasChanges=true}
     }
     ackIds.push(msg.id);
@@ -2725,6 +2834,7 @@ async function cloudRun({silent=false}={}){
     waiting?`雲端正在擷取 ${waiting} 篇，完成後自動套用`:'雲端已同步';cloudLastSuccess=Date.now();cloudStatusUI();
   if(hydrateQueue.length)setTimeout(()=>hydrateSharedArticles(hydrateQueue),50);
   for(const id of [...new Set(photoQueue)])setTimeout(()=>analyzeArticlePhotos(id,{silent:true}),700);
+  if(data.items.some(i=>i.mediaBackupRequested&&pendingMediaImages(i).length))mediaQueueKick(4000);
  }catch(e){cloudMessage=`同步失敗：${e.message}`;cloudStatusUI()}
  finally{cloudBusy=false;cloudSilentCheck=false;cloudStatusUI()}
 }
@@ -2739,6 +2849,7 @@ async function hydrateSharedArticles(queue){
    const before=snapshotFetchContent(target);
    mergePublicPreview(target,meta);
    recordFetchCheck(target,before,meta);
+   if(target.images?.length){target.mediaBackupRequested=true;mediaQueueKick(5500)}
    await save();render();
    if(target.images?.length&&cloudConfig&&!target.isExample)setTimeout(()=>analyzeArticlePhotos(target.id,{silent:true}),650);
   }catch(err){
@@ -2867,7 +2978,7 @@ function openCloudSettings(){
   <label>私密同步密鑰<input type="password" id="cloudToken" autocomplete="off" placeholder="Worker Secret：SJ_TOKEN" value="${esc(cloudConfig?.token||'')}"></label>
   <p class="cloudHelp" id="cloudDialogStatus">${esc(cloudMessage)}</p>
   <div class="formActions cloudActions"><button type="button" class="ghost uiBtn" id="cancelCloud">取消</button><button type="button" class="primary uiBtn" id="connectCloud">${active?'重新連線':'開始連線'}</button></div>
-  ${active?`<div class="cloudDiagRow"><button type="button" class="ghost uiBtn" id="cloudUsageCheck">查看 AI／預覽／瀏覽器用量</button></div><div class="cloudDiagRow"><button type="button" class="ghost uiBtn" id="cloudDiagnose">檢查同步原因</button><p class="cloudHelp" id="cloudDiagResult">只檢查資料量與連線版本，不更動收藏，也不會公開密鑰。</p></div><div class="formActions"><button type="button" class="ghost uiBtn" id="syncCloudNow">立即同步</button><button type="button" class="ghost uiBtn" id="cloudPullForce">改用雲端資料</button><button type="button" class="ghost uiBtn" id="cloudPushForce">以本機覆蓋雲端</button><button type="button" class="ghost uiBtn" id="disconnectCloud">斷開</button></div>`:''}
+  ${active?`<div class="cloudDiagRow"><button type="button" class="ghost uiBtn" id="cloudR2Status">R2 圖片備份狀態</button><button type="button" class="ghost uiBtn" id="cloudBackupOld">備份現有文章圖片</button><p class="cloudHelp" id="cloudR2Info">R2 需另外建立 shiji-images 儲存桶並綁定 IMAGES；僅備份公開來源圖片，不上傳私人截圖。</p></div><div class="cloudDiagRow"><button type="button" class="ghost uiBtn" id="cloudUsageCheck">查看 AI／預覽／瀏覽器用量</button></div><div class="cloudDiagRow"><button type="button" class="ghost uiBtn" id="cloudDiagnose">檢查同步原因</button><p class="cloudHelp" id="cloudDiagResult">只檢查資料量與連線版本，不更動收藏，也不會公開密鑰。</p></div><div class="formActions"><button type="button" class="ghost uiBtn" id="syncCloudNow">立即同步</button><button type="button" class="ghost uiBtn" id="cloudPullForce">改用雲端資料</button><button type="button" class="ghost uiBtn" id="cloudPushForce">以本機覆蓋雲端</button><button type="button" class="ghost uiBtn" id="disconnectCloud">斷開</button></div>`:''}
  </div>`);
  $('#closeCloud').onclick=$('#cancelCloud').onclick=closeModal;
  $('#connectCloud').onclick=async()=>{
@@ -2879,6 +2990,15 @@ function openCloudSettings(){
  };
  if(!active)return;
  $('#cloudUsageCheck').onclick=openUsageReport;
+ $('#cloudBackupOld').onclick=backupExistingMedia;
+ $('#cloudR2Status').onclick=async()=>{
+  const output=$('#cloudR2Info'),btn=$('#cloudR2Status');btn.disabled=true;output.textContent='正在檢查 R2 儲存桶…';
+  try{const s=await cloudRequest('GET','/api/media/status');
+   output.textContent=s.r2Configured?`R2 已連線，已有 ${s.objects} 張圖片、約 ${(s.bytes/1e6).toFixed(2)} MB。拾集保護上限 8 GB。正式帳單與總用量請以 Cloudflare 為準。`:'R2 尚未綁定。請先建立 shiji-images 儲存桶，再在 Worker 綁定 IMAGES。';
+  }catch(e){output.textContent='無法確認 R2 狀態：'+e.message}
+  finally{btn.disabled=false}
+ };
+
  $('#cloudDiagnose').onclick=async()=>{
   const btn=$('#cloudDiagnose'),out=$('#cloudDiagResult');
   btn.disabled=true;btn.innerHTML=fetchSpinnerHTML()+' 檢查中…';out.textContent='正在確認雲端修訂與資料大小…';
@@ -2919,8 +3039,8 @@ function openCloudSettings(){
   cloudPendingItems=0;cloudMessage='尚未設定雲端';closeModal();cloudStatusUI()
  };
 }
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&cloudConfig){cloudRun({silent:true});startVisionQueue()}});
-window.addEventListener('online',()=>{cloudStatusUI();if(cloudConfig){cloudRun({silent:true});startVisionQueue()}});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&cloudConfig){cloudRun({silent:true});startVisionQueue();mediaQueueKick(5000)}});
+window.addEventListener('online',()=>{cloudStatusUI();if(cloudConfig){cloudRun({silent:true});startVisionQueue();mediaQueueKick(5000)}});
 window.addEventListener('offline',()=>cloudStatusUI());
 $('#cloudTopSettings').addEventListener('click',openCloudSettings);
 $('#cloudTopRefresh').addEventListener('click',async()=>{

@@ -1,6 +1,6 @@
 import puppeteer from '@cloudflare/puppeteer';
 /**
- * 拾集 Cloud API v1.8.18 — deploy as a Cloudflare Worker.
+ * 拾集 Cloud API v1.8.20 — deploy as a Cloudflare Worker.
  * Bind Cloudflare D1 database as DB; add Worker Secret SJ_TOKEN (min 32 chars).
  * Allowed browser origin is fixed to the user's GitHub Pages domain.
  * The secret must NOT be committed to GitHub or embedded in index.html.
@@ -10,6 +10,9 @@ const MAX_STATE_BYTES = 1_500_000;
 // Gemma 4 supports multilingual OCR and image input; no Meta Llama 3.2 agreement step.
 const VISION_MODEL = '@cf/google/gemma-4-26b-a4b-it';
 const encoder = new TextEncoder();
+const R2_APP_LIMIT_BYTES = 8_000_000_000; // App-side safety limit; verify official Cloudflare billing separately.
+const R2_SINGLE_IMAGE_LIMIT_BYTES = 4_500_000;
+const R2_ARCHIVE_BATCH_MAX = 3;
 const headersFor = origin => ({
   'Content-Type':'application/json; charset=utf-8',
   'Cache-Control':'no-store',
@@ -79,6 +82,9 @@ async function schema(db){
     last_status TEXT NOT NULL DEFAULT 'none',
     last_at INTEGER NOT NULL DEFAULT 0,
     last_started_at INTEGER NOT NULL DEFAULT 0
+  )`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS media_objects (
+    id TEXT PRIMARY KEY, hash TEXT UNIQUE NOT NULL, bytes INTEGER NOT NULL, mime TEXT NOT NULL, created_at INTEGER NOT NULL
   )`).run();
   await db.prepare(`CREATE TABLE IF NOT EXISTS browser_post_attempts (
     canonical_url TEXT PRIMARY KEY,
@@ -577,7 +583,7 @@ async function extractBrowserThreads(env,body){
  }finally{await completeBrowser(env.DB,slot,status,extracted,reportedMs)}
 }
 
-// ----- v1.8.18: enrich new shares in Cloudflare without requiring the app to open -----
+// ----- v1.8.20: enrich new shares in Cloudflare without requiring the app to open -----
 function usableArticleText(value){
  const text=String(value||'').trim();
  return /this content isn.t available to everyone|thread not available|log in to see|content isn.t available|post unavailable|貼文無法顯示|內容無法使用/i.test(text)?'':text;
@@ -646,6 +652,19 @@ async function enrichIncomingBookmark(env,inboxId,url){
     else if(b.reason)issue=b.reason;
    }catch(e){issue='雲端瀏覽器暫時不可用'}
   }
+  // Background best effort: back up first TWO photos without delaying the inbox if
+  // the browser fetch has already used the Worker waitUntil execution budget.
+  if(env.IMAGES&&meta.images.length&&Date.now()-began<14000){
+   try{
+    const originals={},out=[];
+    const archived=await archiveImageBatch(env,meta.images.slice(0,2),'https://shiji-sync.sweijue.workers.dev',2);
+    for(let j=0;j<meta.images.length;j++){
+     const photo=meta.images[j],saved=archived.find(x=>x.url===photo&&x.archivedUrl);
+     if(saved){out.push(saved.archivedUrl);originals[saved.archivedUrl]=photo}else out.push(photo)
+    }
+    meta.images=curatedImages(out);if(Object.keys(originals).length)meta.imageOriginals=originals;
+   }catch(_e){/* Never mark the user's bookmark as failed due to an image-backup error. */}
+  }
   status=contentUseful(meta)?'ready':'failed';
  }catch(e){issue=String(e?.message||e).slice(0,180)}
  // Only update the still-pending matching inbox row; repeated shares create new jobs.
@@ -664,6 +683,78 @@ function parseTextAIResponse(result){
  return {category:allowed.includes(category)?category:'',country:String(obj.country||'').slice(0,24),city:String(obj.city||'').slice(0,70),placeName:String(obj.placeName||'').slice(0,80),address:String(obj.address||'').slice(0,120),products:safeArray(obj.products,8),tags:safeArray(obj.tags,12),summary:String(obj.summary||'').slice(0,220)};
 }
 
+
+// v1.8.20: Save publicly accessible social-photo URLs into a PRIVATE R2 bucket.
+// Stable unpredictable capability URL: randomly generated 256-bit object ID.
+// Anyone WITH the final image link can view it; do not use this path for
+// private screenshots or documents. IDs survive rotation of SJ_TOKEN.
+function photoArchiveHost(url){
+ let u;try{u=new URL(String(url||''))}catch{return null}
+ if(u.protocol!=='https:'||u.username||u.password||u.port&&u.port!=='443'||u.href.length>3000)return null;
+ const h=u.hostname.toLowerCase();
+ const domains=['fbcdn.net','cdninstagram.com','instagram.com','threads.com','threads.net','pinimg.com','twimg.com','unsplash.com','imgur.com','xhscdn.com','xiaohongshu.com','byteimg.com','tiktokcdn.com','ytimg.com','googleusercontent.com'];
+ if(!domains.some(d=>h===d||h.endsWith('.'+d)))return null;
+ if(u.pathname.startsWith('/api/')||u.pathname.startsWith('/media/'))return null;
+ return u;
+}
+function isArchivedUrl(url,workerOrigin){
+ try{const u=new URL(url);return u.origin===workerOrigin&&/^\/media\/[a-f0-9]{64}$/.test(u.pathname)}catch{return false}
+}
+function toHex(bytes){return Array.from(bytes,x=>x.toString(16).padStart(2,'0')).join('')}
+async function photoContentDigest(bytes){return toHex(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)))}
+function randomMediaId(){return toHex(crypto.getRandomValues(new Uint8Array(32)))}
+async function mediaStats(db){
+ const row=await db.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(bytes),0) AS bytes FROM media_objects').first();
+ return {objects:Number(row?.n||0),bytes:Number(row?.bytes||0),safeLimitBytes:R2_APP_LIMIT_BYTES,officialUsage:false};
+}
+async function archivePhoto(env,src,origin){
+ if(!env.IMAGES)return {url:src,error:'r2-not-configured'};
+ if(isArchivedUrl(src,origin))return {url:src,archivedUrl:src};
+ const u=photoArchiveHost(src);
+ if(!u)return {url:src,error:'photo-host-not-supported'};
+ const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),8000);
+ try{
+  const resp=await fetch(u.href,{redirect:'manual',signal:ctrl.signal,headers:{Accept:'image/avif,image/webp,image/jpeg,image/png,image/gif'}});
+  if(!resp.ok)return {url:src,error:'source-http-'+resp.status};
+  const mime=String(resp.headers.get('content-type')||'').split(';')[0].trim().toLowerCase();
+  if(!['image/jpeg','image/png','image/webp','image/gif','image/avif'].includes(mime))return {url:src,error:'unsupported-image-content'};
+  const length=Number(resp.headers.get('content-length')||0);
+  if(length>R2_SINGLE_IMAGE_LIMIT_BYTES)return {url:src,error:'image-too-large'};
+  // Streaming cap protects Worker memory even if upstream omits content-length.
+  const reader=resp.body?.getReader();if(!reader)return {url:src,error:'empty-image'};
+  const chunks=[];let size=0;
+  try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;
+   if(size>R2_SINGLE_IMAGE_LIMIT_BYTES){await reader.cancel();return {url:src,error:'image-too-large'}}
+   chunks.push(value)} }finally{try{reader.releaseLock()}catch{}}
+  if(size<150)return {url:src,error:'empty-image'};
+  const bytes=new Uint8Array(size);let index=0;for(const chunk of chunks){bytes.set(chunk,index);index+=chunk.byteLength}
+  const digest=await photoContentDigest(bytes);
+  const existing=await env.DB.prepare('SELECT id FROM media_objects WHERE hash=?').bind(digest).first();
+  const id=existing?.id||randomMediaId(),key='images/'+id;
+  if(!existing){
+   const usage=await mediaStats(env.DB);
+   if(usage.bytes+size>R2_APP_LIMIT_BYTES)return {url:src,error:'app-storage-safety-limit'};
+   await env.IMAGES.put(key,bytes,{httpMetadata:{contentType:mime,cacheControl:'public, max-age=86400'},customMetadata:{source:'public-social',version:'1.8.20'}});
+   await env.DB.prepare('INSERT OR IGNORE INTO media_objects (id,hash,bytes,mime,created_at) VALUES (?,?,?,?,?)').bind(id,digest,size,mime,Date.now()).run();
+  }
+  return {url:src,archivedUrl:origin+'/media/'+id,bytes:size};
+ }catch(e){return {url:src,error:e?.name==='AbortError'?'image-fetch-timeout':'image-archive-failed'}}
+ finally{clearTimeout(timer)}
+}
+async function archiveImageBatch(env,images,origin,limit=R2_ARCHIVE_BATCH_MAX){
+ const results=[];
+ for(const src of (Array.isArray(images)?images:[]).slice(0,limit))results.push(await archivePhoto(env,String(src||''),origin));
+ return results;
+}
+async function serveArchivedMedia(env,id){
+ if(!env.IMAGES)return new Response('Not available',{status:404});
+ const media=await env.IMAGES.get('images/'+id);
+ if(!media)return new Response('Not found',{status:404});
+ const ct=media.httpMetadata?.contentType||'application/octet-stream';
+ if(!/^image\/(?:jpeg|png|webp|gif|avif)$/.test(ct))return new Response('Unsupported content',{status:415});
+ return new Response(media.body,{status:200,headers:{'Content-Type':ct,'Cache-Control':'public, max-age=86400','X-Content-Type-Options':'nosniff','Cross-Origin-Resource-Policy':'cross-origin'}});
+}
+
 export default {
   async fetch(request,env,ctx){
     const origin=request.headers.get('Origin')||'';
@@ -673,7 +764,9 @@ export default {
       return new Response(null,{status:204,headers:headersFor(origin)});
     }
     const pathname=new URL(request.url).pathname.replace(/\/+$/,'')||'/';
-    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.18',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env)},200,origin);
+    const mediaMatch=pathname.match(/^\/media\/([a-f0-9]{64})$/);
+    if(mediaMatch&&request.method==='GET')return serveArchivedMedia(env,mediaMatch[1]);
+    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.20',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env),r2Configured:!!env.IMAGES,r2Bucket:"shiji-images"},200,origin);
     if(!env.DB||!env.SJ_TOKEN||String(env.SJ_TOKEN).length<32)return reply({error:'server-not-configured'},503,origin);
     try{
       let body=null;
@@ -683,6 +776,16 @@ export default {
         ||(pathname==='/api/collect'?body?.token:null);
       if(!await safeEquals(String(provided||''),String(env.SJ_TOKEN)))return reply({error:'unauthorized'},401,origin);
       await schema(env.DB);
+      if(pathname==='/api/media/status'&&request.method==='GET'){
+        return reply({ok:true,r2Configured:!!env.IMAGES,...await mediaStats(env.DB),note:'App-side estimates only. Billing and bucket totals are available in Cloudflare.'},200,origin);
+      }
+      if(pathname==='/api/media/archive'&&request.method==='POST'){
+        if(!env.IMAGES)return reply({error:'r2-not-configured'},503,origin);
+        const photos=Array.isArray(body?.images)?body.images:[];
+        if(!photos.length||photos.length>R2_ARCHIVE_BATCH_MAX)return reply({error:'images-1-to-3-required'},400,origin);
+        const results=await archiveImageBatch(env,photos,new URL(request.url).origin);
+        return reply({ok:true,results},200,origin);
+      }
       if(pathname==='/api/browser-extract'&&request.method==='POST'){
         if(!body?.url)return reply({error:'url-required'},400,origin);
         return reply(await extractBrowserThreads(env,body),200,origin);
