@@ -1,6 +1,6 @@
 import puppeteer from '@cloudflare/puppeteer';
 /**
- * 拾集 Cloud API v1.8.22 — deploy as a Cloudflare Worker.
+ * 拾集 Cloud API v1.8.18 — deploy as a Cloudflare Worker.
  * Bind Cloudflare D1 database as DB; add Worker Secret SJ_TOKEN (min 32 chars).
  * Allowed browser origin is fixed to the user's GitHub Pages domain.
  * The secret must NOT be committed to GitHub or embedded in index.html.
@@ -86,168 +86,101 @@ async function schema(db){
     found INTEGER NOT NULL DEFAULT 0,
     image_count INTEGER NOT NULL DEFAULT 0
   )`).run();
-  // V2 is additive. The old app_state row remains untouched as a rollback snapshot.
-  await db.prepare(`CREATE TABLE IF NOT EXISTS sync_control (
-    id INTEGER PRIMARY KEY CHECK(id=1),
-    active INTEGER NOT NULL DEFAULT 0,
-    revision INTEGER NOT NULL DEFAULT 0,
-    legacy_revision INTEGER NOT NULL DEFAULT -1,
-    migration_revision INTEGER NOT NULL DEFAULT -1,
-    migrated_at INTEGER NOT NULL DEFAULT 0
-  )`).run();
-  await db.prepare('INSERT OR IGNORE INTO sync_control(id) VALUES(1)').run();
-  await db.prepare(`CREATE TABLE IF NOT EXISTS sync_documents (
-    kind TEXT NOT NULL,
-    doc_id TEXT NOT NULL,
-    content TEXT NOT NULL DEFAULT '{}',
-    version INTEGER NOT NULL DEFAULT 1,
-    deleted INTEGER NOT NULL DEFAULT 0,
-    global_revision INTEGER NOT NULL DEFAULT 0,
-    updated_at INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY(kind,doc_id)
-  )`).run();
-  // SQL triggers atomically update the global change revision with every write.
-  await db.prepare(`CREATE TRIGGER IF NOT EXISTS sync_documents_insert AFTER INSERT ON sync_documents BEGIN
-    UPDATE sync_control SET revision=revision+1 WHERE id=1;
-    UPDATE sync_documents SET global_revision=(SELECT revision FROM sync_control WHERE id=1)
-      WHERE kind=NEW.kind AND doc_id=NEW.doc_id;
-  END`).run();
-  await db.prepare(`CREATE TRIGGER IF NOT EXISTS sync_documents_update AFTER UPDATE OF content, deleted ON sync_documents BEGIN
-    UPDATE sync_control SET revision=revision+1 WHERE id=1;
-    UPDATE sync_documents SET global_revision=(SELECT revision FROM sync_control WHERE id=1)
-      WHERE kind=NEW.kind AND doc_id=NEW.doc_id;
-  END`).run();
 }
-// Reuse completed additive schema setup within a Worker isolate. This avoids
-// executing a dozen D1 DDL statements on every five-second inbox check.
-let schemaReadyPromise=null;
-function ensureSchema(db){
- if(!schemaReadyPromise)schemaReadyPromise=schema(db).catch(e=>{schemaReadyPromise=null;throw e});
- return schemaReadyPromise;
+
+// ---- Safe pre-R2 rollback bridge (isolated from original app_state and v2 tables) ----
+// Once v2 is active, snapshot its records to rollback_sync_state. Original v2 rows,
+// original app_state and inbox are never edited by this bridge.
+async function rollbackV2Version(db){
+ try{
+  const row=await db.prepare('SELECT active,revision FROM sync_control WHERE id=1').first();
+  return row?.active?Number(row.revision||0):null;
+ }catch(e){if(/no such table/i.test(String(e?.message||e)))return null;throw e}
 }
-// V2 document sync uses individual records with optimistic per-record revisions.
-// Nothing in this module deletes the old JSON snapshot in app_state.
-const DOC_KINDS = new Set(['items','shoppingLists','travelPlans','meta']);
-const DOC_BODY_MAX = 1_350_000;
-function docName(kind,id){
- const k=String(kind||''),v=String(id||'');
- if(!DOC_KINDS.has(k)||!v||v.length>160||k==='meta'&&v!=='main')
-   throw Object.assign(new Error('invalid-document-id'),{status:400});
- return {kind:k,id:v};
+async function rollbackStateTable(db){
+ await db.prepare(`CREATE TABLE IF NOT EXISTS rollback_sync_state (
+  id INTEGER PRIMARY KEY CHECK (id=1),
+  revision INTEGER NOT NULL,
+  content TEXT NOT NULL,
+  v2_revision INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+ )`).run();
 }
-function legacyDocuments(data){
- const src=data&&typeof data==='object'&&!Array.isArray(data)?data:{};
- const docs=[];
- for(const kind of ['items','shoppingLists','travelPlans']){
-  for(const item of Array.isArray(src[kind])?src[kind]:[]){
-   if(!item||typeof item!=='object'||typeof item.id!=='string'||!item.id||item.id.length>160)
-    throw Object.assign(new Error('legacy-document-has-invalid-id'),{status:422});
-   docs.push({kind,id:item.id,content:item});
+async function rollbackMakeV2Snapshot(db){
+ const before=await rollbackV2Version(db);
+ if(before===null)return null;
+ const result=await db.prepare(`SELECT kind,doc_id,content,deleted FROM sync_documents
+  ORDER BY kind,doc_id`).all();
+ const after=await rollbackV2Version(db);
+ if(before!==after)throw Object.assign(new Error('v2-changed-during-backup-retry'),{status:409});
+ const rows=result.results||[];
+ if(!rows.length)throw Object.assign(new Error('v2-has-no-documents-stop-rollback'),{status:409});
+ const state={items:[],shoppingLists:[],travelPlans:[]};
+ const ids=new Set();
+ for(const rec of rows){
+  const kind=String(rec.kind||''),id=String(rec.doc_id||'');
+  if(!['items','shoppingLists','travelPlans','meta'].includes(kind))
+   throw Object.assign(new Error('unknown-v2-document-type'),{status:422});
+  if(rec.deleted)continue;
+  const identity=kind+'|'+id;
+  if(ids.has(identity))throw Object.assign(new Error('duplicated-v2-id'),{status:422});
+  ids.add(identity);
+  let value;try{value=JSON.parse(rec.content)}catch{throw Object.assign(new Error('invalid-v2-json'),{status:422})}
+  if(kind==='meta'){
+   if(id!=='main'||!value||typeof value!=='object'||Array.isArray(value))
+    throw Object.assign(new Error('invalid-v2-meta'),{status:422});
+   Object.assign(state,value);
+  }else{
+   if(!value||typeof value!=='object'||Array.isArray(value)||String(value.id)!==id)
+    throw Object.assign(new Error('invalid-v2-article'),{status:422});
+   state[kind].push(value);
   }
  }
- const meta={...src};for(const key of ['items','shoppingLists','travelPlans','version','_savedAt'])delete meta[key];
- docs.push({kind:'meta',id:'main',content:meta});
- return docs;
+ if(!Array.isArray(state.items)||!Array.isArray(state.shoppingLists)||!Array.isArray(state.travelPlans))
+  throw Object.assign(new Error('invalid-v2-lists'),{status:422});
+ state._savedAt=Date.now();
+ const content=JSON.stringify(state);
+ if(encoder.encode(content).length>MAX_STATE_BYTES-1000)
+  throw Object.assign(new Error('rollback-json-over-1.5mb-stop'),{status:413});
+ return {state,content,v2Revision:before,counts:{items:state.items.length,shoppingLists:state.shoppingLists.length,travelPlans:state.travelPlans.length}};
 }
-async function syncStatus(db){
- const [control,legacy]=await Promise.all([
-  db.prepare('SELECT * FROM sync_control WHERE id=1').first(),
-  db.prepare('SELECT revision FROM app_state WHERE id=1').first()
- ]);
- return {active:!!control?.active,revision:Number(control?.revision||0),
-  legacyRevision:Number(legacy?.revision||0),migratedLegacyRevision:Number(control?.legacy_revision??-1),
-  migrationRevision:Number(control?.migration_revision??-1),
-  legacyChanged:!!control?.active&&Number(legacy?.revision||0)!==Number(control?.legacy_revision||0),
-  legacyBackupPreserved:true};
+async function rollbackReadState(db){
+ const v2Revision=await rollbackV2Version(db);
+ if(v2Revision===null)return null;
+ await rollbackStateTable(db);
+ let shadow=await db.prepare('SELECT revision,content,v2_revision,updated_at FROM rollback_sync_state WHERE id=1').first();
+ if(!shadow){
+  const snap=await rollbackMakeV2Snapshot(db);
+  await db.prepare(`INSERT OR IGNORE INTO rollback_sync_state
+   (id,revision,content,v2_revision,updated_at) VALUES(1,1,?,?,?)`)
+   .bind(snap.content,snap.v2Revision,Date.now()).run();
+  shadow=await db.prepare('SELECT revision,content,v2_revision,updated_at FROM rollback_sync_state WHERE id=1').first();
+ }
+ if(v2Revision!==Number(shadow.v2_revision))
+  throw Object.assign(new Error('v2-updated-after-rollback-stop-to-protect-data'),{status:409});
+ return {revision:Number(shadow.revision),data:JSON.parse(shadow.content),updatedAt:Number(shadow.updated_at),source:'rollback-shadow',originalV2Revision:v2Revision};
 }
-async function migrateLegacyChunk(db,offset){
- let status=await syncStatus(db);
- if(status.active)return {...status,done:true};
- const row=await db.prepare('SELECT revision,content FROM app_state WHERE id=1').first();
- const version=Number(row?.revision||0);
- let snapshot={};try{snapshot=JSON.parse(row?.content||'{}')}catch{
-  throw Object.assign(new Error('legacy-backup-is-invalid-json'),{status:422});
+async function rollbackWriteState(db,body){
+ const current=await rollbackReadState(db);
+ if(!current)return null;
+ if(!Number.isSafeInteger(body?.expectedRevision)||body.expectedRevision<0||
+    !body.data||typeof body.data!=='object'||Array.isArray(body.data)||
+    !['items','shoppingLists','travelPlans'].every(k=>Array.isArray(body.data[k])))
+  throw Object.assign(new Error('invalid-rollback-state'),{status:400});
+ const content=JSON.stringify(body.data);
+ if(encoder.encode(content).length>MAX_STATE_BYTES-1000)
+  throw Object.assign(new Error('rollback-json-over-1.5mb-stop'),{status:413});
+ const res=await db.prepare(`UPDATE rollback_sync_state SET content=?,revision=revision+1,updated_at=?
+  WHERE id=1 AND revision=? AND v2_revision=(SELECT revision FROM sync_control WHERE id=1)`)
+   .bind(content,Date.now(),body.expectedRevision).run();
+ if(!res.meta?.changes){
+  const latest=await rollbackReadState(db);
+  return {error:'revision-conflict',revision:latest.revision};
  }
- const docs=legacyDocuments(snapshot),total=docs.length;
- if(new Set(docs.map(d=>d.kind+'\\0'+d.id)).size!==total)
-  throw Object.assign(new Error('legacy-duplicate-document-ids'),{status:422});
- let start=Math.max(0,Number(offset)||0);
- // A concurrent old-client write invalidates a partly completed migration.
- if(status.migrationRevision!==version){
-  await db.batch([
-   db.prepare('DELETE FROM sync_documents'),
-   db.prepare('UPDATE sync_control SET migration_revision=?,revision=0 WHERE id=1').bind(version)
-  ]);
-  start=0;
- }
- if(start>total)start=0;
- // Keep within the 50 D1 query limit including schema checks and trigger updates.
- const chunk=docs.slice(start,start+8);
- if(chunk.length){
-  const time=Date.now();
-  await db.batch(chunk.map(r=>db.prepare(`INSERT OR IGNORE INTO sync_documents
-   (kind,doc_id,content,version,deleted,global_revision,updated_at) VALUES(?,?,?,1,0,0,?)`)
-   .bind(r.kind,r.id,JSON.stringify(r.content),time)));
- }
- const end=start+chunk.length;
- if(end>=total){
-  const latest=await db.prepare('SELECT revision FROM app_state WHERE id=1').first();
-  if(Number(latest?.revision||0)!==version)
-   return {active:false,done:false,restart:true,offset:0,total,reason:'legacy-changed-during-migration'};
-  // Protect against a truncated or incomplete import. Duplicated IDs are safely deduplicated.
-  const expected=new Set(docs.map(d=>d.kind+'\\0'+d.id)).size;
-  const counts=await db.prepare('SELECT COUNT(*) AS total FROM sync_documents').first();
-  if(Number(counts?.total||0)!==expected)
-   return {active:false,done:false,restart:true,offset:0,total,reason:'migration-count-mismatch'};
-  await db.prepare(`UPDATE sync_control SET active=1,legacy_revision=?,migrated_at=?
-    WHERE id=1 AND active=0 AND migration_revision=?`).bind(version,Date.now(),version).run();
- }
- status=await syncStatus(db);
- return {...status,done:status.active,offset:end,total};
+ return {ok:true,revision:body.expectedRevision+1};
 }
-async function changesSince(db,since){
- const n=Number(since);
- if(!Number.isSafeInteger(n)||n<0)throw Object.assign(new Error('invalid-sync-cursor'),{status:400});
- const records=await db.prepare(`SELECT kind,doc_id,content,version,deleted,global_revision
-  FROM sync_documents WHERE global_revision>? ORDER BY global_revision LIMIT 25`).bind(n).all();
- const out=[];let used=0;
- for(const row of records.results||[]){
-  const size=encoder.encode(row.content||'').length;
-  if(out.length&&used+size>950000)break;
-  used+=size;
-  out.push({kind:row.kind,id:row.doc_id,version:row.version,deleted:!!row.deleted,
-   seq:row.global_revision,content:row.deleted?null:JSON.parse(row.content)});
- }
- const cursor=out.length?out[out.length-1].seq:n;
- const more=await db.prepare('SELECT global_revision FROM sync_documents WHERE global_revision>? ORDER BY global_revision LIMIT 1').bind(cursor).first();
- return {records:out,nextSince:cursor,hasMore:!!more};
-}
-async function writeSyncDocument(db,body){
- const {kind,id}=docName(body?.kind,body?.id);
- const expected=Number(body?.expectedVersion);
- if(!Number.isSafeInteger(expected)||expected<0)throw Object.assign(new Error('invalid-expected-version'),{status:400});
- const deleted=!!body?.deleted;
- if(kind==='meta'&&deleted)throw Object.assign(new Error('cannot-delete-metadata'),{status:400});
- const content=deleted?'{}':JSON.stringify(body?.content);
- if(!content||content==='undefined'||encoder.encode(content).length>DOC_BODY_MAX)
-  throw Object.assign(new Error('document-too-large'),{status:413});
- const now=Date.now();let result;
- if(expected===0){
-  if(deleted)return {ok:true,version:0,ignored:true};
-  result=await db.prepare(`INSERT OR IGNORE INTO sync_documents
-  (kind,doc_id,content,version,deleted,global_revision,updated_at) VALUES(?,?,?,1,0,0,?)`)
-  .bind(kind,id,content,now).run();
- }else{
-  result=await db.prepare(`UPDATE sync_documents SET content=?,version=version+1,deleted=?,updated_at=?
-   WHERE kind=? AND doc_id=? AND version=?`).bind(content,deleted?1:0,now,kind,id,expected).run();
- }
- if(!Number(result.meta?.changes||0)){
-  const current=await db.prepare('SELECT version FROM sync_documents WHERE kind=? AND doc_id=?').bind(kind,id).first();
-  throw Object.assign(new Error('document-version-conflict'),{status:409,currentVersion:current?.version??0,kind,id});
- }
- const saved=await db.prepare('SELECT version,global_revision FROM sync_documents WHERE kind=? AND doc_id=?').bind(kind,id).first();
- return {ok:true,version:saved.version,seq:saved.global_revision};
-}
+// ---- end rollback bridge ----
+
 async function readJSON(request,limit=MAX_STATE_BYTES){
   const text=await request.text();
   if(encoder.encode(text).length>limit)throw Object.assign(new Error('payload-too-large'),{status:413});
@@ -834,16 +767,16 @@ export default {
       return new Response(null,{status:204,headers:headersFor(origin)});
     }
     const pathname=new URL(request.url).pathname.replace(/\/+$/,'')||'/';
-    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.22',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env),syncSchema:'per-record-v2',legacyBackupPreserved:true},200,origin);
+    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.19-rollback.1',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env)},200,origin);
     if(!env.DB||!env.SJ_TOKEN||String(env.SJ_TOKEN).length<32)return reply({error:'server-not-configured'},503,origin);
     try{
       let body=null;
-      if(['POST','PUT'].includes(request.method))body=await readJSON(request,pathname==='/api/state'?MAX_STATE_BYTES:(pathname==='/api/v2/record'?1_550_000:(pathname==='/api/vision'?2_900_000:25_000)));
+      if(['POST','PUT'].includes(request.method))body=await readJSON(request,pathname==='/api/state'?MAX_STATE_BYTES:(pathname==='/api/vision'?2_900_000:25_000));
       const provided=request.headers.get('Authorization')?.replace(/^Bearer\s+/i,'')
         ||request.headers.get('X-Shiji-Token')
         ||(pathname==='/api/collect'?body?.token:null);
       if(!await safeEquals(String(provided||''),String(env.SJ_TOKEN)))return reply({error:'unauthorized'},401,origin);
-      await ensureSchema(env.DB);
+      await schema(env.DB);
       if(pathname==='/api/browser-extract'&&request.method==='POST'){
         if(!body?.url)return reply({error:'url-required'},400,origin);
         return reply(await extractBrowserThreads(env,body),200,origin);
@@ -900,35 +833,30 @@ export default {
           return reply({ok:true,model:VISION_MODEL,analysis:parseVisionModel(output)},200,origin);
         }catch(e){const problem=modelFailure(e);await recordAIUsage(env.DB,'vision',problem.reason);return reply(problem,problem.reason==='rate-limit'?429:502,origin)}
       }
-      if(pathname==='/api/v2/legacy-backup'&&request.method==='GET'){
-        const old=await env.DB.prepare('SELECT revision,content FROM app_state WHERE id=1').first();
-        return reply({ok:true,revision:old?.revision||0,data:JSON.parse(old?.content||'{}')},200,origin);
+      if(pathname==='/api/rollback/status'&&request.method==='GET'){
+        const active=await rollbackV2Version(env.DB);
+        const state=active===null?null:await rollbackReadState(env.DB);
+        return reply({ok:true,mode:state?'shadow-v2':'legacy',v2Revision:active,
+         stateRevision:state?.revision??null,items:state?.data?.items?.length??null,
+         note:'Original v2 documents, legacy app_state and inbox remain preserved.'},200,origin);
       }
-      if(pathname==='/api/v2/status'&&request.method==='GET'){
-        return reply({ok:true,...await syncStatus(env.DB)},200,origin);
-      }
-      if(pathname==='/api/v2/migrate'&&request.method==='POST'){
-        return reply({ok:true,...await migrateLegacyChunk(env.DB,body?.offset)},200,origin);
-      }
-      if(pathname==='/api/v2/changes'&&request.method==='GET'){
-        const status=await syncStatus(env.DB);
-        if(!status.active)return reply({error:'v2-not-ready'},409,origin);
-        if(status.legacyChanged)return reply({error:'legacy-changed-after-migration'},409,origin);
-        return reply({ok:true,revision:status.revision,...await changesSince(env.DB,new URL(request.url).searchParams.get('since')||'0')},200,origin);
-      }
-      if(pathname==='/api/v2/record'&&request.method==='PUT'){
-        const status=await syncStatus(env.DB);
-        if(!status.active)return reply({error:'v2-not-ready'},409,origin);
-        if(status.legacyChanged)return reply({error:'legacy-changed-after-migration'},409,origin);
-        try{return reply(await writeSyncDocument(env.DB,body),200,origin)}
-        catch(e){return reply({error:e.message,currentVersion:e.currentVersion??null},e.status||500,origin)}
+      if(pathname==='/api/rollback/v2-export'&&request.method==='GET'){
+        const v2=await rollbackMakeV2Snapshot(env.DB);
+        if(v2)return reply({ok:true,source:'v2-read-only-export',revision:v2.v2Revision,
+           counts:v2.counts,data:v2.state},200,origin);
+        const state=await env.DB.prepare('SELECT revision,content FROM app_state WHERE id=1').first();
+        return reply({ok:true,source:'legacy-state-export',revision:state?.revision??0,
+          data:JSON.parse(state?.content||'{}')},200,origin);
       }
       if(pathname==='/api/state'&&request.method==='GET'){
+        const bridge=await rollbackReadState(env.DB);
+        if(bridge)return reply(bridge,200,origin);
         const r=await env.DB.prepare('SELECT revision,content,updated_at FROM app_state WHERE id=1').first();
         return reply({revision:r.revision,updatedAt:r.updated_at,data:r.revision?JSON.parse(r.content):null},200,origin);
       }
       if(pathname==='/api/state'&&request.method==='PUT'){
-        if((await syncStatus(env.DB)).active)return reply({error:'old-client-upgrade-required',note:'The legacy snapshot is read-only. Update every device to v1.8.22.'},409,origin);
+        const bridge=await rollbackWriteState(env.DB,body);
+        if(bridge)return reply(bridge,bridge.error?409:200,origin);
         if(!Number.isInteger(body?.expectedRevision)||body.expectedRevision<0||typeof body?.data!=='object'||body.data===null||Array.isArray(body.data))return reply({error:'invalid-state'},400,origin);
         if(!Array.isArray(body.data.items)||!Array.isArray(body.data.shoppingLists)||!Array.isArray(body.data.travelPlans))return reply({error:'invalid-collections'},400,origin);
         const content=JSON.stringify(body.data);

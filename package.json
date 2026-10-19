@@ -1,7 +1,7 @@
 {
   "name": "shiji-sync",
   "private": true,
-  "version": "1.8.21",
+  "version": "1.8.18",
   "type": "module",
   "scripts": {
     "deploy": "wrangler deploy"
