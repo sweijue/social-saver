@@ -928,7 +928,7 @@ export default {
       return new Response(null,{status:204,headers:headersFor(origin)});
     }
     const pathname=new URL(request.url).pathname.replace(/\/+$/,'')||'/';
-    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.21',build:'free-storage-safe.1',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env),syncSchema:'per-record-v2',legacyBackupPreserved:true,migrationSafety:'backup-verify-before-activate'},200,origin);
+    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.22',build:'auto-reconcile-safe.1',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env),syncSchema:'per-record-v2',legacyBackupPreserved:true,migrationSafety:'backup-verify-before-activate'},200,origin);
     if(!env.DB||!env.SJ_TOKEN||String(env.SJ_TOKEN).length<32)return reply({error:'server-not-configured'},503,origin);
     try{
       let body=null;
@@ -1014,6 +1014,18 @@ export default {
         if(status.legacyChanged)return reply({error:'legacy-changed-after-migration'},409,origin);
         return reply({ok:true,revision:status.revision,...await changesSince(env.DB,new URL(request.url).searchParams.get('since')||'0')},200,origin);
       }
+      if(pathname==='/api/v2/document'&&request.method==='GET'){
+        const status=await syncStatus(env.DB);
+        if(!status.active)return reply({error:'v2-not-ready'},409,origin);
+        if(status.legacyChanged)return reply({error:'legacy-changed-after-migration'},409,origin);
+        const params=new URL(request.url).searchParams;
+        const {kind,id}=docName(params.get('kind'),params.get('id'));
+        const row=await env.DB.prepare(`SELECT kind,doc_id,content,version,deleted,global_revision FROM sync_documents
+          WHERE kind=? AND doc_id=?`).bind(kind,id).first();
+        if(!row)return reply({ok:true,record:null},200,origin);
+        return reply({ok:true,record:{kind:row.kind,id:row.doc_id,version:row.version,
+          deleted:!!row.deleted,seq:row.global_revision,content:row.deleted?null:JSON.parse(row.content)}},200,origin);
+      }
       if(pathname==='/api/v2/record'&&request.method==='PUT'){
         const status=await syncStatus(env.DB);
         if(!status.active)return reply({error:'v2-not-ready'},409,origin);
@@ -1027,7 +1039,7 @@ export default {
       }
       if(pathname==='/api/state'&&request.method==='PUT'){
         const migration=await syncStatus(env.DB);
-        if(migration.active)return reply({error:'old-client-upgrade-required',note:'The legacy snapshot is read-only. Update every device to v1.8.21.'},409,origin);
+        if(migration.active)return reply({error:'old-client-upgrade-required',note:'The legacy snapshot is read-only. Update every device to v1.8.22.'},409,origin);
         if(migration.migrationRevision>=0)return reply({error:'migration-in-progress',note:'Backup verified; waiting for migration to complete before legacy writes.'},409,origin);
         if(!Number.isInteger(body?.expectedRevision)||body.expectedRevision<0||typeof body?.data!=='object'||body.data===null||Array.isArray(body.data))return reply({error:'invalid-state'},400,origin);
         if(!Array.isArray(body.data.items)||!Array.isArray(body.data.shoppingLists)||!Array.isArray(body.data.travelPlans))return reply({error:'invalid-collections'},400,origin);

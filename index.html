@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="拾集">
-<title>拾集 v1.8.21</title>
+<title>拾集 v1.8.22</title>
 <style>
 :root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#6e6e68;--line:#e4e4de;--soft:#efefe9;--shadow:0 10px 28px rgba(0,0,0,.07);--r:20px;--navh:74px}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif;font-size:17px}body{min-height:100vh;padding-bottom:calc(var(--navh) + env(safe-area-inset-bottom) + 18px)}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
@@ -581,7 +581,7 @@ main{padding-top:calc(116px + env(safe-area-inset-top))!important}
 
 <script>
 
-const VERSION="1.8.21", STORE="socialSaver_data";
+const VERSION="1.8.22", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -2234,14 +2234,14 @@ async function analyzeArticlePhotos(id,opts={}){
  return enqueueArticleVision(id,{manual:!opts.silent});
 }
 async function drainVisionQueue(){
- if(visionWorkBusy||!cloudConfig||!cloudMeta.wasConnected||cloudConflict||document.visibilityState!=='visible'||navigator.onLine===false)return;
+ if(visionWorkBusy||!cloudConfig||!cloudMeta.wasConnected||document.visibilityState!=='visible'||navigator.onLine===false)return;
  if(visionBlockedUntil())return;
  if(cloudBusy){scheduleVisionQueue(2800);return}
  visionWorkBusy=true;
  try{
   // Only explicit pending jobs are resumed. Do not silently consume the AI
   // quota on all historical bookmarks merely because an app version changed.
-  while(document.visibilityState==='visible'&&navigator.onLine!==false&&cloudConfig&&!cloudConflict){
+  while(document.visibilityState==='visible'&&navigator.onLine!==false&&cloudConfig){
    if(visionBlockedUntil())break;
    const now=Date.now();
    const candidates=data.items.filter(i=>!i.isExample&&i.vision?.autoPending&&allPendingPhotoIndexes(i).length);
@@ -2577,6 +2577,79 @@ function v2LocalDirty(base=cloudV2){
  for(const key of Object.keys(base.entries))if(!docs.has(key)&&base.entries[key].hash!=='@deleted')return true;
  return false;
 }
+// v1.8.22: lossless, field-aware record reconciliation.
+// Existing v1.8.21 baselines have hashes/versions but no base content.
+// Reconcile those too, without pretending to know which side was edited first.
+function v2Equal(a,b){return JSON.stringify(a)===JSON.stringify(b)}
+function v2Plain(v){return !!v&&typeof v==='object'&&!Array.isArray(v)}
+function v2ArrayKey(v){
+ if(typeof v!=='object'||v===null)return 'primitive:'+JSON.stringify(v);
+ if(v.id!==undefined&&v.id!==null)return 'id:'+String(v.id);
+ if(v.key!==undefined&&v.key!==null)return 'key:'+String(v.key);
+ if(v.url)return 'url:'+String(v.url);
+ if(v.index!==undefined)return 'index:'+String(v.index);
+ return 'json:'+JSON.stringify(v);
+}
+function v2AutoField(path){return /(?:^|\.)(?:body|summary|imageSummary|description|sourceQuality|sourceCapturedAt|previewCheckedAt|previewAttempts|previewError|retryState|terms|products|productImages|vision|title|placeName|address|city)$/.test(path)}
+function v2Useful(v){return v!==null&&v!==undefined&&v!==''&&(!Array.isArray(v)||v.length>0)}
+function v2MergeContent(local,remote,base,kind){
+ const conflicts=[];
+ const remember=(path,a,b)=>{
+  if(conflicts.length<100&&!v2Equal(a,b))conflicts.push({field:path,local:safeClone(a===undefined?null:a),cloud:safeClone(b===undefined?null:b)});
+ };
+ function merge(a,b,old,path,depth=0){
+  if(v2Equal(a,b))return a;
+  if(old!==undefined){
+   if(v2Equal(a,old))return b;
+   if(v2Equal(b,old))return a;
+  }
+  if(depth>14){remember(path,a,b);return a===undefined?b:a}
+  if(Array.isArray(a)&&Array.isArray(b)){
+   // Never lose newly discovered photos, tags, or individual list entries.
+   const result=[],seen=new Map();
+   for(const v of b){const k=v2ArrayKey(v);if(!seen.has(k)){seen.set(k,result.length);result.push(v)}}
+   const oldByKey=new Map(Array.isArray(old)?old.map(v=>[v2ArrayKey(v),v]):[]);
+   for(const v of a){const k=v2ArrayKey(v);if(!seen.has(k)){seen.set(k,result.length);result.push(v)}
+    else {const n=seen.get(k);if(v2Plain(v)&&v2Plain(result[n]))result[n]=merge(v,result[n],oldByKey.get(k),path+'['+k+']',depth+1)}
+   }
+   return result;
+  }
+  if(v2Plain(a)&&v2Plain(b)){
+   const result={};
+   for(const key of new Set([...Object.keys(b),...Object.keys(a)])){
+    if(key==='_syncRecovered')continue;
+    const hasA=Object.prototype.hasOwnProperty.call(a,key),hasB=Object.prototype.hasOwnProperty.call(b,key);
+    const hasOld=v2Plain(old)&&Object.prototype.hasOwnProperty.call(old,key);
+    // Treat missing values as intentional only when baseline proves a deletion.
+    if(!hasA){if(!hasOld||v2Equal(b[key],old[key])){if(!hasOld)result[key]=b[key]}
+     else result[key]=b[key]; continue}
+    if(!hasB){result[key]=a[key];continue}
+    result[key]=merge(a[key],b[key],hasOld?old[key]:undefined,path?path+'.'+key:key,depth+1);
+   }
+   const past=[...(Array.isArray(b._syncRecovered)?b._syncRecovered:[]),...(Array.isArray(a._syncRecovered)?a._syncRecovered:[])];
+   if(past.length)result._syncRecovered=Array.from(new Map(past.map(v=>[JSON.stringify(v),v])).values()).slice(-100);
+   return result;
+  }
+  if(!v2Useful(a)&&v2Useful(b))return b;
+  if(!v2Useful(b)&&v2Useful(a))return a;
+  remember(path,a,b);
+  // Manual titles/notes/categories favour the current phone; automatic fetch data
+  // favours cloud if both changed, with the other value retained in history.
+  return v2AutoField(path)?b:a;
+ }
+ const value=merge(local,remote,base,'',0);
+ if(conflicts.length&&v2Plain(value)){
+  const old=Array.isArray(value._syncRecovered)?value._syncRecovered:[];
+  value._syncRecovered=Array.from(new Map([...old,...conflicts.map(c=>({...c,recordedAt:Date.now()}))].map(v=>[v.field+'|'+JSON.stringify([v.local,v.cloud]),v])).values()).slice(-100);
+ }
+ return {value,conflicts};
+}
+function v2Entry(record,content){return {version:record.version,hash:record.deleted?'@deleted':v2Hash(content),...(record.deleted?{}:{content:safeClone(content)})}}
+async function v2ReconcileBackup(key,local,remote,previous){
+ if(!dbHandle)throw new Error('本機安全備份無法使用；同步暫停以保護收藏。');
+ const fingerprint=v2Hash({local,remote,priorVersion:previous?.version});
+ await saveSafetyBackup(dbHandle,'reconcile-v1.8.22:'+key+':'+fingerprint,{key,local,remote,previous,at:Date.now()});
+}
 function v2SetRecord(record){
  if(record.kind==='meta'){
   const m={...record.content};
@@ -2634,81 +2707,87 @@ async function v2ReadChanges(since=0,settings=cloudConfig){
 }
 async function v2Initialize(status,{firstConnect=false,settings=cloudConfig}={}){
  const pulled=await v2ReadChanges(0,settings);
- const rows=new Map();
- for(const r of pulled.records)rows.set(v2Key(r.kind,r.id),r);
- if(!rows.has(v2Key('meta','main')))throw new Error('雲端遷移缺少設定資料；不會覆蓋手機收藏。');
- const rawState=v2ToState(rows);
- const remoteData=loadData(rawState);
- const docs=v2Docs(remoteData),baseline={since:pulled.since,entries:{},legacyRevision:status.migratedLegacyRevision};
- for(const [key,r] of rows)baseline.entries[key]={version:r.version,hash:r.deleted?'@deleted':v2Hash(docs.get(key)?.content??r.content)};
- // Old cloud revision tells us whether pending local changes were based on this backup.
- // Never resolve an unrelated remote revision by guessing which device is authoritative.
- const hadCloud=!!cloudMeta.wasConnected&&cloudMeta.revision!==null;
- if(hadCloud&&cloudMeta.dirty&&Number(cloudMeta.revision)!==Number(status.migratedLegacyRevision)){
-  throw new Error('移轉前有不同版本的未同步變更；手機資料未覆蓋。請先匯出本機備份。');
+ const rows=new Map();for(const r of pulled.records)rows.set(v2Key(r.kind,r.id),r);
+ if(!rows.has(v2Key('meta','main')))throw new Error('雲端遷移缺少設定資料；手機收藏不會被覆蓋。');
+ await ensureLocalMigrationBackup();
+ const remoteData=loadData(v2ToState(rows));
+ const remoteDocs=v2Docs(remoteData),localDocs=v2Docs(data);
+ const baseline={since:pulled.since,entries:{},legacyRevision:status.migratedLegacyRevision};
+ for(const [key,row] of rows){
+  const content=remoteDocs.get(key)?.content??row.content;
+  baseline.entries[key]=v2Entry(row,content);
  }
- const localBefore=data;
- if(firstConnect||!hadCloud){
-  // If a first-time connection has conflicting values for the same ID, stop.
-  // A blind merge would discard a manually edited local note.
-  const remoteDocs=v2Docs(remoteData),localDocs=v2Docs(localBefore);
-  for(const [key,localDoc] of localDocs){
-   if(key===v2Key('meta','main'))continue; // merge harmless preference differences
-   const remoteDoc=remoteDocs.get(key);
-   if(remoteDoc&&v2Hash(remoteDoc.content)!==v2Hash(localDoc.content)){
-    throw new Error('首次連線時發現同一筆收藏在本機與雲端內容不同。已保留兩邊資料，請先匯出本機備份，再處理差異。');
-   }
-  }
-  data=loadData(cloudMerge(remoteData,localBefore));
- }else if(!cloudMeta.dirty){
-  data=remoteData;
- } // If local was dirty and based on the migrated revision, keep exact local edits/deletions.
- if(!await writeStore(data)){
-  data=localBefore;
-  throw new Error('本機資料寫入失敗，分筆同步未切換。');
+ const next=safeClone(remoteData);
+ for(const [key,local] of localDocs){
+  const remote=remoteDocs.get(key);
+  if(!remote){const before=data;data=next;try{v2SetRecord({...local,deleted:false})}finally{data=before}continue}
+  if(v2Equal(local.content,remote.content))continue;
+  await v2ReconcileBackup(key,local.content,remote.content,null);
+  const merged=v2MergeContent(local.content,remote.content,undefined,local.kind);
+  const before=data;data=next;
+  try{v2SetRecord({...local,content:merged.value,deleted:false})}finally{data=before}
  }
+ const previous=data;data=loadData(next);
+ if(!await writeStore(data)){data=previous;throw new Error('合併後本機儲存失敗，未切換同步。')}
  cloudV2=baseline;v2SaveBaseline();
- cloudMeta.wasConnected=true;
- cloudMeta.revision=status.migratedLegacyRevision;
- cloudMeta.dirty=v2LocalDirty();persistCloud();
- render();
+ cloudMeta.wasConnected=true;cloudMeta.revision=status.migratedLegacyRevision;
+ cloudMeta.dirty=v2LocalDirty();persistCloud();render();
 }
-async function v2Pull(settings=cloudConfig){
- const batch=await v2ReadChanges(cloudV2.since,settings);
+async function v2ApplyRecords(batch){
  if(!batch.records.length)return;
- const stagedData=safeClone(data);
- const entries={...cloudV2.entries};
+ const stagedData=safeClone(data),entries={...cloudV2.entries};
  let changed=false;
  for(const r of batch.records){
   const key=v2Key(r.kind,r.id),baseline=entries[key];
   const local=v2Docs(stagedData).get(key);
   const localHash=local?v2Hash(local.content):'@deleted';
+  const remoteContent=r.deleted?null:(r.kind==='items'?normalizeItem(r.content):r.content);
+  const remoteHash=r.deleted?'@deleted':v2Hash(remoteContent);
   const localChanged=baseline?baseline.hash!==localHash:!!local;
-  const remoteHash=r.deleted?'@deleted':v2Hash(r.content);
-  if(localChanged&&remoteHash!==localHash){
-   cloudConflict=true;
-   throw new Error('同一篇文章或清單在不同裝置都有修改。請先匯出本機備份，暫停同步以避免覆蓋。');
+  const remoteChanged=!baseline||baseline.version!==r.version||baseline.hash!==remoteHash;
+  let nextRecord=null;
+  if(remoteChanged&&localChanged&&localHash!==remoteHash){
+   // Persist both versions before any merge/write, including when one was deleted.
+   await v2ReconcileBackup(key,local?.content??null,remoteContent,baseline);
+   if(local&&remoteContent){
+    const merged=v2MergeContent(local.content,remoteContent,baseline?.content,r.kind);
+    nextRecord={...r,content:merged.value,deleted:false};
+   }else if(local){nextRecord={...r,content:local.content,deleted:false}}
+   else if(remoteContent){nextRecord={...r,content:remoteContent,deleted:false}}
+  }else if(remoteChanged&&remoteHash!==localHash){
+   nextRecord={...r,content:remoteContent,deleted:r.deleted};
   }
-  if(remoteHash!==localHash){
-   // v2SetRecord writes through the shared `data` variable: isolate all changes
-   // until every record passes conflict checks, then commit once.
+  if(nextRecord){
    const original=data;data=stagedData;
-   try{v2SetRecord(r)}finally{data=original}
+   try{v2SetRecord(nextRecord)}finally{data=original}
    changed=true;
   }
-  const effective=v2Docs(stagedData).get(key);
-  entries[key]={version:r.version,hash:r.deleted?'@deleted':v2Hash(effective?.content??r.content)};
+  // Keep the *actual remote* version as base, not the locally merged copy.
+  entries[key]=v2Entry(r,remoteContent);
  }
  if(changed){
   const previous=data;data=stagedData;
   if(!await writeStore(data)){data=previous;throw new Error('本機儲存未成功，已停止增量同步。')}
   render();
  }
- cloudV2.entries=entries;
- cloudV2.since=batch.since;
- v2SaveBaseline();
+ cloudV2.entries=entries;cloudV2.since=Math.max(cloudV2.since,batch.since);v2SaveBaseline();
 }
-async function v2Push(settings=cloudConfig){
+async function v2Pull(settings=cloudConfig){
+ return v2ApplyRecords(await v2ReadChanges(cloudV2.since,settings));
+}
+async function v2RecoverExactDocument(kind,id,settings=cloudConfig){
+ const path='/api/v2/document?kind='+encodeURIComponent(kind)+'&id='+encodeURIComponent(id);
+ try{
+  const response=await cloudRequest('GET',path,undefined,settings);
+  if(response.record)await v2ApplyRecords({records:[response.record],since:Math.max(cloudV2.since,Number(response.record.seq)||0)});
+  else await v2Pull(settings);
+ }catch(e){
+  // An older Worker can still pull normally until its code is upgraded.
+  if(e.status===404)await v2Pull(settings);
+  else throw e;
+ }
+}
+async function v2Push(settings=cloudConfig,retry=0){
  const current=v2Docs(data),changes=[];
  for(const [key,doc] of current){
   const hash=v2Hash(doc.content),prev=cloudV2.entries[key];
@@ -2720,12 +2799,21 @@ async function v2Push(settings=cloudConfig){
  if(!changes.length){cloudMeta.dirty=false;persistCloud();return 0}
  let count=0;
  for(const doc of changes){
-  const result=await cloudRequest('PUT','/api/v2/record',{kind:doc.kind,id:doc.id,expectedVersion:doc.expectedVersion,deleted:doc.deleted,...(doc.deleted?{}:{content:doc.content})},settings);
-  cloudV2.entries[doc.key]={version:result.version,hash:doc.hash};
+  let result;
+  try{result=await cloudRequest('PUT','/api/v2/record',{kind:doc.kind,id:doc.id,expectedVersion:doc.expectedVersion,deleted:doc.deleted,...(doc.deleted?{}:{content:doc.content})},settings)}
+  catch(err){
+   if(err.status===409&&retry<4){
+    // Another device won optimistic concurrency; pull, merge and retry automatically.
+    await v2RecoverExactDocument(doc.kind,doc.id,settings);
+    return count+await v2Push(settings,retry+1);
+   }
+   if(err.status===409)throw new Error('其他裝置正在頻繁更新，已保留修改並稍後自動重試。');
+   throw err;
+  }
+  cloudV2.entries[doc.key]={version:result.version,hash:doc.hash,...(doc.deleted?{}:{content:safeClone(doc.content)})};
   v2SaveBaseline();count++;
  }
- cloudMeta.dirty=v2LocalDirty();persistCloud();
- return count;
+ cloudMeta.dirty=v2LocalDirty();persistCloud();return count;
 }
 async function cloudV2Sync({firstConnect=false,settings=cloudConfig}={}){
  const status=await v2EnsureMigrated(settings);
@@ -2736,7 +2824,7 @@ async function cloudV2Sync({firstConnect=false,settings=cloudConfig}={}){
   await v2Pull(settings);
  }
  const sent=await v2Push(settings);
- cloudMeta.wasConnected=true;persistCloud();
+ cloudMeta.wasConnected=true;cloudConflict=false;persistCloud();
  return sent;
 }
 
@@ -2764,7 +2852,7 @@ function cloudStatusUI(){
  const ready=!!(cloudConfig?.url&&cloudConfig?.token);
  if(!ready){state='unconfigured';short='雲端未設定 · 點此連線'}
  else if(navigator.onLine===false){state='offline';short='目前無網路 · 等待連線'}
- else if(cloudConflict){state='error';short='雲端版本衝突 · 需處理'}
+ else if(cloudConflict){state='checking';short='正在自動合併資料…'}
  else if(cloudBusy&&!cloudSilentCheck){state='syncing';short='雲端同步中…'}
  else if(cloudMessage.startsWith('同步失敗')){state='error';short='雲端同步失敗 · 點此重試'}
  else if(!cloudLastSuccess){state='checking';short='正在確認雲端連線…'}
@@ -2821,7 +2909,7 @@ async function cloudRequest(method,path,body,settings=cloudConfig){
       else if(json.reason==='rate-limit')setLimitWarning('ai','Workers AI 請求速度受限（429），請過一段時間再重試，不等於已用完每日額度。');
       throw new Error(`${description}${suffix}`);
     }
-    const err=new Error(json.error==='unauthorized'?'密鑰不正確':json.error==='revision-conflict'?'雲端內容已被另一台裝置更新':json.error==='document-version-conflict'?'同一篇文章已由其他裝置更新，已停止同步以保護修改。':json.error==='document-too-large'?'單篇文章包含過大的圖片資料，無法安全同步；請先匯出備份並縮小手動上傳的圖片。':json.error==='legacy-changed-after-migration'?'另有舊版裝置更新雲端，請先更新所有裝置並匯出備份。':json.error==='state-too-large'||r.status===413?'單筆圖片或資料容量過大，請先匯出備份並縮小圖片。':`雲端服務錯誤 ${r.status}：${json.error||'unknown'}`);
+    const err=new Error(json.error==='unauthorized'?'密鑰不正確':json.error==='revision-conflict'?'雲端內容已被另一台裝置更新':json.error==='document-version-conflict'?'偵測到其他裝置更新，正在重新讀取並合併。':json.error==='document-too-large'?'單篇文章包含過大的圖片資料，無法安全同步；請先匯出備份並縮小手動上傳的圖片。':json.error==='legacy-changed-after-migration'?'另有舊版裝置更新雲端，請先更新所有裝置並匯出備份。':json.error==='state-too-large'||r.status===413?'單筆圖片或資料容量過大，請先匯出備份並縮小圖片。':`雲端服務錯誤 ${r.status}：${json.error||'unknown'}`);
     err.status=r.status;throw err;
    }
    if((path==='/api/vision'||path==='/api/analyze-text')&&json.ok)clearLimitWarning('ai');
@@ -2849,7 +2937,7 @@ function cloudMerge(remote,local){
  return merged;
 }
 async function cloudCommit(){
- if(cloudV2?.entries){await v2Push();cloudLastSuccess=Date.now();cloudMessage='雲端已同步';cloudStatusUI();return;}
+ if(cloudV2?.entries){await v2Pull();await v2Push();cloudLastSuccess=Date.now();cloudMessage='雲端已同步';cloudStatusUI();return;}
  const before=Number(cloudMeta.revision||0);
  const stamp=Number(data._savedAt||0);
  const outgoing={expectedRevision:before,data:safeClone(data)};
@@ -2863,7 +2951,7 @@ async function cloudCommit(){
  cloudLastSuccess=Date.now();cloudMessage='雲端已同步';cloudStatusUI();
 }
 async function cloudRun({silent=false}={}){
- if(!cloudConfig||cloudBusy||cloudConflict)return;
+ if(!cloudConfig||cloudBusy)return;
  cloudBusy=true;
  // Every five seconds, check for new inbox results without flashing "同步中".
  // Show activity only for an explicit refresh, local upload, or actual new data.
@@ -2939,7 +3027,7 @@ async function cloudRun({silent=false}={}){
     waiting?`雲端正在擷取 ${waiting} 篇，完成後自動套用`:'雲端已同步';cloudLastSuccess=Date.now();cloudStatusUI();
   if(hydrateQueue.length)setTimeout(()=>hydrateSharedArticles(hydrateQueue),50);
   for(const id of [...new Set(photoQueue)])setTimeout(()=>analyzeArticlePhotos(id,{silent:true}),700);
- }catch(e){if(e?.status===409||/衝突|不同版本|另有舊版裝置/.test(String(e?.message)))cloudConflict=true;cloudMessage=`同步失敗：${e.message}`;cloudStatusUI()}
+ }catch(e){cloudConflict=false;cloudMessage=`同步失敗：${e.message}`;cloudStatusUI()}
  finally{cloudBusy=false;cloudSilentCheck=false;cloudStatusUI()}
 }
 async function hydrateSharedArticles(queue){
@@ -2970,7 +3058,7 @@ function retryDailyAllowance(){
  return obj?.day===day?{day,count:Math.max(0,Number(obj.count)||0)}:{day,count:0};
 }
 async function attemptDueContentRetry(){
- if(autoRetryBusy||articleFetchInFlight.size||contentRefetchState.running||!cloudConfig||!cloudMeta.wasConnected||cloudBusy||cloudConflict||document.visibilityState!=='visible'||navigator.onLine===false)return;
+ if(autoRetryBusy||articleFetchInFlight.size||contentRefetchState.running||!cloudConfig||!cloudMeta.wasConnected||cloudBusy||document.visibilityState!=='visible'||navigator.onLine===false)return;
  const quota=retryDailyAllowance();if(quota.count>=6)return;
  if(typeof previewCooldownUntil==='function'&&previewCooldownUntil()>Date.now())return;
  const due=data.items.filter(i=>needsContentRefetch(i)&&retryAutoEligible(i)).sort((a,b)=>a.retryState.nextAt-b.retryState.nextAt)[0];
@@ -3004,7 +3092,7 @@ async function cloudConnect(url,token){
  if(config.token.length<32)throw new Error('請填至少 32 字元的 Worker 密鑰');
  // Reconnecting with unchanged credentials must never repeat first-time data merging.
  if(cloudConfig?.url===config.url&&cloudConfig?.token===config.token&&cloudMeta.revision!==null){
-  if(cloudConflict)throw new Error('雲端與本機版本有衝突。請先到「檢查同步原因」查看，不會自動覆蓋任何一邊。');
+  cloudConflict=false; // Recover from stale conflict state, do not lock out the existing credentials.
   await cloudRun();
   if(cloudMessage.startsWith('同步失敗'))throw new Error(cloudMessage);
   return true;
@@ -3107,7 +3195,7 @@ function openCloudSettings(){
     if(remote.backupVerified)msgs.push(`遷移備份已驗證：${remote.verifiedDocuments} 筆；驗證紀錄已保存，原始 app_state 未刪除。`);
     else msgs.push('注意：雲端尚未提供遷移完整性驗證紀錄，請先匯出備份，不要刪除裝置資料。');
     if(remote.legacyChanged)msgs.push('偵測到舊版用戶端修改過備份，請先匯出資料並更新所有裝置。');
-    if(cloudConflict)msgs.push('目前存在分筆資料衝突，請先匯出本機備份，不會自動覆蓋。');
+    if(cloudConflict)msgs.push('正在自動安全合併雲端與本機的變更。');
     else if(v2LocalDirty())msgs.push('本機有部分文章或清單尚未同步；可按「立即同步」。');
     else msgs.push('目前沒有待上傳的分筆變更。');
    }else msgs.push('首次移轉尚未完成；可按立即同步繼續，舊資料不會刪除。');
@@ -3142,7 +3230,7 @@ window.addEventListener('online',()=>{cloudStatusUI();if(cloudConfig){cloudRun({
 window.addEventListener('offline',()=>cloudStatusUI());
 $('#cloudTopSettings').addEventListener('click',openCloudSettings);
 $('#cloudTopRefresh').addEventListener('click',async()=>{
- if(!cloudConfig||cloudConflict){openCloudSettings();return}
+ if(!cloudConfig){openCloudSettings();return}
  if(cloudBusy)return;
  await cloudRun();
 });
