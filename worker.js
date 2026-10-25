@@ -1,6 +1,6 @@
 import puppeteer from '@cloudflare/puppeteer';
 /**
- * 拾集 Cloud API v1.8.18 — deploy as a Cloudflare Worker.
+ * 拾集 Cloud API v1.8.21 — deploy as a Cloudflare Worker.
  * Bind Cloudflare D1 database as DB; add Worker Secret SJ_TOKEN (min 32 chars).
  * Allowed browser origin is fixed to the user's GitHub Pages domain.
  * The secret must NOT be committed to GitHub or embedded in index.html.
@@ -86,101 +86,262 @@ async function schema(db){
     found INTEGER NOT NULL DEFAULT 0,
     image_count INTEGER NOT NULL DEFAULT 0
   )`).run();
+  // Migration backups are never modified or deleted; app_state remains intact.
+  await db.prepare(`CREATE TABLE IF NOT EXISTS sync_legacy_backups (
+    legacy_revision INTEGER PRIMARY KEY,
+    content TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    saved_at INTEGER NOT NULL
+  )`).run();
+  // Stage snapshots by legacy revision, so interrupted migrations never erase data.
+  await db.prepare(`CREATE TABLE IF NOT EXISTS sync_migration_stage (
+    legacy_revision INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    doc_id TEXT NOT NULL,
+    content TEXT NOT NULL,
+    PRIMARY KEY(legacy_revision,kind,doc_id)
+  )`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS sync_migration_audit (
+    id INTEGER PRIMARY KEY CHECK (id=1),
+    legacy_revision INTEGER NOT NULL,
+    sha256 TEXT NOT NULL,
+    documents INTEGER NOT NULL,
+    verified_at INTEGER NOT NULL
+  )`).run();
+  // V2 is additive. The old app_state row remains untouched as a rollback snapshot.
+  await db.prepare(`CREATE TABLE IF NOT EXISTS sync_control (
+    id INTEGER PRIMARY KEY CHECK(id=1),
+    active INTEGER NOT NULL DEFAULT 0,
+    revision INTEGER NOT NULL DEFAULT 0,
+    legacy_revision INTEGER NOT NULL DEFAULT -1,
+    migration_revision INTEGER NOT NULL DEFAULT -1,
+    migrated_at INTEGER NOT NULL DEFAULT 0
+  )`).run();
+  await db.prepare('INSERT OR IGNORE INTO sync_control(id) VALUES(1)').run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS sync_documents (
+    kind TEXT NOT NULL,
+    doc_id TEXT NOT NULL,
+    content TEXT NOT NULL DEFAULT '{}',
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    global_revision INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY(kind,doc_id)
+  )`).run();
+  // SQL triggers atomically update the global change revision with every write.
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS sync_documents_insert AFTER INSERT ON sync_documents BEGIN
+    UPDATE sync_control SET revision=revision+1 WHERE id=1;
+    UPDATE sync_documents SET global_revision=(SELECT revision FROM sync_control WHERE id=1)
+      WHERE kind=NEW.kind AND doc_id=NEW.doc_id;
+  END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS sync_documents_update AFTER UPDATE OF content, deleted ON sync_documents BEGIN
+    UPDATE sync_control SET revision=revision+1 WHERE id=1;
+    UPDATE sync_documents SET global_revision=(SELECT revision FROM sync_control WHERE id=1)
+      WHERE kind=NEW.kind AND doc_id=NEW.doc_id;
+  END`).run();
 }
-
-// ---- Safe pre-R2 rollback bridge (isolated from original app_state and v2 tables) ----
-// Once v2 is active, snapshot its records to rollback_sync_state. Original v2 rows,
-// original app_state and inbox are never edited by this bridge.
-async function rollbackV2Version(db){
- try{
-  const row=await db.prepare('SELECT active,revision FROM sync_control WHERE id=1').first();
-  return row?.active?Number(row.revision||0):null;
- }catch(e){if(/no such table/i.test(String(e?.message||e)))return null;throw e}
+// V2 document sync uses individual records with optimistic per-record revisions.
+// Nothing in this module deletes the old JSON snapshot in app_state.
+const DOC_KINDS = new Set(['items','shoppingLists','travelPlans','meta']);
+const DOC_BODY_MAX = 1_350_000;
+function docName(kind,id){
+ const k=String(kind||''),v=String(id||'');
+ if(!DOC_KINDS.has(k)||!v||v.length>160||k==='meta'&&v!=='main')
+   throw Object.assign(new Error('invalid-document-id'),{status:400});
+ return {kind:k,id:v};
 }
-async function rollbackStateTable(db){
- await db.prepare(`CREATE TABLE IF NOT EXISTS rollback_sync_state (
-  id INTEGER PRIMARY KEY CHECK (id=1),
-  revision INTEGER NOT NULL,
-  content TEXT NOT NULL,
-  v2_revision INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
- )`).run();
-}
-async function rollbackMakeV2Snapshot(db){
- const before=await rollbackV2Version(db);
- if(before===null)return null;
- const result=await db.prepare(`SELECT kind,doc_id,content,deleted FROM sync_documents
-  ORDER BY kind,doc_id`).all();
- const after=await rollbackV2Version(db);
- if(before!==after)throw Object.assign(new Error('v2-changed-during-backup-retry'),{status:409});
- const rows=result.results||[];
- if(!rows.length)throw Object.assign(new Error('v2-has-no-documents-stop-rollback'),{status:409});
- const state={items:[],shoppingLists:[],travelPlans:[]};
- const ids=new Set();
- for(const rec of rows){
-  const kind=String(rec.kind||''),id=String(rec.doc_id||'');
-  if(!['items','shoppingLists','travelPlans','meta'].includes(kind))
-   throw Object.assign(new Error('unknown-v2-document-type'),{status:422});
-  if(rec.deleted)continue;
-  const identity=kind+'|'+id;
-  if(ids.has(identity))throw Object.assign(new Error('duplicated-v2-id'),{status:422});
-  ids.add(identity);
-  let value;try{value=JSON.parse(rec.content)}catch{throw Object.assign(new Error('invalid-v2-json'),{status:422})}
-  if(kind==='meta'){
-   if(id!=='main'||!value||typeof value!=='object'||Array.isArray(value))
-    throw Object.assign(new Error('invalid-v2-meta'),{status:422});
-   Object.assign(state,value);
-  }else{
-   if(!value||typeof value!=='object'||Array.isArray(value)||String(value.id)!==id)
-    throw Object.assign(new Error('invalid-v2-article'),{status:422});
-   state[kind].push(value);
+function legacyDocuments(data){
+ const src=data&&typeof data==='object'&&!Array.isArray(data)?data:{};
+ const docs=[];
+ for(const kind of ['items','shoppingLists','travelPlans']){
+  for(const item of Array.isArray(src[kind])?src[kind]:[]){
+   if(!item||typeof item!=='object'||typeof item.id!=='string'||!item.id||item.id.length>160)
+    throw Object.assign(new Error('legacy-document-has-invalid-id'),{status:422});
+   docs.push({kind,id:item.id,content:item});
   }
  }
- if(!Array.isArray(state.items)||!Array.isArray(state.shoppingLists)||!Array.isArray(state.travelPlans))
-  throw Object.assign(new Error('invalid-v2-lists'),{status:422});
- state._savedAt=Date.now();
- const content=JSON.stringify(state);
- if(encoder.encode(content).length>MAX_STATE_BYTES-1000)
-  throw Object.assign(new Error('rollback-json-over-1.5mb-stop'),{status:413});
- return {state,content,v2Revision:before,counts:{items:state.items.length,shoppingLists:state.shoppingLists.length,travelPlans:state.travelPlans.length}};
+ const meta={...src};for(const key of ['items','shoppingLists','travelPlans','version','_savedAt'])delete meta[key];
+ docs.push({kind:'meta',id:'main',content:meta});
+ return docs;
 }
-async function rollbackReadState(db){
- const v2Revision=await rollbackV2Version(db);
- if(v2Revision===null)return null;
- await rollbackStateTable(db);
- let shadow=await db.prepare('SELECT revision,content,v2_revision,updated_at FROM rollback_sync_state WHERE id=1').first();
- if(!shadow){
-  const snap=await rollbackMakeV2Snapshot(db);
-  await db.prepare(`INSERT OR IGNORE INTO rollback_sync_state
-   (id,revision,content,v2_revision,updated_at) VALUES(1,1,?,?,?)`)
-   .bind(snap.content,snap.v2Revision,Date.now()).run();
-  shadow=await db.prepare('SELECT revision,content,v2_revision,updated_at FROM rollback_sync_state WHERE id=1').first();
+async function sha256String(raw){
+ const hash=await crypto.subtle.digest('SHA-256',encoder.encode(raw));
+ return Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function syncStatus(db){
+ const [control,legacy,audit]=await Promise.all([
+  db.prepare('SELECT * FROM sync_control WHERE id=1').first(),
+  db.prepare('SELECT revision FROM app_state WHERE id=1').first(),
+  db.prepare('SELECT legacy_revision,sha256,documents,verified_at FROM sync_migration_audit WHERE id=1').first()
+ ]);
+ return {active:!!control?.active,revision:Number(control?.revision||0),
+  legacyRevision:Number(legacy?.revision||0),migratedLegacyRevision:Number(control?.legacy_revision??-1),
+  migrationRevision:Number(control?.migration_revision??-1),
+  legacyChanged:!!control?.active&&Number(legacy?.revision||0)!==Number(control?.legacy_revision||0),
+  backupVerified:!!control?.active&&Number(audit?.legacy_revision)===Number(control?.legacy_revision),
+  verifiedDocuments:Number(audit?.documents||0),verifiedAt:Number(audit?.verified_at||0),
+  legacyBackupPreserved:true};
+}
+async function migrationBackup(db,version,raw){
+ const digest=await sha256String(raw);
+ await db.prepare(`INSERT OR IGNORE INTO sync_legacy_backups
+ (legacy_revision,content,sha256,saved_at) VALUES (?,?,?,?)`)
+  .bind(version,raw,digest,Date.now()).run();
+ const saved=await db.prepare(`SELECT content,sha256 FROM sync_legacy_backups
+ WHERE legacy_revision=?`).bind(version).first();
+ if(!saved||saved.content!==raw||saved.sha256!==digest)
+  throw Object.assign(new Error('migration-backup-verification-failed'),{status:409});
+ return digest;
+}
+function sameDocuments(source,expected){
+ const rows=source?.results||[];
+ if(rows.length!==expected.length)return false;
+ const wanted=new Map(expected.map(d=>[d.kind+'\0'+d.id,JSON.stringify(d.content)]));
+ for(const r of rows){
+  const key=r.kind+'\0'+(r.doc_id||'');
+  if(!wanted.has(key)||wanted.get(key)!==r.content||Number(r.deleted||0)!==0)return false;
+  wanted.delete(key);
  }
- if(v2Revision!==Number(shadow.v2_revision))
-  throw Object.assign(new Error('v2-updated-after-rollback-stop-to-protect-data'),{status:409});
- return {revision:Number(shadow.revision),data:JSON.parse(shadow.content),updatedAt:Number(shadow.updated_at),source:'rollback-shadow',originalV2Revision:v2Revision};
+ return wanted.size===0;
 }
-async function rollbackWriteState(db,body){
- const current=await rollbackReadState(db);
- if(!current)return null;
- if(!Number.isSafeInteger(body?.expectedRevision)||body.expectedRevision<0||
-    !body.data||typeof body.data!=='object'||Array.isArray(body.data)||
-    !['items','shoppingLists','travelPlans'].every(k=>Array.isArray(body.data[k])))
-  throw Object.assign(new Error('invalid-rollback-state'),{status:400});
- const content=JSON.stringify(body.data);
- if(encoder.encode(content).length>MAX_STATE_BYTES-1000)
-  throw Object.assign(new Error('rollback-json-over-1.5mb-stop'),{status:413});
- const res=await db.prepare(`UPDATE rollback_sync_state SET content=?,revision=revision+1,updated_at=?
-  WHERE id=1 AND revision=? AND v2_revision=(SELECT revision FROM sync_control WHERE id=1)`)
-   .bind(content,Date.now(),body.expectedRevision).run();
- if(!res.meta?.changes){
-  const latest=await rollbackReadState(db);
-  return {error:'revision-conflict',revision:latest.revision};
+async function migrationVerification(db,version,raw,docs){
+ const [backup,active]=await Promise.all([
+  db.prepare('SELECT content,sha256 FROM sync_legacy_backups WHERE legacy_revision=?').bind(version).first(),
+  db.prepare('SELECT kind,doc_id,content,deleted FROM sync_documents').all()
+ ]);
+ const expectedDigest=await sha256String(raw);
+ return !!backup&&backup.content===raw&&backup.sha256===expectedDigest&&sameDocuments(active,docs);
+}
+async function migrateLegacyChunk(db,offset){
+ let status=await syncStatus(db);
+ if(status.active)return {...status,done:true};
+ const row=await db.prepare('SELECT revision,content FROM app_state WHERE id=1').first();
+ const version=Number(row?.revision||0),raw=String(row?.content||'{}');
+ let snapshot={};try{snapshot=JSON.parse(raw)}catch{
+  throw Object.assign(new Error('legacy-backup-is-invalid-json'),{status:422});
  }
- return {ok:true,revision:body.expectedRevision+1};
+ const docs=legacyDocuments(snapshot),total=docs.length;
+ if(new Set(docs.map(d=>d.kind+'\0'+d.id)).size!==total)
+  throw Object.assign(new Error('legacy-duplicate-document-ids'),{status:422});
+ // The cloud-side backup is committed and verified BEFORE staging any changes.
+ const digest=await migrationBackup(db,version,raw);
+ const running=Number(status.migrationRevision);
+ if(running!==-1&&running!==version)
+  throw Object.assign(new Error('migration-interrupted-by-legacy-change'),{status:409});
+ let start=Math.max(0,Number(offset)||0);
+ if(!Number.isSafeInteger(start)||start>total)start=0;
+ if(running===-1){
+  // Stage rows are keyed by source revision: no DELETE, no overwrites, no mixed imports.
+  const chunk=docs.slice(start,start+12);
+  if(chunk.length){
+   await db.batch(chunk.map(d=>db.prepare(`INSERT OR IGNORE INTO sync_migration_stage
+     (legacy_revision,kind,doc_id,content) VALUES (?,?,?,?)`)
+     .bind(version,d.kind,d.id,JSON.stringify(d.content))));
+  }
+  const end=start+chunk.length;
+  if(end<total)return {...status,done:false,phase:'backup-and-stage',offset:end,total,backedUp:true};
+  const staged=await db.prepare(`SELECT kind,doc_id,content FROM sync_migration_stage
+    WHERE legacy_revision=?`).bind(version).all();
+  if(!sameDocuments(staged,docs)){
+   if((staged.results||[]).length<total)
+    return {...status,done:false,restart:true,phase:'backup-and-stage',offset:0,total};
+   throw Object.assign(new Error('migration-staging-verification-failed'),{status:409});
+  }
+  // Atomic revision gate: any old-client write before this moment cancels migration.
+  const gated=await db.prepare(`UPDATE sync_control SET migration_revision=?
+    WHERE id=1 AND active=0 AND migration_revision=-1
+    AND EXISTS (SELECT 1 FROM app_state WHERE id=1 AND revision=? AND content=?)`)
+   .bind(version,version,raw).run();
+  if(Number(gated.meta?.changes||0)!==1)
+   throw Object.assign(new Error('legacy-changed-during-migration'),{status:409});
+  return {...(await syncStatus(db)),done:false,phase:'commit',offset:0,total,backedUp:true};
+ }
+ // The previous D1 state is read-only during this short commit phase; old Worker
+ // clients receive a 409 rather than changing a backup while we are copying it.
+ const chunk=docs.slice(start,start+12);
+ if(chunk.length){
+  await db.batch(chunk.map(d=>db.prepare(`INSERT OR IGNORE INTO sync_documents
+   (kind,doc_id,content,version,deleted,global_revision,updated_at)
+   VALUES (?,?,?,1,0,0,?)`).bind(d.kind,d.id,JSON.stringify(d.content),Date.now())));
+ }
+ const end=start+chunk.length;
+ if(end<total)return {...(await syncStatus(db)),done:false,phase:'commit',offset:end,total,backedUp:true};
+ if(!await migrationVerification(db,version,raw,docs)){
+  const count=await db.prepare('SELECT COUNT(*) AS n FROM sync_documents').first();
+  if(Number(count?.n||0)<total)return {...status,done:false,restart:true,phase:'commit',offset:0,total};
+  throw Object.assign(new Error('migration-content-verification-failed'),{status:409});
+ }
+ // Store an immutable audit before switching. No destructive SQL runs anywhere.
+ await db.prepare(`INSERT OR REPLACE INTO sync_migration_audit
+ (id,legacy_revision,sha256,documents,verified_at) VALUES (1,?,?,?,?)`)
+  .bind(version,digest,total,Date.now()).run();
+ const activated=await db.prepare(`UPDATE sync_control
+ SET active=1,legacy_revision=?,migrated_at=?
+ WHERE id=1 AND active=0 AND migration_revision=?
+ AND EXISTS(SELECT 1 FROM app_state WHERE id=1 AND revision=? AND content=?)`)
+  .bind(version,Date.now(),version,version,raw).run();
+ if(Number(activated.meta?.changes||0)!==1)
+  throw Object.assign(new Error('migration-activation-blocked'),{status:409});
+ status=await syncStatus(db);
+ return {...status,done:status.active,phase:'verified-and-active',offset:end,total,backedUp:true};
 }
-// ---- end rollback bridge ----
-
+async function migrationAudit(db){
+ const status=await syncStatus(db);
+ if(!status.active)return {ok:false,active:false,reason:'migration-not-complete'};
+ const [audit,backup]=await Promise.all([
+  db.prepare('SELECT legacy_revision,sha256,documents,verified_at FROM sync_migration_audit WHERE id=1').first(),
+  db.prepare('SELECT content,sha256 FROM sync_legacy_backups WHERE legacy_revision=?')
+    .bind(status.migratedLegacyRevision).first()
+ ]);
+ const valid=!!audit&&!!backup&&audit.legacy_revision===status.migratedLegacyRevision
+  &&audit.sha256===backup.sha256&&(await sha256String(backup.content))===backup.sha256;
+ return {ok:valid,active:true,legacyRevision:status.migratedLegacyRevision,
+  backupVerified:valid,verifiedDocuments:Number(audit?.documents||0),
+  verifiedAt:Number(audit?.verified_at||0),legacyBackupPreserved:true};
+}
+async function changesSince(db,since){
+ const n=Number(since);
+ if(!Number.isSafeInteger(n)||n<0)throw Object.assign(new Error('invalid-sync-cursor'),{status:400});
+ const records=await db.prepare(`SELECT kind,doc_id,content,version,deleted,global_revision
+  FROM sync_documents WHERE global_revision>? ORDER BY global_revision LIMIT 25`).bind(n).all();
+ const out=[];let used=0;
+ for(const row of records.results||[]){
+  const size=encoder.encode(row.content||'').length;
+  if(out.length&&used+size>950000)break;
+  used+=size;
+  out.push({kind:row.kind,id:row.doc_id,version:row.version,deleted:!!row.deleted,
+   seq:row.global_revision,content:row.deleted?null:JSON.parse(row.content)});
+ }
+ const cursor=out.length?out[out.length-1].seq:n;
+ const more=await db.prepare('SELECT global_revision FROM sync_documents WHERE global_revision>? ORDER BY global_revision LIMIT 1').bind(cursor).first();
+ return {records:out,nextSince:cursor,hasMore:!!more};
+}
+async function writeSyncDocument(db,body){
+ const {kind,id}=docName(body?.kind,body?.id);
+ const expected=Number(body?.expectedVersion);
+ if(!Number.isSafeInteger(expected)||expected<0)throw Object.assign(new Error('invalid-expected-version'),{status:400});
+ const deleted=!!body?.deleted;
+ if(kind==='meta'&&deleted)throw Object.assign(new Error('cannot-delete-metadata'),{status:400});
+ const content=deleted?'{}':JSON.stringify(body?.content);
+ if(!content||content==='undefined'||encoder.encode(content).length>DOC_BODY_MAX)
+  throw Object.assign(new Error('document-too-large'),{status:413});
+ const now=Date.now();let result;
+ if(expected===0){
+  if(deleted)return {ok:true,version:0,ignored:true};
+  result=await db.prepare(`INSERT OR IGNORE INTO sync_documents
+  (kind,doc_id,content,version,deleted,global_revision,updated_at) VALUES(?,?,?,1,0,0,?)`)
+  .bind(kind,id,content,now).run();
+ }else{
+  result=await db.prepare(`UPDATE sync_documents SET content=?,version=version+1,deleted=?,updated_at=?
+   WHERE kind=? AND doc_id=? AND version=?`).bind(content,deleted?1:0,now,kind,id,expected).run();
+ }
+ if(!Number(result.meta?.changes||0)){
+  const current=await db.prepare('SELECT version FROM sync_documents WHERE kind=? AND doc_id=?').bind(kind,id).first();
+  throw Object.assign(new Error('document-version-conflict'),{status:409,currentVersion:current?.version??0,kind,id});
+ }
+ const saved=await db.prepare('SELECT version,global_revision FROM sync_documents WHERE kind=? AND doc_id=?').bind(kind,id).first();
+ return {ok:true,version:saved.version,seq:saved.global_revision};
+}
 async function readJSON(request,limit=MAX_STATE_BYTES){
   const text=await request.text();
   if(encoder.encode(text).length>limit)throw Object.assign(new Error('payload-too-large'),{status:413});
@@ -302,12 +463,8 @@ function htmlAttrs(tag){
 }
 // Only standard public JSON-LD fields, when actually supplied by the post page.
 // Do not treat arbitrary script text or unrelated media from the feed as a post.
-function publicStructuredPost(html,expectedURL){
+function publicStructuredPost(html){
  const out={body:'',title:'',images:[]};
- // An HTML page can embed JSON-LD for a feed as well as the requested post.
- // Only metadata explicitly linked to this post is eligible for gallery images.
- const targetPostId=String(new URL(expectedURL).pathname.match(/\/post\/([^/]+)/)?.[1]||'');
- const entryPostId=value=>{try{return new URL(typeof value==='string'?value:value?.['@id']||value?.url||'',expectedURL).pathname.match(/\/post\/([^/]+)/)?.[1]||''}catch{return ''}};
  const addImage=value=>{
   if(Array.isArray(value)){value.forEach(addImage);return}
   if(value&&typeof value==='object'){addImage(value.url||value.contentUrl||'');return}
@@ -320,11 +477,9 @@ function publicStructuredPost(html,expectedURL){
    if(!obj||typeof obj!=='object')continue;
    const type=String(obj['@type']||'');
    if(!/SocialMediaPosting|Article|BlogPosting|DiscussionForumPosting/i.test(type))continue;
-   const identity=entryPostId(obj.url)||entryPostId(obj['@id'])||entryPostId(obj.mainEntityOfPage);
-   if(identity&&identity!==targetPostId)continue;
    if(!out.body)out.body=String(obj.articleBody||obj.text||obj.description||'').slice(0,9000);
    if(!out.title)out.title=String(obj.headline||obj.name||'').slice(0,240);
-   if(identity===targetPostId)addImage(obj.image||obj.associatedMedia);
+   addImage(obj.image||obj.associatedMedia);
   }
  }
  return out;
@@ -342,7 +497,7 @@ function readPublicPostMetadata(html,url){
   if(!key||!a.content)continue;(found[key]??=[]).push(a.content.trim());
  }
  const first=(...keys)=>{for(const k of keys){const s=(found[k]||[]).find(x=>x.trim());if(s)return s}return ''};
- const jsonPost=publicStructuredPost(html,url);
+ const jsonPost=publicStructuredPost(html);
  const desc=first('og:description','twitter:description','description')||jsonPost.body;
  const title=first('og:title','twitter:title')||jsonPost.title;
  const looksBlocked=/this content isn.t available to everyone|thread not available|content isn.t available|log in to see (?:this|the) (?:post|content)|post is unavailable|此內容無法使用|貼文無法顯示/i;
@@ -352,7 +507,7 @@ function readPublicPostMetadata(html,url){
  for(const val of [...(found['og:image']||[]),...(found['twitter:image']||[]),...jsonPost.images]){
   try{const img=new URL(val);if(img.protocol==='https:'&&img.hostname.includes('.')&&!images.includes(img.href))images.push(img.href)}catch{}
  }
- return {ok:true,source:'threads-public-html',canonicalUrl:url,title:validText?(publicSentenceTitle(body)||title).slice(0,250):'',body,images:curatedImages(images),found:!!(body||images.length||title&&!looksBlocked.test(title)&&title.toLowerCase()!=='threads'),reason:looksBlocked.test(html)&&!body&&!images.length?'threads-access-limited':'no-public-metadata'};
+ return {ok:true,source:'threads-public-html',canonicalUrl:url,title:validText?(publicSentenceTitle(body)||title).slice(0,250):'',body,images:curatedImages(images).slice(0,12),found:!!(body||images.length||title&&!looksBlocked.test(title)&&title.toLowerCase()!=='threads'),reason:looksBlocked.test(html)&&!body&&!images.length?'threads-access-limited':'no-public-metadata'};
 }
 async function fetchPublicResponse(url,method='GET'){
  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),9500);
@@ -369,74 +524,17 @@ async function limitedPublicHTML(resp){
    out+=decoder.decode(value,{stream:true});
  }out+=decoder.decode();return out}finally{try{reader.releaseLock()}catch{}}
 }
-// Short-share URLs may return 200 HTML rather than a single HTTP redirect.
-// Only a post URL from the share page's canonical/OG metadata is accepted.
-// Never follow arbitrary page/feed links or off-site redirects.
-function threadsPostFromCanonicalHTML(html, base){
- const candidates=[];
- for(const m of html.matchAll(/<link\b[^>]*>|<meta\b[^>]*>/gi)){
-  const attrs=htmlAttrs(m[0]);
-  const rel=String(attrs.rel||'').toLowerCase();
-  const key=String(attrs.property||attrs.name||'').toLowerCase();
-  if(rel.split(/\s+/).includes('canonical')&&attrs.href)candidates.push(attrs.href);
-  if((key==='og:url'||key==='twitter:url')&&attrs.content)candidates.push(attrs.content);
- }
- for(const raw of candidates){
-  try{
-   const url=safeThreadsURL(new URL(raw,base).href);
-   if(/^\/@[a-zA-Z0-9._]+\/post\/[a-zA-Z0-9_-]+\/?$/.test(url.pathname))return url;
-  }catch{}
- }
- return null;
-}
-async function resolveThreadsPostURL(input){
- let target=safeThreadsURL(input);
- if(!target.pathname.startsWith('/share/'))return {target,reason:''};
- // At most two redirects, and a single HTML read on a 200 response.
- for(let step=0;step<3;step++){
-  let response;
-  try{response=await fetchPublicResponse(target.href,step===0?'HEAD':'GET')}
-  catch{return {target,reason:'threads-share-unavailable'}}
-  if([405,501].includes(response.status)){
-   try{response=await fetchPublicResponse(target.href,'GET')}
-   catch{return {target,reason:'threads-share-unavailable'}}
-  }
-  if([301,302,303,307,308].includes(response.status)){
-   const location=response.headers.get('location');
-   if(!location)return {target,reason:'threads-share-no-location'};
-   try{target=safeThreadsURL(new URL(location,target).href)}
-   catch{return {target,reason:'threads-share-unresolved'}}
-   if(!target.pathname.startsWith('/share/'))return {target,reason:''};
-   continue;
-  }
-  if(!response.ok)return {target,reason:'threads-share-http-'+response.status};
-  // HEAD 200 has no HTML. Request the same public page once for its canonical URL.
-  if(step===0){
-   try{response=await fetchPublicResponse(target.href,'GET')}
-   catch{return {target,reason:'threads-share-unavailable'}}
-   if([301,302,303,307,308].includes(response.status)){
-    const location=response.headers.get('location');
-    if(!location)return {target,reason:'threads-share-no-location'};
-    try{target=safeThreadsURL(new URL(location,target).href)}
-    catch{return {target,reason:'threads-share-unresolved'}}
-    if(!target.pathname.startsWith('/share/'))return {target,reason:''};
-    continue;
-   }
-  }
-  if(!response.ok)return {target,reason:'threads-share-http-'+response.status};
-  try{
-   const html=await limitedPublicHTML(response);
-   const post=threadsPostFromCanonicalHTML(html,target);
-   if(post)return {target:post,reason:''};
-  }catch{}
-  break;
- }
- return {target,reason:'threads-post-url-unresolved'};
-}
 async function extractPublicThreads(input){
- const {target,reason}=await resolveThreadsPostURL(input);
- if(!/^\/@[a-zA-Z0-9._]+\/post\/[a-zA-Z0-9_-]+\/?$/.test(target.pathname))
-  return {ok:true,found:false,canonicalUrl:target.href,reason:reason||'threads-post-url-unresolved',source:'threads-public-html'};
+ let target=safeThreadsURL(input);
+ if(target.pathname.startsWith('/share/')){
+  let res=await fetchPublicResponse(target.href,'HEAD');
+  if([405,501].includes(res.status))res=await fetchPublicResponse(target.href,'GET');
+  if([301,302,303,307,308].includes(res.status)){
+   const location=res.headers.get('location');if(!location)throw Object.assign(new Error('threads-share-no-location'),{status:422});
+   target=safeThreadsURL(new URL(location,target).href);
+  }else if(!res.ok){throw Object.assign(new Error('threads-share-unavailable'),{status:502})}
+ }
+ if(!target.pathname.match(/^\/@[^/]+\/post\/[^/]+\/?$/))return {ok:true,found:false,canonicalUrl:target.href,reason:'threads-post-url-unresolved',source:'threads-public-html'};
  const resp=await fetchPublicResponse(target.href);
  if(!resp.ok)return {ok:true,found:false,canonicalUrl:target.href,reason:'threads-html-http-'+resp.status,source:'threads-public-html'};
  const html=await limitedPublicHTML(resp);
@@ -446,7 +544,6 @@ async function extractPublicThreads(input){
 // Browser Run Quick Action: one sandboxed render, never authenticated or bypassed.
 // Free plan: 10 minutes/day (official account-wide usage); this app conservatively
 // stops earlier. The dashboard, not this counter, is the authoritative quota.
-const POST_IMAGE_SAFETY_CAP = 20; // Safety ceiling, not a target photo count.
 const BROWSER_RESERVE_MS = 30000;
 const BROWSER_APP_DAILY_BUDGET_MS = 420000; // conservative 7m vs. plan's 10m
 const BROWSER_AUTO_DAILY_BUDGET_MS = 180000;
@@ -473,7 +570,7 @@ async function reserveBrowser(db,url,mode){
  if(isAuto&&((Number(row?.auto_attempts)||0)>=5||(Number(row?.estimated_ms)||0)+BROWSER_RESERVE_MS>BROWSER_AUTO_DAILY_BUDGET_MS))return {allowed:false,reason:'browser-auto-budget'};
  const recent=await db.prepare('SELECT last_at FROM browser_post_attempts WHERE canonical_url=?').bind(url).first();
  const wait=isAuto?6*60*60*1000:60*1000;
- if(recent&&(Number(recent.last_at)||0)>now-wait)return {allowed:false,reason:'browser-post-cooldown',retryAfterSeconds:Math.max(1,Math.ceil((wait-(now-Number(recent.last_at)))/1000))};
+ if(recent&&(Number(recent.last_at)||0)>now-wait)return {allowed:false,reason:'browser-post-cooldown'};
  // Atomic reserve also prevents accidental simultaneous browser launches from devices.
  const claim=await db.prepare(`UPDATE browser_usage_daily SET attempts=attempts+1,
     auto_attempts=auto_attempts+?,estimated_ms=estimated_ms+?,last_started_at=?,last_at=?,last_status='running'
@@ -550,11 +647,24 @@ function browserScrapeData(payload,canonicalUrl){
  };
  // OpenGraph cover comes first. Other DOM images are added only if genuinely different.
  if(!blockedPage)push(firstAttr('meta[property="og:image"]','content'));
- // Do not harvest 'article img' selectors here: Quick Action cannot prove which
- // article owns a photo. Return only the document's OpenGraph cover.
+ // Only choose substantial post photos, not user icons, navigation images, or advertisements.
+ for(const sel of ['article img','[role="article"] img','main article img']){
+  for(const item of bySelector(sel)){
+   if(Number(item.width)>0&&Number(item.width)<110)continue;
+   if(Number(item.height)>0&&Number(item.height)<85)continue;
+   if(/avatar|profile picture|profile photo|user icon/i.test(attr(item,'alt')))continue;
+   // Responsive image URLs are often stored in srcset when src is a placeholder.
+   const current=attr(item,'currentSrc')||attr(item,'src')||attr(item,'data-src');
+   push(bestSourceFromSet(attr(item,'srcset')||attr(item,'data-srcset'))||current);
+  }
+ }
+ // Some carousel slides are present as <picture><source> before their <img> loads.
+ for(const sel of ['article picture source','[role="article"] picture source']){
+  for(const item of bySelector(sel))push(bestSourceFromSet(attr(item,'srcset')||attr(item,'data-srcset')));
+ }
  // A screenshot or website metadata cannot reveal carousel slides Threads did not load.
  const found=!blockedPage&&!!(body.trim()||imgs.length);
- return {ok:true,found,source:'browser-run',canonicalUrl,title:title.slice(0,250),body,images:imgs.slice(0,POST_IMAGE_SAFETY_CAP),
+ return {ok:true,found,source:'browser-run',canonicalUrl,title:title.slice(0,250),body,images:imgs.slice(0,12),
    reason:found?'ok':'browser-no-readable-post',imagesComplete:false};
 }
 
@@ -587,70 +697,68 @@ async function puppeteerCarouselScrape(env,canonicalUrl,mode='auto'){
     seen.add(key);covers.push(photo);
    }
   };
-  // Reject other posts/recommendations. Never choose a root by number of images:
-  // the most image-rich article is often a recommended or quoted post.
-  const targetPostId=String(new URL(canonicalUrl).pathname.match(/\/post\/([^/]+)/)?.[1]||'');
-  const inspect=async click=>page.evaluate(({postId,click})=>{
-   const postIdInURL=value=>{try{return new URL(value,location.href).pathname.match(/\/post\/([^/]+)/)?.[1]||''}catch{return ''}};
+  // Inspect the post, including image buttons that are rendered as SVG-only icons.
+  // Prefer a labeled Next control, then an unlabeled arrow right beside a large photo.
+  const snap=async()=>page.evaluate(()=>{
    const meta=key=>document.querySelector(`meta[property="${key}"],meta[name="${key}"]`)?.getAttribute('content')||'';
-   const canonical=document.querySelector('link[rel="canonical"]')?.getAttribute('href')||meta('og:url');
-   const currentPostId=postIdInURL(location.href),headPostId=postIdInURL(canonical);
-   const pageVerified=currentPostId===postId&&(!headPostId||headPostId===postId);
-   if(!pageVerified)return click?false:{title:'',body:'',images:[],hasNext:false,blocked:true,postVerified:false};
-   const allArticles=[...document.querySelectorAll('article,[role="article"]')];
-   const linksIn=el=>[...el.querySelectorAll('a[href]')].map(a=>postIdInURL(a.getAttribute('href'))).filter(Boolean);
-   const owned=allArticles.filter(a=>!a.parentElement?.closest('article,[role="article"]'));
-   const matching=owned.filter(a=>linksIn(a).includes(postId));
-   // A single article without another post permalink is acceptable on the verified
-   // post URL. If the page has multiple articles and none links to the target,
-   // prefer no DOM images over importing recommended-post media.
-   const root=matching[0]||(owned.length===1&&linksIn(owned[0]).every(id=>id===postId)?owned[0]:null);
-   const inTarget=el=>!!root&&el.closest('article,[role="article"]')===root;
-   const blockedText=/this content isn.t available to everyone|thread not available|log in to see this|content isn't available/i;
+   const articles=[...document.querySelectorAll('article,[role="article"]')];
+   const score=el=>{
+    const media=[...el.querySelectorAll('img')].filter(im=>{const r=im.getBoundingClientRect();return r.width>=160&&r.height>=140}).length;
+    return media*200+Math.min((el.innerText||'').length,500);
+   };
+   const root=articles.sort((a,b)=>score(b)-score(a))[0]||document.querySelector('main')||document.body;
+   const text=(root?.innerText||'').trim().slice(0,9000);
+   const blocked=/this content isn.t available to everyone|thread not available|log in to see this|content isn't available/i.test(text);
    const title=meta('og:title')||meta('twitter:title');
    const description=meta('og:description')||meta('twitter:description');
-   const bodyText=(root?.innerText||'').trim().slice(0,9000);
-   const blocked=blockedText.test(description)||blockedText.test(bodyText);
-   const body=description&&!blockedText.test(description)?description:root&&bodyText.length>25&&!blocked?bodyText:'';
+   const body=description&&!/this content isn.t available to everyone|thread not available/i.test(description)?description:
+     (root?.matches?.('article,[role="article"]')&&text.length>25&&!blocked?text:'');
    const images=[];const push=s=>{if(typeof s==='string'&&s&&!images.includes(s))images.push(s)};
+   // A public OpenGraph cover is valid even when the DOM gallery is blocked.
    if(!blocked)push(meta('og:image'));
-   const photos=root?[...root.querySelectorAll('img')].filter(im=>{
-    if(!inTarget(im))return false;
-    const enclosing=im.closest('a[href]');if(enclosing){const foreign=postIdInURL(enclosing.getAttribute('href'));if(foreign&&foreign!==postId)return false}
+   const mainPhotos=[...root.querySelectorAll('img')].filter(im=>{
     const r=im.getBoundingClientRect();return r.width>=160&&r.height>=130&&!/avatar|profile photo|user icon/i.test(im.alt||'');
-   }):[];
-   const gallery=photos.map(x=>x.getBoundingClientRect()).sort((a,b)=>b.width*b.height-a.width*a.height)[0];
-   for(const im of photos){
-    const r=im.getBoundingClientRect();
-    // Keep only nearby media inside this post's principal gallery, not a second
-    // quoted card lower on the same article or unrelated feed recommendations.
-    if(gallery&&Math.abs(r.top-gallery.top)>Math.max(400,gallery.height*1.5))continue;
+   });
+   for(const im of mainPhotos){
     const srcset=im.getAttribute('srcset')||'';
     const list=srcset.split(',').map(x=>x.trim().split(/\s+/)[0]).filter(Boolean);
     push(im.currentSrc||list.at(-1)||im.getAttribute('src')||im.getAttribute('data-src'));
    }
-   if(root)for(const picture of root.querySelectorAll('picture')){
-    if(!inTarget(picture))continue;
-    const r=picture.getBoundingClientRect();if(r.width<160||r.height<130)continue;
-    if(gallery&&Math.abs(r.top-gallery.top)>Math.max(400,gallery.height*1.5))continue;
-    for(const src of picture.querySelectorAll('source[srcset]')){
-     const list=(src.getAttribute('srcset')||'').split(',').map(x=>x.trim().split(/\s+/)[0]).filter(Boolean);
-     push(list.at(-1));
-    }
+   for(const el of root.querySelectorAll('picture source')){
+    const list=(el.getAttribute('srcset')||'').split(',').map(x=>x.trim().split(/\s+/)[0]).filter(Boolean);push(list.at(-1));
    }
-   const nexts=root&&gallery?[...root.querySelectorAll('button,[role="button"]')].filter(el=>{
+   const gallery=mainPhotos.map(x=>x.getBoundingClientRect()).sort((a,b)=>b.width*b.height-a.width*a.height)[0];
+   const isVisible=el=>{const r=el.getBoundingClientRect();return r.width>=12&&r.height>=12&&r.width<105&&r.height<105&&r.bottom>0&&r.top<window.innerHeight&&r.left<window.innerWidth};
+   const isNext=el=>{
+    if(!isVisible(el)||el.disabled||el.getAttribute('aria-disabled')==='true')return false;
+    const label=[el.getAttribute('aria-label'),el.getAttribute('title'),el.getAttribute('data-testid'),el.querySelector('svg')?.getAttribute('aria-label'),el.querySelector('svg title')?.textContent].filter(Boolean).join(' ').toLowerCase();
+    const match=/(?:^|\b)(?:next|carousel.next|forward|navigate.right|arrow.right|right.arrow)(?:\b|$)|下一張|下一张|下一頁|下一页|下一個|下一步|次へ|次の|다음|suivant|siguiente|prossima/i.test(label);
+    if(match)return !!(root.contains(el)||gallery&&Math.abs(el.getBoundingClientRect().top-gallery.top)<gallery.height+60);
+    // Icon-only carousel arrow near right edge of large post photo; never click random page navigation.
+    if(!gallery||!el.querySelector('svg')||el.querySelector('a')||el.closest('a'))return false;
+    const r=el.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;
+    return cx>gallery.right-65&&cx<gallery.right+42&&cy>gallery.top+gallery.height*0.15&&cy<gallery.bottom-gallery.height*0.15&&(!label||/arrow|right|carousel/i.test(label));
+   };
+   const options=[...document.querySelectorAll('button,[role="button"]')].filter(isNext);
+   return {title,body,blocked,images,hasNext:options.length>0,possibleNextButtons:options.length};
+  });
+  const clickNext=async()=>page.evaluate(()=>{
+   const roots=[...document.querySelectorAll('article,[role="article"]')];
+   const score=el=>[...el.querySelectorAll('img')].filter(im=>{const r=im.getBoundingClientRect();return r.width>=160&&r.height>=140}).length*200+Math.min((el.innerText||'').length,500);
+   const root=roots.sort((a,b)=>score(b)-score(a))[0]||document.querySelector('main')||document.body;
+   const photos=[...root.querySelectorAll('img')].map(im=>im.getBoundingClientRect()).filter(r=>r.width>=160&&r.height>=130).sort((a,b)=>b.width*b.height-a.width*a.height);
+   const gallery=photos[0];
+   const candidates=[...document.querySelectorAll('button,[role="button"]')].filter(el=>{
     const r=el.getBoundingClientRect();if(r.width<12||r.height<12||r.width>=105||r.height>=105||r.bottom<=0||r.top>=window.innerHeight||el.disabled||el.getAttribute('aria-disabled')==='true')return false;
     const label=[el.getAttribute('aria-label'),el.getAttribute('title'),el.getAttribute('data-testid'),el.querySelector('svg')?.getAttribute('aria-label'),el.querySelector('svg title')?.textContent].filter(Boolean).join(' ').toLowerCase();
-    const named=/(?:^|\b)(?:next|carousel.next|forward|navigate.right|arrow.right|right.arrow)(?:\b|$)|下一張|下一张|下一頁|下一页|下一個|下一步|次へ|次の|다음|suivant|siguiente|prossima/i.test(label);
+    if(/(?:^|\b)(?:next|carousel.next|forward|navigate.right|arrow.right|right.arrow)(?:\b|$)|下一張|下一张|下一頁|下一页|下一個|下一步|次へ|次の|다음|suivant|siguiente|prossima/i.test(label))return !!(root.contains(el)||gallery&&Math.abs(r.top-gallery.top)<gallery.height+60);
+    if(!gallery||!el.querySelector('svg')||el.closest('a'))return false;
     const cx=r.left+r.width/2,cy=r.top+r.height/2;
-    const nearGallery=cx>gallery.right-65&&cx<gallery.right+42&&cy>gallery.top+gallery.height*0.15&&cy<gallery.bottom-gallery.height*0.15;
-    return nearGallery&&(named||!!el.querySelector('svg')&&(!label||/arrow|right|carousel/i.test(label)))&&!el.closest('a');
-   }):[];
-   if(click){if(!nexts?.length)return false;nexts[0].click();return true}
-   return {title,body,blocked,images,hasNext:!!nexts?.length,postVerified:!!root,pageVerified};
-  },{postId:targetPostId,click});
-  const snap=async()=>inspect(false);
-  const clickNext=async()=>inspect(true);
+    return cx>gallery.right-65&&cx<gallery.right+42&&cy>gallery.top+gallery.height*0.15&&cy<gallery.bottom-gallery.height*0.15&&(!label||/arrow|right|carousel/i.test(label));
+   });
+   if(!candidates.length)return false;
+   candidates[0].click();return true;
+  });
   let data=await snap();remember(data);hasCarouselControl=data.hasNext;
   const steps=mode==='manual'?7:4;
   for(let i=0;i<steps&&data.hasNext&&Date.now()-launchedAt<maxMs-1200;i++){
@@ -665,30 +773,25 @@ async function puppeteerCarouselScrape(env,canonicalUrl,mode='auto'){
   const articleBody=bodyTexts.sort((a,b)=>b.length-a.length)[0]||'';
   const found=!!(articleBody||covers.length);
   return {ok:true,found,source:'puppeteer-carousel',executionMode:'puppeteer',canonicalUrl,
-   title:publicSentenceTitle(articleBody)||title,body:articleBody,images:covers.slice(0,POST_IMAGE_SAFETY_CAP),
+   title:publicSentenceTitle(articleBody)||title,body:articleBody,images:covers.slice(0,12),
    carouselSlidesVisited,carouselAttempted:hasCarouselControl,imagesComplete:false,
    carouselReachedVisibleEnd:hasCarouselControl&&atEnd,
-   postVerified:!!data?.postVerified,
    reason:found?'ok':blocked?'threads-access-limited':'browser-no-readable-post'};
  }finally{if(browser)try{await browser.close()}catch{}}
 }
 async function extractBrowserThreads(env,body){
- const {target:canonical}=await resolveThreadsPostURL(body.url);
+ const canonical=safeThreadsURL(body.url);
  if(!/^\/@[a-zA-Z0-9._]+\/post\/[a-zA-Z0-9_-]+\/?$/.test(canonical.pathname))return {ok:true,found:false,source:'browser-run',canonicalUrl:canonical.href,reason:'browser-needs-original-url'};
  if(!browserBound(env))return {ok:true,found:false,source:'browser-run',canonicalUrl:canonical.href,reason:'browser-not-bound'};
  const mode=body.mode==='manual'?'manual':'auto';
  const slot=await reserveBrowser(env.DB,canonical.href,mode);
- if(!slot.allowed)return {ok:true,found:false,source:'browser-run',canonicalUrl:canonical.href,reason:slot.reason,retryAfterSeconds:slot.retryAfterSeconds||null};
+ if(!slot.allowed)return {ok:true,found:false,source:'browser-run',canonicalUrl:canonical.href,reason:slot.reason};
  let extracted=null,status='ok',reportedMs=null;
- const browserStageStartedAt=Date.now();
  try{
   try{
   const advanced=await puppeteerCarouselScrape(env,canonical.href,mode);
   extracted=advanced;status=advanced.found?'ok':advanced.reason;return advanced;
  }catch(advancedError){
-  // Only use a non-carousel fallback if Puppeteer fails quickly.
-  // Avoid using up the request's background-execution window and free minutes.
-  if(Date.now()-browserStageStartedAt>(mode==='auto'?7000:10000))throw advancedError;
   // Fall back to the existing no-dependency Quick Action if launching Puppeteer fails.
   if(/browser.*quota|time.limit|429|too.many.requests|daily|rate.limit/i.test(String(advancedError.message||advancedError)))throw advancedError;
   try{const result=await env.BROWSER.quickAction('scrape',{
@@ -737,7 +840,7 @@ function usableArticleText(value){
 function curatedImages(list){
  const items=[],keys=new Set();
  for(const v of Array.isArray(list)?list:[]){
-  if(items.length>=POST_IMAGE_SAFETY_CAP)break;
+  if(items.length>=12)break;
   const str=typeof v==='string'?v:v?.url;
   try{const u=new URL(str);if(u.protocol!=='https:'||u.href.length>3000)continue;
    const key=typeof metaMediaKey==='function'?metaMediaKey(u.href):u.href.split('?')[0];
@@ -769,7 +872,7 @@ async function previewEnrichment(db,url){
   if(!res.ok)return {reason:'公開預覽服務 HTTP '+res.status};
   const json=await res.json(),d=json.data||{};
   const title=String(d.title||'').trim(),body=usableArticleText(d.description);
-  const images=curatedImages(/threads\.(?:com|net)/i.test(url)?[d.image?.url]:[d.image?.url,...(d.images||[])]);
+  const images=curatedImages([d.image?.url,...(d.images||[])]);
   if(json.status!=='success'||!body&&!images.length&&(!title||/^threads$/i.test(title)))return {reason:'公開預覽未提供可讀內容'};
   return {meta:{title:/^threads$/i.test(title)?'':title,body,images}};
  }catch(e){return {reason:e.name==='AbortError'?'預覽逾時':'公開預覽暫時不可用'}}
@@ -784,24 +887,19 @@ async function enrichIncomingBookmark(env,inboxId,url){
    try{const t=await extractPublicThreads(url);blendEnrichment(meta,{title:t.title,body:t.body,images:t.images,resolvedUrl:t.canonicalUrl});if(t.reason)issue=t.reason}
    catch(e){issue='公開貼文讀取失敗：'+String(e.message||e).slice(0,100)}
   }
-  // On Threads carousel candidates, try a bounded Browser Run pass before
-  // spending the remaining waitUntil window on an external preview service.
-  // The existing daily, per-post and concurrency limits still apply.
-  if(isThreads&&browserBound(env)&&(!meta.body||meta.images.length<2)&&
-     /^https:\/\/www\.threads\.com\/@[^/]+\/post\/[^/]+\/?$/.test(meta.resolvedUrl||'')&&
-     Date.now()-began<18000){
+  if(!meta.body||meta.images.length<2){
+   const p=await previewEnrichment(env.DB,meta.resolvedUrl||url);
+   if(p.meta)blendEnrichment(meta,p.meta);
+   else if(p.reason)issue=p.reason;
+  }
+  // Cloudflare Browser is only a fallback, guarded by the existing daily/cooldown limits.
+  // Do not launch if earlier stages already used most of waitUntil's ~30s window.
+  if(isThreads&&browserBound(env)&&(!meta.body||meta.images.length<2)&&Date.now()-began<8500){
    try{
     const b=await extractBrowserThreads(env,{url:meta.resolvedUrl||url,mode:'auto'});
     if(b.found){blendEnrichment(meta,{title:b.title,body:b.body,images:b.images,resolvedUrl:b.canonicalUrl});meta.carouselVisited=b.carouselSlidesVisited||0;meta.imagesComplete=!!b.imagesComplete;meta.carouselReachedVisibleEnd=!!b.carouselReachedVisibleEnd;}
     else if(b.reason)issue=b.reason;
    }catch(e){issue='雲端瀏覽器暫時不可用'}
-  }
-  // Retry public preview only when the carousel did not supply enough content.
-  // Avoid repeated preview calls for already recovered multi-image posts.
-  if((!meta.body||!meta.images.length)&&Date.now()-began<26000){
-   const p=await previewEnrichment(env.DB,meta.resolvedUrl||url);
-   if(p.meta)blendEnrichment(meta,p.meta);
-   else if(p.reason)issue=p.reason;
   }
   status=contentUseful(meta)?'ready':'failed';
  }catch(e){issue=String(e?.message||e).slice(0,180)}
@@ -830,11 +928,11 @@ export default {
       return new Response(null,{status:204,headers:headersFor(origin)});
     }
     const pathname=new URL(request.url).pathname.replace(/\/+$/,'')||'/';
-    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.19-rollback.3',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env)},200,origin);
+    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.21',build:'free-storage-safe.1',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env),syncSchema:'per-record-v2',legacyBackupPreserved:true,migrationSafety:'backup-verify-before-activate'},200,origin);
     if(!env.DB||!env.SJ_TOKEN||String(env.SJ_TOKEN).length<32)return reply({error:'server-not-configured'},503,origin);
     try{
       let body=null;
-      if(['POST','PUT'].includes(request.method))body=await readJSON(request,pathname==='/api/state'?MAX_STATE_BYTES:(pathname==='/api/vision'?2_900_000:25_000));
+      if(['POST','PUT'].includes(request.method))body=await readJSON(request,pathname==='/api/state'?MAX_STATE_BYTES:(pathname==='/api/v2/record'?1_550_000:(pathname==='/api/vision'?2_900_000:25_000)));
       const provided=request.headers.get('Authorization')?.replace(/^Bearer\s+/i,'')
         ||request.headers.get('X-Shiji-Token')
         ||(pathname==='/api/collect'?body?.token:null);
@@ -896,30 +994,41 @@ export default {
           return reply({ok:true,model:VISION_MODEL,analysis:parseVisionModel(output)},200,origin);
         }catch(e){const problem=modelFailure(e);await recordAIUsage(env.DB,'vision',problem.reason);return reply(problem,problem.reason==='rate-limit'?429:502,origin)}
       }
-      if(pathname==='/api/rollback/status'&&request.method==='GET'){
-        const active=await rollbackV2Version(env.DB);
-        const state=active===null?null:await rollbackReadState(env.DB);
-        return reply({ok:true,mode:state?'shadow-v2':'legacy',v2Revision:active,
-         stateRevision:state?.revision??null,items:state?.data?.items?.length??null,
-         note:'Original v2 documents, legacy app_state and inbox remain preserved.'},200,origin);
+      if(pathname==='/api/v2/legacy-backup'&&request.method==='GET'){
+        const old=await env.DB.prepare('SELECT revision,content FROM app_state WHERE id=1').first();
+        return reply({ok:true,revision:old?.revision||0,data:JSON.parse(old?.content||'{}')},200,origin);
       }
-      if(pathname==='/api/rollback/v2-export'&&request.method==='GET'){
-        const v2=await rollbackMakeV2Snapshot(env.DB);
-        if(v2)return reply({ok:true,source:'v2-read-only-export',revision:v2.v2Revision,
-           counts:v2.counts,data:v2.state},200,origin);
-        const state=await env.DB.prepare('SELECT revision,content FROM app_state WHERE id=1').first();
-        return reply({ok:true,source:'legacy-state-export',revision:state?.revision??0,
-          data:JSON.parse(state?.content||'{}')},200,origin);
+      if(pathname==='/api/v2/verify'&&request.method==='GET'){
+        const report=await migrationAudit(env.DB);
+        return reply(report,report.ok?200:409,origin);
+      }
+      if(pathname==='/api/v2/status'&&request.method==='GET'){
+        return reply({ok:true,...await syncStatus(env.DB)},200,origin);
+      }
+      if(pathname==='/api/v2/migrate'&&request.method==='POST'){
+        return reply({ok:true,...await migrateLegacyChunk(env.DB,body?.offset)},200,origin);
+      }
+      if(pathname==='/api/v2/changes'&&request.method==='GET'){
+        const status=await syncStatus(env.DB);
+        if(!status.active)return reply({error:'v2-not-ready'},409,origin);
+        if(status.legacyChanged)return reply({error:'legacy-changed-after-migration'},409,origin);
+        return reply({ok:true,revision:status.revision,...await changesSince(env.DB,new URL(request.url).searchParams.get('since')||'0')},200,origin);
+      }
+      if(pathname==='/api/v2/record'&&request.method==='PUT'){
+        const status=await syncStatus(env.DB);
+        if(!status.active)return reply({error:'v2-not-ready'},409,origin);
+        if(status.legacyChanged)return reply({error:'legacy-changed-after-migration'},409,origin);
+        try{return reply(await writeSyncDocument(env.DB,body),200,origin)}
+        catch(e){return reply({error:e.message,currentVersion:e.currentVersion??null},e.status||500,origin)}
       }
       if(pathname==='/api/state'&&request.method==='GET'){
-        const bridge=await rollbackReadState(env.DB);
-        if(bridge)return reply(bridge,200,origin);
         const r=await env.DB.prepare('SELECT revision,content,updated_at FROM app_state WHERE id=1').first();
         return reply({revision:r.revision,updatedAt:r.updated_at,data:r.revision?JSON.parse(r.content):null},200,origin);
       }
       if(pathname==='/api/state'&&request.method==='PUT'){
-        const bridge=await rollbackWriteState(env.DB,body);
-        if(bridge)return reply(bridge,bridge.error?409:200,origin);
+        const migration=await syncStatus(env.DB);
+        if(migration.active)return reply({error:'old-client-upgrade-required',note:'The legacy snapshot is read-only. Update every device to v1.8.21.'},409,origin);
+        if(migration.migrationRevision>=0)return reply({error:'migration-in-progress',note:'Backup verified; waiting for migration to complete before legacy writes.'},409,origin);
         if(!Number.isInteger(body?.expectedRevision)||body.expectedRevision<0||typeof body?.data!=='object'||body.data===null||Array.isArray(body.data))return reply({error:'invalid-state'},400,origin);
         if(!Array.isArray(body.data.items)||!Array.isArray(body.data.shoppingLists)||!Array.isArray(body.data.travelPlans))return reply({error:'invalid-collections'},400,origin);
         const content=JSON.stringify(body.data);
