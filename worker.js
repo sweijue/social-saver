@@ -1,6 +1,6 @@
 import puppeteer from '@cloudflare/puppeteer';
 /**
- * 拾集 Cloud API v1.8.21 — deploy as a Cloudflare Worker.
+ * 拾集 Cloud API v1.8.24 — deploy as a Cloudflare Worker.
  * Bind Cloudflare D1 database as DB; add Worker Secret SJ_TOKEN (min 32 chars).
  * Allowed browser origin is fixed to the user's GitHub Pages domain.
  * The secret must NOT be committed to GitHub or embedded in index.html.
@@ -1074,7 +1074,9 @@ export default {
         const result=await env.DB.prepare(`SELECT i.id,i.url,i.shared_text,i.received_at,
           e.status AS fetch_status,e.content AS fetch_content,e.error AS fetch_error,e.updated_at AS fetch_updated_at
           FROM inbox AS i LEFT JOIN inbox_enrichment AS e ON e.inbox_id=i.id
-          WHERE i.delivered_at IS NULL ORDER BY i.id LIMIT 35`).all();
+          WHERE i.delivered_at IS NULL
+          ORDER BY CASE WHEN e.status='ready' THEN 0 WHEN e.status='failed' THEN 1 ELSE 2 END,
+          i.received_at DESC, i.id DESC LIMIT 35`).all();
         return reply({items:(result.results||[]).map(row=>{
           let metadata=null;
           if(row.fetch_status==='ready')try{metadata=JSON.parse(row.fetch_content||'{}')}catch{}

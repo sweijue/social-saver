@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="拾集">
-<title>拾集 v1.8.23</title>
+<title>拾集 v1.8.24</title>
 <style>
 :root{--bg:#f5f5f2;--panel:#fff;--text:#111;--muted:#6e6e68;--line:#e4e4de;--soft:#efefe9;--shadow:0 10px 28px rgba(0,0,0,.07);--r:20px;--navh:74px}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",Arial,sans-serif;font-size:17px}body{min-height:100vh;padding-bottom:calc(var(--navh) + env(safe-area-inset-bottom) + 18px)}button,input,textarea,select{font:inherit}button{cursor:pointer}.hidden{display:none!important}
@@ -581,7 +581,7 @@ main{padding-top:calc(116px + env(safe-area-inset-top))!important}
 
 <script>
 
-const VERSION="1.8.23", STORE="socialSaver_data";
+const VERSION="1.8.24", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -2236,7 +2236,7 @@ async function analyzeArticlePhotos(id,opts={}){
 async function drainVisionQueue(){
  if(visionWorkBusy||!cloudConfig||!cloudMeta.wasConnected||document.visibilityState!=='visible'||navigator.onLine===false)return;
  if(visionBlockedUntil())return;
- if(cloudBusy){scheduleVisionQueue(2800);return}
+ // Automatic image analysis must not be blocked by D1's slow backlog.
  visionWorkBusy=true;
  try{
   // Only explicit pending jobs are resumed. Do not silently consume the AI
@@ -2707,6 +2707,7 @@ async function v2ReadChanges(since=0,settings=cloudConfig){
 }
 async function v2Initialize(status,{firstConnect=false,settings=cloudConfig}={}){
  const pulled=await v2ReadChanges(0,settings);
+ return withCloudDataLock(async()=>{
  const rows=new Map();for(const r of pulled.records)rows.set(v2Key(r.kind,r.id),r);
  if(!rows.has(v2Key('meta','main')))throw new Error('雲端遷移缺少設定資料；手機收藏不會被覆蓋。');
  await ensureLocalMigrationBackup();
@@ -2732,14 +2733,17 @@ async function v2Initialize(status,{firstConnect=false,settings=cloudConfig}={})
  cloudV2=baseline;v2SaveBaseline();
  cloudMeta.wasConnected=true;cloudMeta.revision=status.migratedLegacyRevision;
  cloudMeta.dirty=v2LocalDirty();persistCloud();render();
+ });
 }
 async function v2ApplyRecords(batch){
  if(!batch.records.length)return;
+ return withCloudDataLock(async()=>{
  const stagedData=safeClone(data),entries={...cloudV2.entries};
+ const stagedIndex=v2Docs(stagedData);
  let changed=false;
  for(const r of batch.records){
   const key=v2Key(r.kind,r.id),baseline=entries[key];
-  const local=v2Docs(stagedData).get(key);
+  const local=stagedIndex.get(key);
   const localHash=local?v2Hash(local.content):'@deleted';
   const remoteContent=r.deleted?null:(r.kind==='items'?normalizeItem(r.content):r.content);
   const remoteHash=r.deleted?'@deleted':v2Hash(remoteContent);
@@ -2760,6 +2764,8 @@ async function v2ApplyRecords(batch){
   if(nextRecord){
    const original=data;data=stagedData;
    try{v2SetRecord(nextRecord)}finally{data=original}
+   if(nextRecord.deleted)stagedIndex.delete(key);
+   else stagedIndex.set(key,{kind:nextRecord.kind,id:nextRecord.id,content:nextRecord.content});
    changed=true;
   }
   // Keep the *actual remote* version as base, not the locally merged copy.
@@ -2771,6 +2777,7 @@ async function v2ApplyRecords(batch){
   render();
  }
  cloudV2.entries=entries;cloudV2.since=Math.max(cloudV2.since,batch.since);v2SaveBaseline();
+ });
 }
 async function v2Pull(settings=cloudConfig){
  return v2ApplyRecords(await v2ReadChanges(cloudV2.since,settings));
@@ -2787,7 +2794,7 @@ async function v2RecoverExactDocument(kind,id,settings=cloudConfig){
   else throw e;
  }
 }
-async function v2Push(settings=cloudConfig,retry=0){
+async function v2Push(settings=cloudConfig,retry=0,limit=2){
  const current=v2Docs(data),changes=[];
  for(const [key,doc] of current){
   const hash=v2Hash(doc.content),prev=cloudV2.entries[key];
@@ -2798,7 +2805,7 @@ async function v2Push(settings=cloudConfig,retry=0){
  }
  if(!changes.length){cloudMeta.dirty=false;persistCloud();return 0}
  let count=0;
- for(const doc of changes){
+ for(const doc of changes.slice(0,limit)){
   if(changes.length>2){cloudMessage=`正在上傳變更 ${count+1} / ${changes.length} 筆…`;cloudStatusUI()}
   let result;
   try{result=await cloudRequest('PUT','/api/v2/record',{kind:doc.kind,id:doc.id,expectedVersion:doc.expectedVersion,deleted:doc.deleted,...(doc.deleted?{}:{content:doc.content})},settings)}
@@ -2806,7 +2813,7 @@ async function v2Push(settings=cloudConfig,retry=0){
    if(err.status===409&&retry<4){
     // Another device won optimistic concurrency; pull, merge and retry automatically.
     await v2RecoverExactDocument(doc.kind,doc.id,settings);
-    return count+await v2Push(settings,retry+1);
+    return count+await v2Push(settings,retry+1,Math.max(1,limit-count));
    }
    if(err.status===409)throw new Error('其他裝置正在頻繁更新，已保留修改並稍後自動重試。');
    throw err;
@@ -2816,7 +2823,7 @@ async function v2Push(settings=cloudConfig,retry=0){
  }
  cloudMeta.dirty=v2LocalDirty();persistCloud();return count;
 }
-// v1.8.23: idle polling is constant-time locally. Use D1's lightweight
+// v1.8.24: idle polling is constant-time locally. Use D1's lightweight
 // global revision to decide whether anything needs downloading. Local edits
 // always schedule immediate uploads; a full local integrity scan also runs
 // after boot and every 60 s to catch edits that bypassed normal save().
@@ -2848,6 +2855,16 @@ async function cloudV2Sync({firstConnect=false,settings=cloudConfig,force=false}
  return sent;
 }
 
+// v1.8.24 - separate inbox receiving from document sync. One writer at a time
+// prevents an asynchronous cloud pull from overwriting an arriving article.
+let cloudDataLock=Promise.resolve();
+function withCloudDataLock(task){
+ const operation=cloudDataLock.then(task,task);
+ cloudDataLock=operation.catch(()=>{});
+ return operation;
+}
+let cloudInboxPromise=null,cloudInboxTimer=null,cloudInboxLastSuccess=0,cloudInboxError='';
+let cloudSyncStartedAt=0,cloudNextSyncRetryAt=0,cloudRetryFailures=0;
 let cloudBusy=false,cloudConflict=false,cloudMessage='尚未設定雲端',cloudTimer=null,cloudSaveTimer=null;
 let cloudLastSuccess=0; // session-only: never claim that an unverified stale session is currently connected
 let cloudSilentCheck=false,cloudPendingItems=0; // quiet polling and active Worker jobs are distinct states
@@ -2873,17 +2890,19 @@ function cloudStatusUI(){
  if(!ready){state='unconfigured';short='雲端未設定 · 點此連線'}
  else if(navigator.onLine===false){state='offline';short='目前無網路 · 等待連線'}
  else if(cloudConflict){state='checking';short='正在自動合併資料…'}
- else if(cloudBusy&&!cloudSilentCheck){state='syncing';short='雲端同步中…'}
+ else if(cloudBusy&&Date.now()-cloudSyncStartedAt>12000){state='pending';short='舊資料背景同步中 · 新文章仍可接收'}
+ else if(cloudBusy&&!cloudSilentCheck){state='syncing';short='分筆同步處理中…'}
+ else if(cloudInboxError){state='error';short='接收新文章失敗 · 點此重試'}
  else if(cloudMessage.startsWith('同步失敗')){state='error';short='雲端同步失敗 · 點此重試'}
- else if(!cloudLastSuccess){state='checking';short='正在確認雲端連線…'}
- else if(pending){state='pending';short='雲端已連線 · 有待同步變更'}
+ else if(!cloudLastSuccess){state='pending';short=cloudInboxLastSuccess?'新文章接收正常 · 舊資料待同步':'正在確認雲端連線…'}
+ else if(pending){state='pending';short='新文章可收藏 · 變更分批上傳中'}
  else if(cloudPendingItems){state='pending';short=`雲端正在擷取 ${cloudPendingItems} 篇…`}
  else {state='connected';short='雲端已連線 · 已同步'}
  bar.dataset.status=state;label.textContent=short;
  const tooltip=ready?(cloudMessage+(pending?'；本機有未上傳的變更':'')+(cloudLastSuccess?'；上次成功同步 '+formatSavedAt(cloudLastSuccess):'')):'尚未設定雲端；點這裡開始連線';
  action.title=ready?'立即同步雲端 · '+tooltip:'尚未設定雲端 · 開啟設定';
  action.setAttribute('aria-label',ready?'立即同步雲端':'開啟雲端設定');
- action.disabled=!!cloudBusy;
+ action.disabled=false; // users can refresh incoming articles even during document sync
 }
 function cloudServerURL(url){
  const u=new URL(String(url||'').trim());
@@ -2970,21 +2989,19 @@ async function cloudCommit(){
  cloudMeta.wasConnected=true;persistCloud();
  cloudLastSuccess=Date.now();cloudMessage='雲端已同步';cloudStatusUI();
 }
-async function cloudRun({silent=false}={}){
- if(!cloudConfig||cloudBusy)return;
- cloudBusy=true;
- // Every five seconds, check for new inbox results without flashing "同步中".
- // Show activity only for an explicit refresh, local upload, or actual new data.
- cloudSilentCheck=!!silent&&!cloudMeta.dirty&&!!cloudLastSuccess;
- if(!cloudSilentCheck)cloudMessage='同步中…';
- cloudStatusUI();
- try{
-  // V2 checks only a lightweight revision record while idle; changed articles are
-  // transferred individually. The legacy app_state snapshot remains read-only.
-  await cloudV2Sync({force:!silent});
+// Receiving is independent of expensive per-record uploads and keeps running
+// even if the document sync is temporarily paused. Never ACK a pending result.
+async function cloudReceiveInbox(){
+ if(!cloudConfig||navigator.onLine===false)return;
+ if(cloudInboxPromise)return cloudInboxPromise;
+ cloudInboxPromise=(async()=>{
+  try{
+   const output=await (async()=>{
   const inbox=await cloudRequest('GET','/api/inbox');
   const rows=Array.isArray(inbox.items)?inbox.items:[];
-  if(rows.some(x=>x.fetchStatus!=='pending')){cloudSilentCheck=false;cloudMessage='同步中…';cloudStatusUI()}
+  return withCloudDataLock(async()=>{
+  const oldData=safeClone(data);
+  try{
   const existing=new Map(data.items.filter(i=>i.url).map(i=>[i.url,i]));
   let added=0,updated=0,hasChanges=false;
   const hydrateQueue=[],photoQueue=[],ackIds=[];
@@ -3004,9 +3021,10 @@ async function cloudRun({silent=false}={}){
    const stage=String(msg.fetchStatus||'legacy');
    if(stage==='pending'){
     // Let the Worker finish even if the iPhone app opens immediately.
-    // An interrupted waitUntil is recovered by the frontend after two minutes.
-    if(Date.now()-Number(msg.fetchUpdatedAt||Date.now())>120000){
-     hydrateQueue.push({id:item.id,url});ackIds.push(msg.id);
+    // An interrupted Worker waitUntil may be recovered by the frontend,
+    // but NEVER ACK a pending message: the Worker can still finish later.
+    if(Date.now()-Number(msg.fetchUpdatedAt||Date.now())>120000&&needsContentRefetch(item)&&retryBatchEligible(item)){
+     hydrateQueue.push({id:item.id,url});
     }
     continue;
    }
@@ -3037,18 +3055,55 @@ async function cloudRun({silent=false}={}){
    ackIds.push(msg.id);
   }
   if(hasChanges){
-   await writeStore(data);cloudMeta.dirty=true;persistCloud();await cloudCommit();render();
+   const saved=await writeStore(data);
+   if(!saved)throw new Error('新文章尚未安全寫入本機，雲端收件匣仍保留原文。');
+   cloudMeta.dirty=true;persistCloud();render();
   }
   // Only ACK when the cloud result was consumed. Pending rows remain for the next poll.
-  if(ackIds.length)await cloudRequest('POST','/api/inbox/ack',{ids:ackIds});
-  const waiting=rows.filter(msg=>msg.fetchStatus==='pending').length;
-  cloudPendingItems=waiting;
-  cloudMessage=added||updated?`雲端已同步，新增 ${added} 篇、補上 ${updated} 篇${waiting?'；雲端仍在擷取 '+waiting+' 篇':''}`:
-    waiting?`雲端正在擷取 ${waiting} 篇，完成後自動套用`:'雲端已同步';cloudLastSuccess=Date.now();cloudStatusUI();
-  if(hydrateQueue.length)setTimeout(()=>hydrateSharedArticles(hydrateQueue),50);
-  for(const id of [...new Set(photoQueue)])setTimeout(()=>analyzeArticlePhotos(id,{silent:true}),700);
- }catch(e){cloudConflict=false;cloudMessage=`同步失敗：${e.message}`;cloudStatusUI()}
- finally{cloudBusy=false;cloudSilentCheck=false;cloudStatusUI()}
+  return {added,updated,rows,ackIds,hydrateQueue,photoQueue};
+  }catch(e){data=oldData;throw e}
+  });
+   })();
+   if(output.ackIds.length)await cloudRequest('POST','/api/inbox/ack',{ids:output.ackIds});
+   cloudInboxLastSuccess=Date.now();cloudInboxError='';
+   cloudPendingItems=output.rows.filter(x=>x.fetchStatus==='pending').length;
+   if(output.added||output.updated){
+    // Do not wait for v2 upload before making received cards visible.
+    cloudMessage=`已收到 ${output.added} 篇新文章、補齊 ${output.updated} 篇；分筆備份稍後同步`;
+   }
+   cloudStatusUI();
+   if(output.hydrateQueue.length)setTimeout(()=>hydrateSharedArticles(output.hydrateQueue),50);
+   for(const id of [...new Set(output.photoQueue)])setTimeout(()=>analyzeArticlePhotos(id,{silent:true}),700);
+   return {added:output.added,updated:output.updated};
+  }catch(e){
+   cloudInboxError=String(e.message||e);
+   cloudStatusUI();
+   // Failure never ACKs incoming messages; the next poll retries safely.
+   return {error:cloudInboxError};
+  }
+ })();
+ try{return await cloudInboxPromise}finally{cloudInboxPromise=null}
+}
+async function cloudRun({silent=false}={}){
+ if(!cloudConfig||cloudBusy)return;
+ if(silent&&Date.now()<cloudNextSyncRetryAt)return;
+ cloudBusy=true;cloudSyncStartedAt=Date.now();
+ cloudSilentCheck=!!silent&&!cloudMeta.dirty&&!!cloudLastSuccess;
+ if(!cloudSilentCheck)cloudMessage='正在檢查分筆變更…';
+ cloudStatusUI();
+ try{
+  // Inbox FIRST: an old document backlog or migration error must not hide new posts.
+  await cloudReceiveInbox();
+  const sent=await cloudV2Sync({force:!silent});
+  cloudRetryFailures=0;cloudNextSyncRetryAt=0;
+  cloudLastSuccess=Date.now();
+  cloudMessage=cloudMeta.dirty?`已分批上傳 ${sent} 筆；剩餘變更下輪繼續`:'雲端已同步';
+ }catch(e){
+  cloudRetryFailures++;
+  cloudNextSyncRetryAt=Date.now()+Math.min(120000,15000*Math.pow(2,Math.min(cloudRetryFailures-1,3)));
+  cloudConflict=false;
+  cloudMessage=`同步失敗：${e.message}（不影響新文章接收）`;
+ }finally{cloudBusy=false;cloudSyncStartedAt=0;cloudSilentCheck=false;cloudStatusUI()}
 }
 async function hydrateSharedArticles(queue){
  for(const entry of queue){
@@ -3102,7 +3157,9 @@ function startAutoRetryTimer(){if(!autoRetryTimer)autoRetryTimer=setInterval(()=
 async function cloudBoot(){
  if(!cloudConfig){cloudStatusUI();return}
  if(!cloudConfig.url||!cloudConfig.token){cloudConfig=null;cloudStatusUI();return}
- await cloudRun();
+ await cloudReceiveInbox();
+ cloudRun({silent:true}).catch(()=>{});
+ if(!cloudInboxTimer)cloudInboxTimer=setInterval(()=>{if(document.visibilityState==='visible')cloudReceiveInbox().catch(()=>{})},5000);
  if(!cloudTimer)cloudTimer=setInterval(()=>{if(document.visibilityState==='visible')cloudRun({silent:true})},5000);
  startAutoRetryTimer();
  startAutoVisionTimer();
@@ -3125,9 +3182,11 @@ async function cloudConnect(url,token){
   cloudConfig=config;
   cloudV2=null;
   cloudMeta={revision:status.migratedLegacyRevision,dirty:false,wasConnected:false};
+  await cloudReceiveInbox();
   await cloudV2Sync({firstConnect:true,settings:config});
   try{localStorage.setItem(CLOUD_CONFIG_KEY,JSON.stringify(cloudConfig))}
   catch{throw new Error('無法儲存雲端設定，請確認 iPhone 儲存空間。')}
+  if(!cloudInboxTimer)cloudInboxTimer=setInterval(()=>{if(document.visibilityState==='visible')cloudReceiveInbox().catch(()=>{})},5000);
   if(!cloudTimer)cloudTimer=setInterval(()=>{if(document.visibilityState==='visible')cloudRun({silent:true})},5000);
   startAutoRetryTimer();startAutoVisionTimer();cloudConflict=false;
   cloudMessage='雲端已連線，分筆同步已啟用';cloudLastSuccess=Date.now();render();cloudStatusUI();
@@ -3215,6 +3274,7 @@ function openCloudSettings(){
     if(remote.backupVerified)msgs.push(`遷移備份已驗證：${remote.verifiedDocuments} 筆；驗證紀錄已保存，原始 app_state 未刪除。`);
     else msgs.push('注意：雲端尚未提供遷移完整性驗證紀錄，請先匯出備份，不要刪除裝置資料。');
     if(remote.legacyChanged)msgs.push('偵測到舊版用戶端修改過備份，請先匯出資料並更新所有裝置。');
+    msgs.push('新文章獨立收件：'+(cloudInboxError?'失敗，'+cloudInboxError:cloudInboxLastSuccess?'連線正常，最近收件檢查 '+formatSavedAt(cloudInboxLastSuccess):'尚未完成首次檢查')+'；等待雲端擷取：'+cloudPendingItems+' 篇。');
     if(cloudConflict)msgs.push('正在自動安全合併雲端與本機的變更。');
     else if(v2LocalDirty())msgs.push('本機有部分文章或清單尚未同步；可按「立即同步」。');
     else msgs.push('目前沒有待上傳的分筆變更。');
@@ -3241,18 +3301,19 @@ function openCloudSettings(){
   try{localStorage.removeItem(CLOUD_CONFIG_KEY);localStorage.removeItem(CLOUD_META_KEY);localStorage.removeItem(CLOUD_V2_KEY)}catch{}
   cloudConfig=null;cloudMeta={revision:null,dirty:false,wasConnected:false};cloudV2=null;cloudConflict=false;cloudLastSuccess=0;
   if(cloudTimer){clearInterval(cloudTimer);cloudTimer=null}
+  if(cloudInboxTimer){clearInterval(cloudInboxTimer);cloudInboxTimer=null}
   if(autoRetryTimer){clearInterval(autoRetryTimer);autoRetryTimer=null}
   cloudPendingItems=0;cloudMessage='尚未設定雲端';closeModal();cloudStatusUI()
  };
 }
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&cloudConfig){cloudRun({silent:true});startVisionQueue()}});
-window.addEventListener('online',()=>{cloudStatusUI();if(cloudConfig){cloudRun({silent:true});startVisionQueue()}});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&cloudConfig){cloudReceiveInbox().catch(()=>{});cloudRun({silent:true});startVisionQueue()}});
+window.addEventListener('online',()=>{cloudStatusUI();if(cloudConfig){cloudReceiveInbox().catch(()=>{});cloudRun({silent:true});startVisionQueue()}});
 window.addEventListener('offline',()=>cloudStatusUI());
 $('#cloudTopSettings').addEventListener('click',openCloudSettings);
 $('#cloudTopRefresh').addEventListener('click',async()=>{
  if(!cloudConfig){openCloudSettings();return}
- if(cloudBusy)return;
- await cloudRun();
+ await cloudReceiveInbox();
+ if(!cloudBusy)await cloudRun();
 });
 cloudStatusUI();
 
