@@ -1,10 +1,11 @@
-Version: 1.8.22
-JavaScript syntax: PASS (frontend embedded script + worker)
-Worker D1 migration tests: PASS
-Client reconciliation tests: PASS
-- 1.8.21 hash-only baseline
-- local note + remote multiple images and AI
-- competing updates (409) then automatic exact-record re-fetch/retry
-- both conflicting note values preserved in recovery metadata
-- snapshots saved before reconciliation
-Real Cloudflare D1 / GitHub Pages deployment: NOT TESTED OR MODIFIED
+Shiji v1.8.25 | local verification
+PASS Worker JavaScript syntax (node --check)
+PASS Front JavaScript syntax (extracted inline script, node --check)
+PASS D1 SQLite integrated inbox tests (53 unique, 54 accepts, 35/page, timestamp, stale pending, history, ack)
+PASS Front timestamp and two-page helper tests
+PASS Client receive pipeline, early card, immutable date, no premature ack
+PASS Legacy auto-merge and conflict-retry regression tests
+PASS Bounded document updates regression tests
+PASS Idle incremental sync regression tests
+PASS Legacy D1 migration/backup/verification regression tests
+NOT RUN: live Cloudflare Worker deployment, production D1, iPhone PWA/Shortcut E2E tests

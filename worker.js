@@ -42,6 +42,15 @@ async function schema(db){
     received_at INTEGER NOT NULL,
     delivered_at INTEGER DEFAULT NULL
   )`).run();
+  // Store latest POST acceptance separately; never rewrite an article's original received_at.
+  await db.prepare(`CREATE TABLE IF NOT EXISTS inbox_receipts (
+    id INTEGER PRIMARY KEY CHECK(id=1),
+    last_accepted_at INTEGER NOT NULL DEFAULT 0,
+    last_inbox_id INTEGER NOT NULL DEFAULT 0,
+    total_accepted INTEGER NOT NULL DEFAULT 0
+  )`).run();
+  await db.prepare('INSERT OR IGNORE INTO inbox_receipts(id) VALUES(1)').run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS inbox_undelivered_idx ON inbox(delivered_at,id)').run();
   // Separate table preserves every existing inbox row and requires no destructive migrations.
   await db.prepare(`CREATE TABLE IF NOT EXISTS inbox_enrichment (
     inbox_id INTEGER PRIMARY KEY,
@@ -928,7 +937,7 @@ export default {
       return new Response(null,{status:204,headers:headersFor(origin)});
     }
     const pathname=new URL(request.url).pathname.replace(/\/+$/,'')||'/';
-    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.22',build:'auto-reconcile-safe.1',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env),syncSchema:'per-record-v2',legacyBackupPreserved:true,migrationSafety:'backup-verify-before-activate'},200,origin);
+    if(pathname==='/health'&&request.method==='GET')return reply({ok:true,version:'1.8.25',build:'inbox-recovery-timestamps.1',configured:!!env.DB&&!!env.SJ_TOKEN,visionConfigured:!!env.AI,visionModel:VISION_MODEL,browserConfigured:browserBound(env),syncSchema:'per-record-v2',legacyBackupPreserved:true,migrationSafety:'backup-verify-before-activate'},200,origin);
     if(!env.DB||!env.SJ_TOKEN||String(env.SJ_TOKEN).length<32)return reply({error:'server-not-configured'},503,origin);
     try{
       let body=null;
@@ -1057,33 +1066,88 @@ export default {
         const url=extractUrl(body?.url||body?.text);
         if(!url)return reply({error:'valid-url-required'},400,origin);
         const sharedText=String(body.sharedText||body.text||'').slice(0,9000);
+        const receivedNow=Date.now();
+        // Same URL may be shared again, but its original first-collection time is permanent.
         await env.DB.prepare(`INSERT INTO inbox (url,shared_text,source,received_at,delivered_at)
           VALUES (?,?,'shortcut',?,NULL)
-          ON CONFLICT(url) DO UPDATE SET shared_text=excluded.shared_text,received_at=excluded.received_at,delivered_at=NULL`)
-          .bind(url,sharedText,Date.now()).run();
-        const saved=await env.DB.prepare('SELECT id FROM inbox WHERE url=?').bind(url).first();
+          ON CONFLICT(url) DO UPDATE SET shared_text=excluded.shared_text,delivered_at=NULL`)
+          .bind(url,sharedText,receivedNow).run();
+        const saved=await env.DB.prepare('SELECT id,received_at FROM inbox WHERE url=?').bind(url).first();
+        await env.DB.prepare(`UPDATE inbox_receipts
+          SET last_accepted_at=?,last_inbox_id=?,total_accepted=total_accepted+1 WHERE id=1`)
+          .bind(receivedNow,saved.id).run();
         await env.DB.prepare(`INSERT INTO inbox_enrichment (inbox_id,status,content,error,updated_at)
           VALUES (?,'pending','{}','',?)
           ON CONFLICT(inbox_id) DO UPDATE SET status='pending',content='{}',error='',updated_at=excluded.updated_at`)
           .bind(saved.id,Date.now()).run();
         // Respond to the iPhone Shortcut immediately; continue fetching as a background task.
         if(ctx?.waitUntil)ctx.waitUntil(enrichIncomingBookmark(env,saved.id,url).catch(()=>{}));
-        return reply({ok:true,message:'已收藏，雲端正在自動擷取文章內容',url,fetchStatus:'pending'},200,origin);
+        return reply({ok:true,message:'已收到分享，先保存網址再補抓內容',url,receivedAt:saved.received_at,acceptedAt:receivedNow,fetchStatus:'pending'},200,origin);
+      }
+      // Explicit user-initiated recovery: read accepted inbox history without
+      // changing delivered flags. Never auto-resurrect deleted bookmarks.
+      if(pathname==='/api/inbox/history'&&request.method==='GET'){
+        const params=new URL(request.url).searchParams;
+        const beforeRaw=params.get('before_id'),before=beforeRaw===null?0:Number(beforeRaw);
+        if(beforeRaw!==null&&(!Number.isSafeInteger(before)||before<=0))return reply({error:'invalid-inbox-cursor'},400,origin);
+        const since=Date.now()-7*86400000;
+        const result=await env.DB.prepare(`SELECT i.id,i.url,i.shared_text,i.received_at,i.delivered_at,
+          e.status AS fetch_status,e.content AS fetch_content
+          FROM inbox i LEFT JOIN inbox_enrichment e ON e.inbox_id=i.id
+          WHERE i.received_at>=? AND (?=0 OR i.id<?) ORDER BY i.id DESC LIMIT 36`)
+          .bind(since,before,before).all();
+        const found=result.results||[],page=found.slice(0,35);
+        const items=page.map(row=>{
+          let metadata=null;
+          if(row.fetch_status==='ready')try{metadata=JSON.parse(row.fetch_content||'{}')}catch{}
+          return {id:row.id,url:row.url,shared_text:row.shared_text,
+            received_at:row.received_at,delivered:row.delivered_at!==null,
+            fetchStatus:row.fetch_status||'legacy',metadata};
+        });
+        return reply({ok:true,items,hasMore:found.length>35,
+          nextBeforeId:page.length?page[page.length-1].id:null},200,origin);
+      }
+      if(pathname==='/api/inbox/diagnostics'&&request.method==='GET'){
+        const [receipt,queue]=await Promise.all([
+          env.DB.prepare('SELECT last_accepted_at,last_inbox_id,total_accepted FROM inbox_receipts WHERE id=1').first(),
+          env.DB.prepare(`SELECT COUNT(*) AS undelivered,
+            SUM(CASE WHEN e.status='pending' THEN 1 ELSE 0 END) AS enrichment_pending,
+            MAX(i.id) AS latest_unacknowledged_id
+            FROM inbox i LEFT JOIN inbox_enrichment e ON e.inbox_id=i.id
+            WHERE i.delivered_at IS NULL`).first()
+        ]);
+        return reply({ok:true,lastAcceptedAt:Number(receipt?.last_accepted_at||0),
+          lastInboxId:Number(receipt?.last_inbox_id||0),totalAccepted:Number(receipt?.total_accepted||0),
+          undelivered:Number(queue?.undelivered||0),enrichmentPending:Number(queue?.enrichment_pending||0),
+          latestUnacknowledgedId:Number(queue?.latest_unacknowledged_id||0)},200,origin);
       }
       if(pathname==='/api/inbox'&&request.method==='GET'){
+        // Timed-out waitUntil calls can leave pending rows permanently. Keep the
+        // original URL and make terminal failure available to the client to retry.
+        const now=Date.now();
+        await env.DB.prepare(`UPDATE inbox_enrichment SET status='failed',
+          error='背景擷取逾時，原始網址已保留，可稍後補抓',updated_at=?
+          WHERE status='pending' AND updated_at<? AND inbox_id IN
+          (SELECT id FROM inbox WHERE delivered_at IS NULL)`)
+          .bind(now,now-180000).run();
+        const rawBefore=new URL(request.url).searchParams.get('before_id');
+        const before=rawBefore===null?0:Number(rawBefore);
+        if(rawBefore!==null&&(!Number.isSafeInteger(before)||before<=0))return reply({error:'invalid-inbox-cursor'},400,origin);
         const result=await env.DB.prepare(`SELECT i.id,i.url,i.shared_text,i.received_at,
           e.status AS fetch_status,e.content AS fetch_content,e.error AS fetch_error,e.updated_at AS fetch_updated_at
           FROM inbox AS i LEFT JOIN inbox_enrichment AS e ON e.inbox_id=i.id
-          WHERE i.delivered_at IS NULL
-          ORDER BY CASE WHEN e.status='ready' THEN 0 WHEN e.status='failed' THEN 1 ELSE 2 END,
-          i.received_at DESC, i.id DESC LIMIT 35`).all();
-        return reply({items:(result.results||[]).map(row=>{
+          WHERE i.delivered_at IS NULL AND (?=0 OR i.id<?)
+          ORDER BY i.id DESC LIMIT 36`).bind(before,before).all();
+        const found=result.results||[],page=found.slice(0,35);
+        const items=page.map(row=>{
           let metadata=null;
           if(row.fetch_status==='ready')try{metadata=JSON.parse(row.fetch_content||'{}')}catch{}
           return {id:row.id,url:row.url,shared_text:row.shared_text,received_at:row.received_at,
             fetchStatus:row.fetch_status||'legacy',metadata,
             fetchError:row.fetch_error||'',fetchUpdatedAt:row.fetch_updated_at||0};
-        })},200,origin);
+        });
+        return reply({ok:true,items,hasMore:found.length>35,
+          nextBeforeId:page.length?page[page.length-1].id:null},200,origin);
       }
       if(pathname==='/api/inbox/ack'&&request.method==='POST'){
         const ids=Array.isArray(body?.ids)?body.ids.filter(x=>Number.isInteger(x)&&x>0).slice(0,35):[];

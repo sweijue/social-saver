@@ -581,7 +581,7 @@ main{padding-top:calc(116px + env(safe-area-inset-top))!important}
 
 <script>
 
-const VERSION="1.8.24", STORE="socialSaver_data";
+const VERSION="1.8.25", STORE="socialSaver_data";
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto?.randomUUID?.()||('id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
@@ -2033,6 +2033,8 @@ function guessTags(text,country,category,customTags=[]){
  for(const tag of customTags||[]){if(tag.length>=2&&raw.toLocaleLowerCase().includes(tag.toLocaleLowerCase()))tags.push(tag)}
  return uniq(tags).slice(0,22);
 }
+function validBookmarkTimestamp(raw){const n=Number(raw);return Number.isFinite(n)&&n>=946684800000&&n<=Date.now()+86400000?n:0}
+function earliestBookmarkTimestamp(a,b){const x=validBookmarkTimestamp(a),y=validBookmarkTimestamp(b);return x&&y?Math.min(x,y):x||y||Date.now()}
 function quickItem(url,meta,fields={}){
  const platform=platformFromURL(url);
  const title=fields.title||readableTitle(url,fields.body||meta?.body||'',meta?.title||'');
@@ -2049,7 +2051,7 @@ function quickItem(url,meta,fields={}){
   tags:uniq([...guessTags(content,country,category),...(fields.tags||[])]),address,placeName,
   terms:makeSearchTerms({placeName,address,products,body,country}),
   summary:'',titleSource:fields.title?'manual':'auto',previewAttempts:meta?1:0,previewError:'',previewCheckedAt:meta?Date.now():null,
-  sourceQuality:quality,sourceCapturedAt:Date.now(),createdAt:Date.now(),status:category==='購物'?'想買':'剛收藏'
+  sourceQuality:quality,sourceCapturedAt:Date.now(),createdAt:validBookmarkTimestamp(fields.createdAt)||Date.now(),status:category==='購物'?'想買':'剛收藏'
  })
 }
 function openQuickAdd(prefill=''){
@@ -2598,6 +2600,8 @@ function v2MergeContent(local,remote,base,kind){
   if(conflicts.length<100&&!v2Equal(a,b))conflicts.push({field:path,local:safeClone(a===undefined?null:a),cloud:safeClone(b===undefined?null:b)});
  };
  function merge(a,b,old,path,depth=0){
+  // First collection timestamp is immutable; enrichment and sync must never re-date it.
+  if(kind==='items'&&path==='createdAt')return earliestBookmarkTimestamp(a,b);
   if(v2Equal(a,b))return a;
   if(old!==undefined){
    if(v2Equal(a,old))return b;
@@ -2663,6 +2667,7 @@ function v2SetRecord(record){
  const index=arr.findIndex(x=>x.id===record.id);
  if(record.deleted){if(index!==-1)arr.splice(index,1);return}
  const value=record.kind==='items'?normalizeItem(record.content):record.content;
+ if(record.kind==='items'&&index>=0)value.createdAt=earliestBookmarkTimestamp(arr[index].createdAt,value.createdAt);
  if(index===-1){if(record.kind==='items')arr.unshift(value);else arr.push(value)}
  else arr[index]=value;
 }
@@ -2864,6 +2869,7 @@ function withCloudDataLock(task){
  return operation;
 }
 let cloudInboxPromise=null,cloudInboxTimer=null,cloudInboxLastSuccess=0,cloudInboxError='';
+let cloudInboxOlderCursor=null,cloudInboxLatestAcceptedAt=0,cloudInboxLastAdded=0;
 let cloudSyncStartedAt=0,cloudNextSyncRetryAt=0,cloudRetryFailures=0;
 let cloudBusy=false,cloudConflict=false,cloudMessage='尚未設定雲端',cloudTimer=null,cloudSaveTimer=null;
 let cloudLastSuccess=0; // session-only: never claim that an unverified stale session is currently connected
@@ -2989,16 +2995,32 @@ async function cloudCommit(){
  cloudMeta.wasConnected=true;persistCloud();
  cloudLastSuccess=Date.now();cloudMessage='雲端已同步';cloudStatusUI();
 }
+// Fetch newest first on EVERY poll, then walk older unacknowledged rows in pages.
+// A stuck legacy row must not starve a newly shared article or older ready content.
+async function cloudFetchInboxRows(){
+ const newest=await cloudRequest('GET','/api/inbox');
+ const fresh=Array.isArray(newest.items)?newest.items:[];
+ const combined=[...fresh];
+ if(newest.hasMore){
+  const before=cloudInboxOlderCursor||newest.nextBeforeId;
+  if(before){
+   const older=await cloudRequest('GET','/api/inbox?before_id='+encodeURIComponent(before));
+   for(const item of (older.items||[]))if(!combined.some(x=>x.id===item.id))combined.push(item);
+   cloudInboxOlderCursor=older.hasMore?older.nextBeforeId:null;
+  }
+ }else cloudInboxOlderCursor=null;
+ return combined;
+}
 // Receiving is independent of expensive per-record uploads and keeps running
-// even if the document sync is temporarily paused. Never ACK a pending result.
+// even if document sync is paused. Pending items are stored locally immediately;
+// they are ACKed only once enrichment reaches a terminal status.
 async function cloudReceiveInbox(){
  if(!cloudConfig||navigator.onLine===false)return;
  if(cloudInboxPromise)return cloudInboxPromise;
  cloudInboxPromise=(async()=>{
   try{
    const output=await (async()=>{
-  const inbox=await cloudRequest('GET','/api/inbox');
-  const rows=Array.isArray(inbox.items)?inbox.items:[];
+  const rows=await cloudFetchInboxRows();
   return withCloudDataLock(async()=>{
   const oldData=safeClone(data);
   try{
@@ -3012,11 +3034,16 @@ async function cloudReceiveInbox(){
    const sharedText=isPlatformUnavailableText(rawText)?'':rawText;
    let item=existing.get(url);
    if(!item){
-    item=quickItem(url,null,sharedText.length>8?{body:sharedText}:{});
+    item=quickItem(url,null,{...(sharedText.length>8?{body:sharedText}:{}),createdAt:Number(msg.received_at)});
     item.inboxId=msg.id;
     if(sharedText.length>8)item.sourceQuality='shared';
     if(!item.isExample){data.items=data.items.filter(x=>!x.isExample);data.examplesInitialized=true}
     data.items.unshift(item);existing.set(url,item);added++;hasChanges=true;
+   }else{
+    // An existing bookmark must retain its first saved timestamp, even if later
+    // sharing it again or downloading metadata from a newer cloud revision.
+    const earlier=earliestBookmarkTimestamp(item.createdAt,msg.received_at);
+    if(item.createdAt!==earlier){item.createdAt=earlier;updated++;hasChanges=true}
    }
    const stage=String(msg.fetchStatus||'legacy');
    if(stage==='pending'){
@@ -3066,6 +3093,8 @@ async function cloudReceiveInbox(){
    })();
    if(output.ackIds.length)await cloudRequest('POST','/api/inbox/ack',{ids:output.ackIds});
    cloudInboxLastSuccess=Date.now();cloudInboxError='';
+   cloudInboxLastAdded=output.added;
+   cloudInboxLatestAcceptedAt=Math.max(cloudInboxLatestAcceptedAt,...output.rows.map(x=>Number(x.received_at)||0),0);
    cloudPendingItems=output.rows.filter(x=>x.fetchStatus==='pending').length;
    if(output.added||output.updated){
     // Do not wait for v2 upload before making received cards visible.
@@ -3083,6 +3112,53 @@ async function cloudReceiveInbox(){
   }
  })();
  try{return await cloudInboxPromise}finally{cloudInboxPromise=null}
+}
+// User-initiated repair for rows previously ACKed by an older build but absent
+// from this phone. Never auto-restore deliberately deleted items on startup.
+async function cloudRecoverRecent(){
+ if(!cloudConfig)throw new Error('尚未連線');
+ let before=null,history=[],complete=false;
+ for(let page=0;page<20;page++){
+  const path='/api/inbox/history'+(before?'?before_id='+encodeURIComponent(before):'');
+  const response=await cloudRequest('GET',path);
+  history.push(...(response.items||[]));
+  if(!response.hasMore){complete=true;break}
+  if(!response.nextBeforeId||response.nextBeforeId===before)throw new Error('歷史收件匣頁碼重複，已停止避免漏資料');
+  before=response.nextBeforeId;
+ }
+ const known=new Set(data.items.filter(i=>i.url).map(i=>i.url));
+ const missing=history.filter(msg=>{
+  const url=cleanExternalURL(msg.url);if(!url||known.has(url))return false;
+  known.add(url);return true;
+ });
+ if(!missing.length){alert(complete?'最近 7 天的雲端收件紀錄都已在手機內。':'已檢查部分紀錄，暫時沒有發現可補收文章。');return 0}
+ const names=missing.slice(0,3).map(x=>cleanExternalURL(x.url)).join('\n');
+ if(!confirm(`找到 ${missing.length} 篇已送到 Worker、但手機目前沒有的文章。\n\n${names}${missing.length>3?'\n…':''}\n\n確定要補收？注意：若曾主動刪除這些文章，補收也會重新加入。`))return 0;
+ const added=await withCloudDataLock(async()=>{
+  const original=safeClone(data),existing=new Set(data.items.filter(i=>i.url).map(i=>i.url));
+  let count=0;
+  try{
+   for(const msg of missing){
+    const url=cleanExternalURL(msg.url);if(!url||existing.has(url))continue;
+    const raw=String(msg.shared_text||'').replace(url,'').trim();
+    const text=isPlatformUnavailableText(raw)?'':raw;
+    const item=quickItem(url,null,{createdAt:Number(msg.received_at),...(text.length>8?{body:text}:{})});
+    item.inboxId=msg.id;
+    if(text.length>8)item.sourceQuality='shared';
+    if(msg.fetchStatus==='ready'&&msg.metadata&&item.sourceQuality!=='manual')mergePublicPreview(item,msg.metadata);
+    if(!item.isExample){data.items=data.items.filter(x=>!x.isExample);data.examplesInitialized=true}
+    data.items.unshift(item);existing.add(url);count++;
+   }
+   if(count){
+    if(!await writeStore(data))throw new Error('補收資料未成功儲存到手機，雲端紀錄未變更。');
+    cloudMeta.dirty=true;persistCloud();render();
+   }
+   return count;
+  }catch(e){data=original;throw e}
+ });
+ if(added){cloudMessage=`已從雲端歷史紀錄補收 ${added} 篇，分筆同步稍後進行`;cloudStatusUI();scheduleCloudWrite()}
+ alert(`已找回 ${added} 篇。${complete?'':' 7 天內記錄較多，請再次執行以核對剩餘部分。'}`);
+ return added;
 }
 async function cloudRun({silent=false}={}){
  if(!cloudConfig||cloudBusy)return;
@@ -3249,7 +3325,7 @@ function openCloudSettings(){
   <label>私密同步密鑰<input type="password" id="cloudToken" autocomplete="off" placeholder="Worker Secret：SJ_TOKEN" value="${esc(cloudConfig?.token||'')}"></label>
   <p class="cloudHelp" id="cloudDialogStatus">${esc(cloudMessage)}</p>
   <div class="formActions cloudActions"><button type="button" class="ghost uiBtn" id="cancelCloud">取消</button><button type="button" class="primary uiBtn" id="connectCloud">${active?'重新連線':'開始連線'}</button></div>
-  ${active?`<div class="cloudDiagRow"><button type="button" class="ghost uiBtn" id="cloudUsageCheck">查看 AI／預覽／瀏覽器用量</button></div><div class="cloudDiagRow"><button type="button" class="ghost uiBtn" id="cloudDiagnose">檢查同步原因</button><p class="cloudHelp" id="cloudDiagResult">只檢查資料量與連線版本，不更動收藏，也不會公開密鑰。</p></div><div class="formActions"><button type="button" class="ghost uiBtn" id="syncCloudNow">立即同步</button><button type="button" class="ghost uiBtn" id="cloudBackupNow">匯出本機備份</button><button type="button" class="ghost uiBtn" id="cloudLegacyBackup">下載升級前雲端備份</button><button type="button" class="ghost uiBtn" id="disconnectCloud">斷開</button></div>`:''}
+  ${active?`<div class="cloudDiagRow"><button type="button" class="ghost uiBtn" id="cloudUsageCheck">查看 AI／預覽／瀏覽器用量</button></div><div class="cloudDiagRow"><button type="button" class="ghost uiBtn" id="cloudDiagnose">檢查同步原因</button><button type="button" class="ghost uiBtn" id="cloudRecoverRecent">補收最近 7 天文章</button><p class="cloudHelp" id="cloudDiagResult">只檢查資料量與連線版本，不更動收藏，也不會公開密鑰。</p></div><div class="formActions"><button type="button" class="ghost uiBtn" id="syncCloudNow">立即同步</button><button type="button" class="ghost uiBtn" id="cloudBackupNow">匯出本機備份</button><button type="button" class="ghost uiBtn" id="cloudLegacyBackup">下載升級前雲端備份</button><button type="button" class="ghost uiBtn" id="disconnectCloud">斷開</button></div>`:''}
  </div>`);
  $('#closeCloud').onclick=$('#cancelCloud').onclick=closeModal;
  $('#connectCloud').onclick=async()=>{
@@ -3267,14 +3343,16 @@ function openCloudSettings(){
   const size=new TextEncoder().encode(JSON.stringify({expectedRevision:Number(cloudMeta.revision||0),data})).length;
   const sizeText=(size/1_000_000).toFixed(2)+' MB';
   try{
-   const remote=await cloudRequest('GET','/api/v2/status');
+   const [remote,arrival]=await Promise.all([cloudRequest('GET','/api/v2/status'),cloudRequest('GET','/api/inbox/diagnostics').catch(e=>({error:e.message}))]);
    const msgs=[`分筆同步 ${remote.active?'已啟用':'尚未啟用'}；本機整份備份大小約 ${sizeText}。`];
    if(remote.active){
     msgs.push(`雲端目前分筆修訂：${remote.revision}；D1 舊版備份仍保留。`);
     if(remote.backupVerified)msgs.push(`遷移備份已驗證：${remote.verifiedDocuments} 筆；驗證紀錄已保存，原始 app_state 未刪除。`);
     else msgs.push('注意：雲端尚未提供遷移完整性驗證紀錄，請先匯出備份，不要刪除裝置資料。');
     if(remote.legacyChanged)msgs.push('偵測到舊版用戶端修改過備份，請先匯出資料並更新所有裝置。');
-    msgs.push('新文章獨立收件：'+(cloudInboxError?'失敗，'+cloudInboxError:cloudInboxLastSuccess?'連線正常，最近收件檢查 '+formatSavedAt(cloudInboxLastSuccess):'尚未完成首次檢查')+'；等待雲端擷取：'+cloudPendingItems+' 篇。');
+    msgs.push('新文章獨立收件：'+(cloudInboxError?'失敗，'+cloudInboxError:cloudInboxLastSuccess?'最近收件檢查 '+formatSavedAt(cloudInboxLastSuccess):'尚未完成首次檢查')+'。');
+    if(arrival.ok)msgs.push('Worker 最後收到分享：'+(arrival.lastAcceptedAt?formatSavedAt(arrival.lastAcceptedAt):'尚無紀錄')+'；尚未回報已接收：'+arrival.undelivered+' 篇；擷取進行中：'+arrival.enrichmentPending+' 篇。');
+    else msgs.push('Worker 收件診斷尚無法取得：'+(arrival.error||'請確認 Worker 已更新到 v1.8.25'));
     if(cloudConflict)msgs.push('正在自動安全合併雲端與本機的變更。');
     else if(v2LocalDirty())msgs.push('本機有部分文章或清單尚未同步；可按「立即同步」。');
     else msgs.push('目前沒有待上傳的分筆變更。');
@@ -3283,6 +3361,7 @@ function openCloudSettings(){
   }catch(e){out.textContent=`本機資料約 ${sizeText}。讀取雲端失敗：${e.message}`}
   finally{btn.disabled=false;btn.textContent='檢查同步原因'}
  };
+ $('#cloudRecoverRecent').onclick=async()=>{const btn=$('#cloudRecoverRecent');btn.disabled=true;btn.textContent='正在核對最近 7 天…';try{await cloudRecoverRecent()}catch(e){alert('補收失敗：'+e.message)}finally{if(btn.isConnected){btn.disabled=false;btn.textContent='補收最近 7 天文章'}}};
  $('#syncCloudNow').onclick=async()=>{cloudConflict=false;closeModal();await cloudRun();if(cloudMessage.startsWith('同步失敗'))alert(cloudMessage)};
  $('#cloudBackupNow').onclick=exportData;
  $('#cloudLegacyBackup').onclick=async()=>{
